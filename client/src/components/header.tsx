@@ -9,7 +9,7 @@ import {
   SheetTrigger,
   SheetClose,
 } from "@/components/ui/sheet";
-import leaseoLogo from "@assets/LEASEO-1_1767865824685.png";
+import leaseoLogo from "@assets/lessso_1767868424345.png";
 
 const navLinks = [
   { href: "/", label: "Home" },
