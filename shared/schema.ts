@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, decimal, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, decimal, timestamp, pgEnum, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -16,7 +16,7 @@ export const propertyTypeEnum = pgEnum("property_type", [
 // Listing type - provision for future "sell" functionality
 export const listingTypeEnum = pgEnum("listing_type", [
   "rent",
-  "sale"  // Future use - can be activated when needed
+  "sale"
 ]);
 
 export const listingStatusEnum = pgEnum("listing_status", [
@@ -27,16 +27,109 @@ export const listingStatusEnum = pgEnum("listing_status", [
   "inactive"
 ]);
 
-// Users table
+// User roles - explicit roles without broker/agent
+export const userRoleEnum = pgEnum("user_role", [
+  "residential_owner",
+  "commercial_owner", 
+  "residential_tenant",
+  "commercial_tenant",
+  "admin"
+]);
+
+// OTP purpose enum
+export const otpPurposeEnum = pgEnum("otp_purpose", [
+  "login",
+  "verify_phone",
+  "verify_email",
+  "password_reset"
+]);
+
+// Users table - extended for authentication
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  email: text("email"),
-  phone: text("phone"),
-  role: text("role").default("user"), // user, landlord, admin
+  
+  // Authentication fields
+  phone: text("phone").unique(),
+  countryCode: text("country_code").default("+91"),
+  phoneVerifiedAt: timestamp("phone_verified_at"),
+  email: text("email").unique(),
+  emailVerifiedAt: timestamp("email_verified_at"),
+  passwordHash: text("password_hash"),
+  
+  // Profile fields
+  firstName: text("first_name"),
+  lastName: text("last_name"),
   avatarUrl: text("avatar_url"),
-});
+  
+  // Role management - user can have multiple roles they switch between
+  activeRole: userRoleEnum("active_role").default("residential_tenant"),
+  availableRoles: text("available_roles").array().default(sql`ARRAY['residential_tenant']::text[]`),
+  
+  // Status flags
+  isActive: boolean("is_active").default(true),
+  profileCompleted: boolean("profile_completed").default(false),
+  
+  // Metadata
+  metadata: jsonb("metadata"),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("users_phone_idx").on(table.phone),
+  index("users_email_idx").on(table.email),
+]);
+
+// OTP requests table for rate limiting and verification
+export const otpRequests = pgTable("otp_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id),
+  phone: text("phone"),
+  email: text("email"),
+  countryCode: text("country_code").default("+91"),
+  codeHash: text("code_hash").notNull(),
+  purpose: otpPurposeEnum("purpose").notNull().default("login"),
+  attemptCount: integer("attempt_count").default(0),
+  maxAttempts: integer("max_attempts").default(3),
+  expiresAt: timestamp("expires_at").notNull(),
+  consumedAt: timestamp("consumed_at"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("otp_phone_idx").on(table.phone),
+  index("otp_email_idx").on(table.email),
+  index("otp_expires_idx").on(table.expiresAt),
+]);
+
+// Refresh tokens for JWT session management
+export const refreshTokens = pgTable("refresh_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  issuedAt: timestamp("issued_at").defaultNow(),
+  revokedAt: timestamp("revoked_at"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+}, (table) => [
+  index("refresh_user_idx").on(table.userId),
+  index("refresh_token_idx").on(table.tokenHash),
+]);
+
+// Login attempts for rate limiting and abuse protection
+export const loginAttempts = pgTable("login_attempts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  identifier: text("identifier").notNull(),
+  identifierType: text("identifier_type").notNull(),
+  ipAddress: text("ip_address"),
+  success: boolean("success").default(false),
+  failureReason: text("failure_reason"),
+  occurredAt: timestamp("occurred_at").defaultNow(),
+}, (table) => [
+  index("login_identifier_idx").on(table.identifier),
+  index("login_ip_idx").on(table.ipAddress),
+  index("login_occurred_idx").on(table.occurredAt),
+]);
 
 // Properties/Listings table
 export const properties = pgTable("properties", {
@@ -49,14 +142,14 @@ export const properties = pgTable("properties", {
   
   // Pricing
   price: decimal("price", { precision: 12, scale: 2 }).notNull(),
-  priceUnit: text("price_unit").default("month"), // month, week, day for rentals; null for sales
+  priceUnit: text("price_unit").default("month"),
   
   // Location
   address: text("address").notNull(),
   city: text("city").notNull(),
   state: text("state").notNull(),
   zipCode: text("zip_code"),
-  country: text("country").default("USA"),
+  country: text("country").default("India"),
   latitude: decimal("latitude", { precision: 10, scale: 8 }),
   longitude: decimal("longitude", { precision: 11, scale: 8 }),
   
@@ -66,14 +159,15 @@ export const properties = pgTable("properties", {
   squareFeet: integer("square_feet"),
   yearBuilt: integer("year_built"),
   
-  // Images (stored as JSON array of URLs)
+  // Images
   images: text("images").array().default(sql`ARRAY[]::text[]`),
   
-  // Amenities (stored as JSON array)
+  // Amenities
   amenities: text("amenities").array().default(sql`ARRAY[]::text[]`),
   
-  // Features for future sell functionality
+  // Features
   isFeatured: boolean("is_featured").default(false),
+  isCommercial: boolean("is_commercial").default(false),
   
   // Owner reference
   ownerId: varchar("owner_id").references(() => users.id),
@@ -83,15 +177,16 @@ export const properties = pgTable("properties", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Inquiries table - for contact requests
+// Inquiries table
 export const inquiries = pgTable("inquiries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   propertyId: varchar("property_id").references(() => properties.id).notNull(),
+  userId: varchar("user_id").references(() => users.id),
   name: text("name").notNull(),
   email: text("email").notNull(),
   phone: text("phone"),
   message: text("message").notNull(),
-  status: text("status").default("new"), // new, read, responded
+  status: text("status").default("new"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -103,7 +198,7 @@ export const savedProperties = pgTable("saved_properties", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Feature flags table - for controlling features like "sell property"
+// Feature flags table
 export const featureFlags = pgTable("feature_flags", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
@@ -115,6 +210,8 @@ export const featureFlags = pgTable("feature_flags", {
 export const usersRelations = relations(users, ({ many }) => ({
   properties: many(properties),
   savedProperties: many(savedProperties),
+  refreshTokens: many(refreshTokens),
+  otpRequests: many(otpRequests),
 }));
 
 export const propertiesRelations = relations(properties, ({ one, many }) => ({
@@ -131,6 +228,10 @@ export const inquiriesRelations = relations(inquiries, ({ one }) => ({
     fields: [inquiries.propertyId],
     references: [properties.id],
   }),
+  user: one(users, {
+    fields: [inquiries.userId],
+    references: [users.id],
+  }),
 }));
 
 export const savedPropertiesRelations = relations(savedProperties, ({ one }) => ({
@@ -144,9 +245,25 @@ export const savedPropertiesRelations = relations(savedProperties, ({ one }) => 
   }),
 }));
 
+export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [refreshTokens.userId],
+    references: [users.id],
+  }),
+}));
+
+export const otpRequestsRelations = relations(otpRequests, ({ one }) => ({
+  user: one(users, {
+    fields: [otpRequests.userId],
+    references: [users.id],
+  }),
+}));
+
 // Insert Schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertPropertySchema = createInsertSchema(properties).omit({
@@ -170,6 +287,21 @@ export const insertFeatureFlagSchema = createInsertSchema(featureFlags).omit({
   id: true,
 });
 
+export const insertOtpRequestSchema = createInsertSchema(otpRequests).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertRefreshTokenSchema = createInsertSchema(refreshTokens).omit({
+  id: true,
+  issuedAt: true,
+});
+
+export const insertLoginAttemptSchema = createInsertSchema(loginAttempts).omit({
+  id: true,
+  occurredAt: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -186,6 +318,18 @@ export type SavedProperty = typeof savedProperties.$inferSelect;
 export type InsertFeatureFlag = z.infer<typeof insertFeatureFlagSchema>;
 export type FeatureFlag = typeof featureFlags.$inferSelect;
 
+export type InsertOtpRequest = z.infer<typeof insertOtpRequestSchema>;
+export type OtpRequest = typeof otpRequests.$inferSelect;
+
+export type InsertRefreshToken = z.infer<typeof insertRefreshTokenSchema>;
+export type RefreshToken = typeof refreshTokens.$inferSelect;
+
+export type InsertLoginAttempt = z.infer<typeof insertLoginAttemptSchema>;
+export type LoginAttempt = typeof loginAttempts.$inferSelect;
+
+// Role type
+export type UserRole = "residential_owner" | "commercial_owner" | "residential_tenant" | "commercial_tenant" | "admin";
+
 // Search/Filter types
 export interface PropertyFilters {
   listingType?: "rent" | "sale";
@@ -197,4 +341,20 @@ export interface PropertyFilters {
   maxBedrooms?: number;
   minBathrooms?: number;
   amenities?: string[];
+  isCommercial?: boolean;
+}
+
+// Auth types
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+export interface JwtPayload {
+  userId: string;
+  role: UserRole;
+  profileCompleted: boolean;
+  iat?: number;
+  exp?: number;
 }
