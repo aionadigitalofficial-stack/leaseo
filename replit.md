@@ -1,7 +1,7 @@
 # Direct Rentals - Property Rental Platform
 
 ## Overview
-A full-stack property rental platform that connects renters directly with landlords. Features property listings, search/filtering, inquiries, and an admin panel with a feature flag system for future "sell property" functionality.
+A full-stack property rental platform connecting renters directly with landlords in India. Features property listings, search/filtering, enquiries, shortlists, and an admin panel. Supports role-based access control with role switching.
 
 ## Project Architecture
 
@@ -32,38 +32,72 @@ A full-stack property rental platform that connects renters directly with landlo
 
 ## Database Schema
 
-### Tables
-1. **properties** - Property listings with details, images, amenities
-2. **users** - User accounts (landlords/renters)
-3. **inquiries** - Property inquiry messages
-4. **savedProperties** - User's saved/favorited properties
-5. **featureFlags** - System feature toggles
+### Core Tables
+| Table | Description |
+|-------|-------------|
+| **users** | User accounts with auth fields, roles, profile |
+| **roles** | Role definitions (residential_owner, commercial_owner, residential_tenant, commercial_tenant, admin) |
+| **user_roles** | Join table for user-role assignments |
+| **properties** | Property listings with details |
+| **property_images** | Property photos |
+| **cities** | City master data (India) |
+| **localities** | Localities/areas within cities |
+| **enquiries** | Property enquiry messages |
+| **shortlists** | User's saved/favorited properties |
+| **reports** | Property abuse reports |
+| **payments** | Payment transactions (optional) |
+| **listing_boosts** | Premium listing features |
+| **feature_flags** | System feature toggles |
 
-### Key Fields
-- `listingType`: Supports both "rent" and "sale" (sale currently disabled via feature flag)
-- `propertyType`: apartment, house, condo, villa, studio
-- `status`: active, pending, rented, sold
+### Auth Tables
+| Table | Description |
+|-------|-------------|
+| **otp_requests** | OTP tokens with rate limiting |
+| **refresh_tokens** | JWT refresh tokens |
+| **login_attempts** | Login audit for rate limiting |
+
+### Key Indexes
+- `properties.city_id` - City-based filtering
+- `properties.locality_id` - Locality-based filtering  
+- `properties.rent` - Price range searches
+- `properties.property_type` - Type filtering
+- `properties.is_commercial` - Residential vs Commercial
+
+## User Roles
+- **Residential Owner** - Property owners (residential)
+- **Commercial Owner** - Property owners (commercial)
+- **Residential Tenant** - Property seekers (residential)
+- **Commercial Tenant** - Property seekers (commercial)
+- **Admin** - Full system access
+
+**Note**: Broker/Agent roles are explicitly restricted.
 
 ## API Endpoints
 
 ### Properties
-- `GET /api/properties` - List with filters (city, type, price, bedrooms, etc.)
-- `GET /api/properties/:id` - Single property details
-- `POST /api/properties` - Create new listing
+- `GET /api/properties` - List with filters
+- `GET /api/properties/:id` - Single property
+- `POST /api/properties` - Create listing
 - `PATCH /api/properties/:id` - Update property
 - `DELETE /api/properties/:id` - Delete property
 
-### Inquiries
-- `GET /api/inquiries` - List all inquiries
-- `POST /api/inquiries` - Submit inquiry
-- `PATCH /api/inquiries/:id` - Update status
+### Auth (Pending Implementation)
+- `POST /api/auth/otp/request` - Request OTP
+- `POST /api/auth/otp/verify` - Verify OTP & login
+- `POST /api/auth/email/login` - Email login
+- `POST /api/auth/token/refresh` - Refresh tokens
+- `POST /api/auth/logout` - Logout
+- `GET /api/auth/me` - Current user
+- `PATCH /api/auth/profile` - Complete profile
+- `PATCH /api/auth/role` - Switch active role
 
-### Feature Flags
-- `GET /api/feature-flags` - List all flags
-- `PATCH /api/feature-flags/:id` - Toggle flag
+### Enquiries
+- `GET /api/enquiries` - List enquiries
+- `POST /api/enquiries` - Submit enquiry
 
-## Feature Flags
-- **sell_property**: When enabled, shows "For Sale" listing option (currently disabled)
+### Cities/Localities
+- `GET /api/cities` - List cities
+- `GET /api/cities/:id/localities` - List localities in city
 
 ## Development
 
@@ -71,7 +105,6 @@ A full-stack property rental platform that connects renters directly with landlo
 ```bash
 npm run dev
 ```
-This starts both the Express server and Vite dev server on port 5000.
 
 ### Database Operations
 ```bash
@@ -79,20 +112,33 @@ npm run db:push    # Push schema changes
 npm run db:studio  # Open Drizzle Studio
 ```
 
+## Required Secrets
+For OTP functionality, the following secrets are required:
+- `TWILIO_ACCOUNT_SID` - Twilio Account SID
+- `TWILIO_AUTH_TOKEN` - Twilio Auth Token
+- `TWILIO_PHONE_NUMBER` - Twilio phone number
+- `JWT_SECRET` - Secret for signing JWT tokens
+
 ## Pages
-- `/` - Home page with hero, featured properties, categories
-- `/properties` - Property listings with search/filter
-- `/properties/:id` - Property detail page
+- `/` - Home page
+- `/properties` - Property listings
+- `/properties/:id` - Property detail
 - `/about` - About page
 - `/contact` - Contact form
-- `/admin` - Admin panel (property management, inquiries, feature flags)
+- `/admin` - Admin panel
+- `/login` - Login page (pending)
+- `/profile` - User profile (pending)
+- `/dashboard` - User dashboard with role switching (pending)
 
 ## Recent Changes (January 2026)
-- Fixed API query parameter construction for property fetching
-- Database seeded with 8 sample properties across different cities
-- Feature flag system implemented for future "sell property" feature
+- Extended database schema with roles, cities, localities, property images
+- Added user roles system (Residential/Commercial Owner/Tenant, Admin)
+- Created tables for enquiries, shortlists, reports, payments, listing boosts
+- Added indexes on city_id, locality_id, rent, property_type, is_commercial
+- Seeded 10 Indian cities and 5 default roles
 
 ## User Preferences
-- Design follows Airbnb/Zillow-inspired aesthetics per design_guidelines.md
-- Dark mode support throughout the application
+- Design follows Airbnb/Zillow-inspired aesthetics
+- Dark mode support throughout
 - Mobile-responsive design
+- India-focused (INR currency, +91 country code)
