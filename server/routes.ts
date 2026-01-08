@@ -30,6 +30,31 @@ export async function registerRoutes(
       if (req.query.cityId) {
         filters.cityId = req.query.cityId as string;
       }
+      // Support filtering by city name (case-insensitive)
+      if (req.query.city) {
+        filters.city = req.query.city as string;
+      }
+      // Support filtering by locality name
+      if (req.query.locality) {
+        filters.locality = req.query.locality as string;
+      }
+      // Support isCommercial filter
+      if (req.query.isCommercial === "true") {
+        filters.isCommercial = true;
+      } else if (req.query.isCommercial === "false") {
+        filters.isCommercial = false;
+      }
+      // Support BHK filter (bedrooms)
+      if (req.query.bhk) {
+        const bhkValues = (req.query.bhk as string).split(",").map(v => parseInt(v)).filter(v => !isNaN(v));
+        if (bhkValues.length > 0) {
+          filters.bhk = bhkValues;
+        }
+      }
+      // Support furnishing filter
+      if (req.query.furnishing) {
+        filters.furnishing = (req.query.furnishing as string).split(",");
+      }
       if (req.query.minPrice) {
         filters.minPrice = parseInt(req.query.minPrice as string);
       }
@@ -52,9 +77,15 @@ export async function registerRoutes(
 
       const sortBy = req.query.sortBy as string | undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
       const excludeId = req.query.exclude as string | undefined;
       
       let properties = await storage.getProperties(filters, sortBy);
+      
+      // Apply offset
+      if (offset > 0) {
+        properties = properties.slice(offset);
+      }
       
       // Apply limit if specified
       if (limit && limit > 0) {

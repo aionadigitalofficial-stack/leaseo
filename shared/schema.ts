@@ -759,6 +759,8 @@ export interface PropertyFilters {
   propertyType?: string;
   cityId?: string;
   localityId?: string;
+  city?: string;
+  locality?: string;
   minRent?: number;
   maxRent?: number;
   minPrice?: number;
@@ -768,7 +770,8 @@ export interface PropertyFilters {
   minBathrooms?: number;
   amenities?: string[];
   isCommercial?: boolean;
-  furnishing?: string;
+  furnishing?: string | string[];
+  bhk?: number[];
 }
 
 // ==================== AUTH TYPES ====================

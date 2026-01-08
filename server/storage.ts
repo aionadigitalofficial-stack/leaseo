@@ -97,11 +97,50 @@ export class DatabaseStorage implements IStorage {
       if (filters.cityId) {
         conditions.push(eq(properties.cityId, filters.cityId));
       }
+      // Filter by city name (case-insensitive)
+      if (filters.city) {
+        conditions.push(ilike(properties.city, filters.city));
+      }
+      // Filter by locality name - match against address field
+      if (filters.locality) {
+        conditions.push(ilike(properties.address, `%${filters.locality}%`));
+      }
+      // Filter by isCommercial
+      if (filters.isCommercial !== undefined) {
+        conditions.push(eq(properties.isCommercial, filters.isCommercial));
+      }
+      // Filter by BHK (bedrooms)
+      if (filters.bhk && filters.bhk.length > 0) {
+        const bhkConditions = filters.bhk.map(bhk => eq(properties.bedrooms, bhk));
+        if (bhkConditions.length === 1) {
+          conditions.push(bhkConditions[0]);
+        } else {
+          conditions.push(sql`(${sql.join(bhkConditions, sql` OR `)})`);
+        }
+      }
+      // Filter by furnishing
+      if (filters.furnishing) {
+        const furnishingList = Array.isArray(filters.furnishing) ? filters.furnishing : [filters.furnishing];
+        if (furnishingList.length > 0) {
+          const furnishingConditions = furnishingList.map(f => eq(properties.furnishing, f));
+          if (furnishingConditions.length === 1) {
+            conditions.push(furnishingConditions[0]);
+          } else {
+            conditions.push(sql`(${sql.join(furnishingConditions, sql` OR `)})`);
+          }
+        }
+      }
       if (filters.minRent) {
         conditions.push(gte(properties.rent, filters.minRent.toString()));
       }
       if (filters.maxRent) {
         conditions.push(lte(properties.rent, filters.maxRent.toString()));
+      }
+      if (filters.minPrice) {
+        conditions.push(gte(properties.price, filters.minPrice.toString()));
+      }
+      if (filters.maxPrice) {
+        conditions.push(lte(properties.price, filters.maxPrice.toString()));
       }
       if (filters.minBedrooms) {
         conditions.push(gte(properties.bedrooms, filters.minBedrooms));
@@ -124,8 +163,8 @@ export class DatabaseStorage implements IStorage {
         .from(properties)
         .where(and(...conditions))
         .orderBy(
-          sortBy === "price-asc" ? asc(properties.rent) :
-          sortBy === "price-desc" ? desc(properties.rent) :
+          sortBy === "price_asc" ? asc(properties.price) :
+          sortBy === "price_desc" ? desc(properties.price) :
           sortBy === "beds-desc" ? desc(properties.bedrooms) :
           desc(properties.createdAt)
         );
