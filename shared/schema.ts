@@ -182,6 +182,7 @@ export const properties = pgTable("properties", {
   isCommercial: boolean("is_commercial").default(false),
   
   // Pricing
+  price: decimal("price", { precision: 12, scale: 2 }).notNull(),
   rent: decimal("rent", { precision: 12, scale: 2 }),
   salePrice: decimal("sale_price", { precision: 14, scale: 2 }),
   securityDeposit: decimal("security_deposit", { precision: 12, scale: 2 }),
@@ -190,6 +191,8 @@ export const properties = pgTable("properties", {
   
   // Location - linked to cities/localities
   address: text("address").notNull(),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
   cityId: varchar("city_id").references(() => cities.id),
   localityId: varchar("locality_id").references(() => localities.id),
   pincode: text("pincode"),

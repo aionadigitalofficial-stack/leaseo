@@ -1,12 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, otpRequests } from "@shared/schema";
-import { and, gt } from "drizzle-orm";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, otpRequests, cities, localities, properties } from "@shared/schema";
+import { and, gt, eq, desc } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, seedAdminUser } from "./auth";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -785,6 +784,315 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching pages:", error);
       res.status(500).json({ error: "Failed to fetch pages" });
+    }
+  });
+
+  // ==================== CITIES & LOCALITIES ====================
+
+  // Get all cities
+  app.get("/api/cities", async (req, res) => {
+    try {
+      const allCities = await db.select().from(cities).where(eq(cities.isActive, true)).orderBy(cities.name);
+      res.json(allCities);
+    } catch (error) {
+      console.error("Error fetching cities:", error);
+      res.status(500).json({ error: "Failed to fetch cities" });
+    }
+  });
+
+  // Create city (admin only)
+  app.post("/api/cities", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { name, state } = req.body;
+      if (!name || !state) {
+        return res.status(400).json({ error: "Name and state are required" });
+      }
+      const [city] = await db.insert(cities).values({ name, state }).returning();
+      res.status(201).json(city);
+    } catch (error) {
+      console.error("Error creating city:", error);
+      res.status(500).json({ error: "Failed to create city" });
+    }
+  });
+
+  // Delete city (admin only)
+  app.delete("/api/cities/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [deleted] = await db.delete(cities).where(eq(cities.id, req.params.id)).returning();
+      if (!deleted) {
+        return res.status(404).json({ error: "City not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting city:", error);
+      res.status(500).json({ error: "Failed to delete city" });
+    }
+  });
+
+  // Get all localities
+  app.get("/api/localities", async (req, res) => {
+    try {
+      const cityId = req.query.cityId as string;
+      let query = db.select().from(localities).where(eq(localities.isActive, true)).orderBy(localities.name);
+      
+      if (cityId) {
+        const results = await db.select().from(localities).where(and(eq(localities.isActive, true), eq(localities.cityId, cityId))).orderBy(localities.name);
+        return res.json(results);
+      }
+      
+      const allLocalities = await db.select().from(localities).where(eq(localities.isActive, true)).orderBy(localities.name);
+      res.json(allLocalities);
+    } catch (error) {
+      console.error("Error fetching localities:", error);
+      res.status(500).json({ error: "Failed to fetch localities" });
+    }
+  });
+
+  // Create locality (admin only)
+  app.post("/api/localities", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { name, cityId, pincode } = req.body;
+      if (!name || !cityId) {
+        return res.status(400).json({ error: "Name and city are required" });
+      }
+      const [locality] = await db.insert(localities).values({ name, cityId, pincode }).returning();
+      res.status(201).json(locality);
+    } catch (error) {
+      console.error("Error creating locality:", error);
+      res.status(500).json({ error: "Failed to create locality" });
+    }
+  });
+
+  // Delete locality (admin only)
+  app.delete("/api/localities/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [deleted] = await db.delete(localities).where(eq(localities.id, req.params.id)).returning();
+      if (!deleted) {
+        return res.status(404).json({ error: "Locality not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting locality:", error);
+      res.status(500).json({ error: "Failed to delete locality" });
+    }
+  });
+
+  // ==================== BLOG (PUBLIC) ====================
+
+  // Get all published blog posts
+  app.get("/api/blog", async (req, res) => {
+    try {
+      const posts = await db.select().from(blogPosts).where(eq(blogPosts.status, "published")).orderBy(desc(blogPosts.publishedAt));
+      res.json(posts);
+    } catch (error) {
+      console.error("Error fetching blog posts:", error);
+      res.status(500).json({ error: "Failed to fetch blog posts" });
+    }
+  });
+
+  // Get blog post by slug
+  app.get("/api/blog/:slug", async (req, res) => {
+    try {
+      const [post] = await db.select().from(blogPosts).where(eq(blogPosts.slug, req.params.slug));
+      if (!post) {
+        return res.status(404).json({ error: "Blog post not found" });
+      }
+      res.json(post);
+    } catch (error) {
+      console.error("Error fetching blog post:", error);
+      res.status(500).json({ error: "Failed to fetch blog post" });
+    }
+  });
+
+  // Create blog post (admin only)
+  app.post("/api/blog", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { title, slug, excerpt, content, category, status } = req.body;
+      if (!title || !slug || !content) {
+        return res.status(400).json({ error: "Title, slug, and content are required" });
+      }
+      const [post] = await db.insert(blogPosts).values({
+        title,
+        slug,
+        excerpt,
+        content,
+        status: status || "draft",
+        publishedAt: status === "published" ? new Date() : null,
+      }).returning();
+      res.status(201).json(post);
+    } catch (error) {
+      console.error("Error creating blog post:", error);
+      res.status(500).json({ error: "Failed to create blog post" });
+    }
+  });
+
+  // Delete blog post (admin only)
+  app.delete("/api/blog/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [deleted] = await db.delete(blogPosts).where(eq(blogPosts.id, req.params.id)).returning();
+      if (!deleted) {
+        return res.status(404).json({ error: "Blog post not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting blog post:", error);
+      res.status(500).json({ error: "Failed to delete blog post" });
+    }
+  });
+
+  // ==================== EMPLOYEES (Admin) ====================
+
+  // Get all employees (admin only)
+  app.get("/api/admin/employees", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const adminRole = await db.select().from(roles).where(eq(roles.name, "admin"));
+      if (adminRole.length === 0) {
+        return res.json([]);
+      }
+      
+      const adminUsers = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: roles.name,
+        })
+        .from(userRoles)
+        .innerJoin(users, eq(userRoles.userId, users.id))
+        .innerJoin(roles, eq(userRoles.roleId, roles.id))
+        .where(eq(roles.name, "admin"));
+      
+      res.json(adminUsers);
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+      res.status(500).json({ error: "Failed to fetch employees" });
+    }
+  });
+
+  // Add employee (admin only)
+  app.post("/api/admin/employees", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { email, firstName, lastName, role } = req.body;
+      if (!email || !firstName || !lastName) {
+        return res.status(400).json({ error: "Email, first name, and last name are required" });
+      }
+
+      // Check if user already exists
+      const [existingUser] = await db.select().from(users).where(eq(users.email, email));
+      if (existingUser) {
+        return res.status(400).json({ error: "User with this email already exists" });
+      }
+
+      // Create user
+      const [newUser] = await db.insert(users).values({
+        email,
+        firstName,
+        lastName,
+        profileCompleted: true,
+      }).returning();
+
+      // Assign admin role
+      const [adminRole] = await db.select().from(roles).where(eq(roles.name, "admin"));
+      if (adminRole) {
+        await db.insert(userRoles).values({
+          userId: newUser.id,
+          roleId: adminRole.id,
+        });
+      }
+
+      res.status(201).json({ ...newUser, role: "admin" });
+    } catch (error) {
+      console.error("Error adding employee:", error);
+      res.status(500).json({ error: "Failed to add employee" });
+    }
+  });
+
+  // Delete employee (admin only)
+  app.delete("/api/admin/employees/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      // Remove role assignments
+      await db.delete(userRoles).where(eq(userRoles.userId, req.params.id));
+      // Delete user
+      const [deleted] = await db.delete(users).where(eq(users.id, req.params.id)).returning();
+      if (!deleted) {
+        return res.status(404).json({ error: "Employee not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting employee:", error);
+      res.status(500).json({ error: "Failed to delete employee" });
+    }
+  });
+
+  // ==================== SEO SETTINGS ====================
+
+  // Get SEO settings (admin only)
+  app.get("/api/admin/seo-settings", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      // For now, return default settings
+      res.json({
+        metaTitle: "Leaseo - Zero Brokerage Property Rentals in India",
+        metaDescription: "Find rental properties directly from owners. Zero brokerage, verified listings across Mumbai, Pune, Delhi, Bangalore and more.",
+        robotsTxt: `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api\n\nSitemap: https://leaseo.in/sitemap.xml`,
+      });
+    } catch (error) {
+      console.error("Error fetching SEO settings:", error);
+      res.status(500).json({ error: "Failed to fetch SEO settings" });
+    }
+  });
+
+  // Save SEO settings (admin only)
+  app.post("/api/admin/seo-settings", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { metaTitle, metaDescription, robotsTxt } = req.body;
+      // In a real app, save to database or file
+      console.log("Saving SEO settings:", { metaTitle, metaDescription, robotsTxt });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error saving SEO settings:", error);
+      res.status(500).json({ error: "Failed to save SEO settings" });
+    }
+  });
+
+  // Generate sitemap (admin only)
+  app.post("/api/admin/generate-sitemap", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const allProperties = await db.select({ id: properties.id }).from(properties).where(eq(properties.status, "active"));
+      const allCities = await db.select({ id: cities.id, name: cities.name }).from(cities).where(eq(cities.isActive, true));
+      const allBlogPosts = await db.select({ slug: blogPosts.slug }).from(blogPosts).where(eq(blogPosts.status, "published"));
+      
+      const baseUrl = "https://leaseo.in";
+      let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+      
+      // Static pages
+      const staticPages = ["/", "/properties", "/about", "/contact", "/blog"];
+      staticPages.forEach(page => {
+        sitemap += `  <url><loc>${baseUrl}${page}</loc><changefreq>weekly</changefreq></url>\n`;
+      });
+      
+      // Property pages
+      allProperties.forEach(p => {
+        sitemap += `  <url><loc>${baseUrl}/properties/${p.id}</loc><changefreq>daily</changefreq></url>\n`;
+      });
+      
+      // City pages
+      allCities.forEach(c => {
+        sitemap += `  <url><loc>${baseUrl}/properties?city=${encodeURIComponent(c.name)}</loc><changefreq>weekly</changefreq></url>\n`;
+      });
+      
+      // Blog posts
+      allBlogPosts.forEach(b => {
+        sitemap += `  <url><loc>${baseUrl}/blog/${b.slug}</loc><changefreq>monthly</changefreq></url>\n`;
+      });
+      
+      sitemap += `</urlset>`;
+      
+      console.log("Generated sitemap with", allProperties.length, "properties,", allCities.length, "cities,", allBlogPosts.length, "blog posts");
+      res.json({ success: true, message: "Sitemap generated" });
+    } catch (error) {
+      console.error("Error generating sitemap:", error);
+      res.status(500).json({ error: "Failed to generate sitemap" });
     }
   });
 
