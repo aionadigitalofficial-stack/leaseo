@@ -1,8 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema } from "@shared/schema";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents } from "@shared/schema";
 import type { PropertyFilters } from "@shared/schema";
+import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, seedAdminUser } from "./auth";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -321,6 +324,122 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== AUTHENTICATION ====================
+
+  // Seed admin on startup
+  await seedAdminUser();
+
+  // Register new user
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, password, firstName, lastName, phone } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+
+      const [existingUser] = await db.select().from(users).where(eq(users.email, email));
+      if (existingUser) {
+        return res.status(400).json({ error: "Email already registered" });
+      }
+
+      const passwordHash = await hashPassword(password);
+
+      let [tenantRole] = await db.select().from(roles).where(eq(roles.name, "residential_tenant"));
+      if (!tenantRole) {
+        [tenantRole] = await db.insert(roles).values({
+          name: "residential_tenant",
+          displayName: "Residential Tenant",
+          description: "Looking for residential property",
+          isActive: true,
+        }).returning();
+      }
+
+      const [newUser] = await db.insert(users).values({
+        email,
+        passwordHash,
+        firstName: firstName || null,
+        lastName: lastName || null,
+        phone: phone || null,
+        isActive: true,
+        profileCompleted: false,
+        activeRoleId: tenantRole.id,
+      }).returning();
+
+      await db.insert(userRoles).values({
+        userId: newUser.id,
+        roleId: tenantRole.id,
+      });
+
+      const authUser = await getAuthUser(newUser.id);
+      const token = generateToken({
+        userId: newUser.id,
+        email: newUser.email,
+        isAdmin: false,
+      });
+
+      res.status(201).json({
+        user: authUser,
+        token,
+      });
+    } catch (error) {
+      console.error("Error registering user:", error);
+      res.status(500).json({ error: "Failed to register user" });
+    }
+  });
+
+  // Login with email/password
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.email, email));
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      const isValid = await verifyPassword(password, user.passwordHash);
+      if (!isValid) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      if (!user.isActive) {
+        return res.status(401).json({ error: "Account is deactivated" });
+      }
+
+      await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+
+      const authUser = await getAuthUser(user.id);
+      const token = generateToken({
+        userId: user.id,
+        email: user.email,
+        isAdmin: authUser?.isAdmin || false,
+      });
+
+      res.json({
+        user: authUser,
+        token,
+      });
+    } catch (error) {
+      console.error("Error logging in:", error);
+      res.status(500).json({ error: "Failed to login" });
+    }
+  });
+
+  // Get current user
+  app.get("/api/auth/me", authMiddleware, async (req, res) => {
+    try {
+      res.json({ user: req.user });
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
   // ==================== FEATURE FLAGS ====================
 
   // Get all feature flags
@@ -350,6 +469,173 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating feature flag:", error);
       res.status(500).json({ error: "Failed to update feature flag" });
+    }
+  });
+
+  // ==================== BLOG POSTS (Admin) ====================
+
+  // Get all blog posts
+  app.get("/api/blog", async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      let posts;
+      if (status === "published") {
+        posts = await db.select().from(blogPosts).where(eq(blogPosts.status, "published")).orderBy(desc(blogPosts.publishedAt));
+      } else {
+        posts = await db.select().from(blogPosts).orderBy(desc(blogPosts.createdAt));
+      }
+      res.json(posts);
+    } catch (error) {
+      console.error("Error fetching blog posts:", error);
+      res.status(500).json({ error: "Failed to fetch blog posts" });
+    }
+  });
+
+  // Get single blog post by slug
+  app.get("/api/blog/:slug", async (req, res) => {
+    try {
+      const [post] = await db.select().from(blogPosts).where(eq(blogPosts.slug, req.params.slug));
+      if (!post) {
+        return res.status(404).json({ error: "Blog post not found" });
+      }
+      res.json(post);
+    } catch (error) {
+      console.error("Error fetching blog post:", error);
+      res.status(500).json({ error: "Failed to fetch blog post" });
+    }
+  });
+
+  // Create blog post (admin only)
+  app.post("/api/admin/blog", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { title, slug, excerpt, content, featuredImage, status, tags } = req.body;
+      
+      if (!title || !content) {
+        return res.status(400).json({ error: "Title and content are required" });
+      }
+
+      const postSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      
+      const [post] = await db.insert(blogPosts).values({
+        title,
+        slug: postSlug,
+        excerpt: excerpt || null,
+        content,
+        featuredImage: featuredImage || null,
+        authorId: req.user!.id,
+        status: status || "draft",
+        tags: tags || [],
+        publishedAt: status === "published" ? new Date() : null,
+      }).returning();
+
+      res.status(201).json(post);
+    } catch (error) {
+      console.error("Error creating blog post:", error);
+      res.status(500).json({ error: "Failed to create blog post" });
+    }
+  });
+
+  // Update blog post (admin only)
+  app.patch("/api/admin/blog/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { title, slug, excerpt, content, featuredImage, status, tags } = req.body;
+      
+      const updateData: any = { updatedAt: new Date() };
+      if (title !== undefined) updateData.title = title;
+      if (slug !== undefined) updateData.slug = slug;
+      if (excerpt !== undefined) updateData.excerpt = excerpt;
+      if (content !== undefined) updateData.content = content;
+      if (featuredImage !== undefined) updateData.featuredImage = featuredImage;
+      if (status !== undefined) {
+        updateData.status = status;
+        if (status === "published") updateData.publishedAt = new Date();
+      }
+      if (tags !== undefined) updateData.tags = tags;
+
+      const [post] = await db.update(blogPosts).set(updateData).where(eq(blogPosts.id, req.params.id)).returning();
+      if (!post) {
+        return res.status(404).json({ error: "Blog post not found" });
+      }
+      res.json(post);
+    } catch (error) {
+      console.error("Error updating blog post:", error);
+      res.status(500).json({ error: "Failed to update blog post" });
+    }
+  });
+
+  // Delete blog post (admin only)
+  app.delete("/api/admin/blog/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [deleted] = await db.delete(blogPosts).where(eq(blogPosts.id, req.params.id)).returning();
+      if (!deleted) {
+        return res.status(404).json({ error: "Blog post not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting blog post:", error);
+      res.status(500).json({ error: "Failed to delete blog post" });
+    }
+  });
+
+  // ==================== PAGE CONTENT (CMS - Admin) ====================
+
+  // Get page content
+  app.get("/api/pages/:key", async (req, res) => {
+    try {
+      const [page] = await db.select().from(pageContents).where(eq(pageContents.pageKey, req.params.key));
+      if (!page) {
+        return res.status(404).json({ error: "Page not found" });
+      }
+      res.json(page);
+    } catch (error) {
+      console.error("Error fetching page content:", error);
+      res.status(500).json({ error: "Failed to fetch page content" });
+    }
+  });
+
+  // Update/Create page content (admin only)
+  app.put("/api/admin/pages/:key", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { title, content } = req.body;
+      
+      if (!title || !content) {
+        return res.status(400).json({ error: "Title and content are required" });
+      }
+
+      const [existing] = await db.select().from(pageContents).where(eq(pageContents.pageKey, req.params.key));
+      
+      let page;
+      if (existing) {
+        [page] = await db.update(pageContents).set({
+          title,
+          content,
+          lastEditedBy: req.user!.id,
+          updatedAt: new Date(),
+        }).where(eq(pageContents.pageKey, req.params.key)).returning();
+      } else {
+        [page] = await db.insert(pageContents).values({
+          pageKey: req.params.key,
+          title,
+          content,
+          lastEditedBy: req.user!.id,
+        }).returning();
+      }
+
+      res.json(page);
+    } catch (error) {
+      console.error("Error updating page content:", error);
+      res.status(500).json({ error: "Failed to update page content" });
+    }
+  });
+
+  // Get all pages (admin only)
+  app.get("/api/admin/pages", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const pages = await db.select().from(pageContents).orderBy(pageContents.pageKey);
+      res.json(pages);
+    } catch (error) {
+      console.error("Error fetching pages:", error);
+      res.status(500).json({ error: "Failed to fetch pages" });
     }
   });
 

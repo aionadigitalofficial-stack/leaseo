@@ -402,6 +402,44 @@ export const featureFlags = pgTable("feature_flags", {
   description: text("description"),
 });
 
+// ==================== BLOG POSTS ====================
+
+export const blogPostStatusEnum = pgEnum("blog_post_status", [
+  "draft",
+  "published",
+  "archived"
+]);
+
+export const blogPosts = pgTable("blog_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  slug: text("slug").notNull().unique(),
+  excerpt: text("excerpt"),
+  content: text("content").notNull(),
+  featuredImage: text("featured_image"),
+  authorId: varchar("author_id").references(() => users.id),
+  status: blogPostStatusEnum("status").default("draft"),
+  tags: text("tags").array().default(sql`ARRAY[]::text[]`),
+  publishedAt: timestamp("published_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("blog_slug_idx").on(table.slug),
+  index("blog_status_idx").on(table.status),
+  index("blog_published_idx").on(table.publishedAt),
+]);
+
+// ==================== PAGE CONTENT (CMS) ====================
+
+export const pageContents = pgTable("page_contents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pageKey: text("page_key").notNull().unique(),
+  title: text("title").notNull(),
+  content: jsonb("content").notNull(),
+  lastEditedBy: varchar("last_edited_by").references(() => users.id),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // ==================== RELATIONS ====================
 
 export const rolesRelations = relations(roles, ({ many }) => ({
@@ -680,6 +718,23 @@ export type ListingBoost = typeof listingBoosts.$inferSelect;
 
 export type InsertFeatureFlag = z.infer<typeof insertFeatureFlagSchema>;
 export type FeatureFlag = typeof featureFlags.$inferSelect;
+
+export const insertBlogPostSchema = createInsertSchema(blogPosts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPageContentSchema = createInsertSchema(pageContents).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertBlogPost = z.infer<typeof insertBlogPostSchema>;
+export type BlogPost = typeof blogPosts.$inferSelect;
+
+export type InsertPageContent = z.infer<typeof insertPageContentSchema>;
+export type PageContent = typeof pageContents.$inferSelect;
 
 export type InsertOtpRequest = z.infer<typeof insertOtpRequestSchema>;
 export type OtpRequest = typeof otpRequests.$inferSelect;
