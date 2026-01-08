@@ -17,52 +17,17 @@ import {
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-
-const INDIAN_CITIES = [
-  "Mumbai",
-  "Delhi",
-  "Bangalore",
-  "Hyderabad",
-  "Chennai",
-  "Kolkata",
-  "Pune",
-  "Ahmedabad",
-  "Jaipur",
-  "Lucknow",
-];
+import {
+  INDIAN_CITIES,
+  BHK_OPTIONS,
+  PROPERTY_TYPES_COMMERCIAL,
+  RENT_RANGES,
+} from "@/lib/constants";
 
 const RESIDENTIAL_TYPES = [
   { id: "full-house", label: "Full House", icon: Home },
   { id: "pg-hostel", label: "PG/Hostel", icon: Users },
   { id: "flatmates", label: "Flatmates", icon: Users },
-];
-
-const BHK_OPTIONS = [
-  { id: "1rk", label: "1 RK" },
-  { id: "1bhk", label: "1 BHK" },
-  { id: "2bhk", label: "2 BHK" },
-  { id: "3bhk", label: "3 BHK" },
-  { id: "4bhk", label: "4 BHK" },
-  { id: "4+bhk", label: "4+ BHK" },
-];
-
-const COMMERCIAL_TYPES = [
-  { id: "office-space", label: "Office Space" },
-  { id: "co-working", label: "Co-Working" },
-  { id: "shop", label: "Shop" },
-  { id: "showroom", label: "Showroom" },
-  { id: "industrial-building", label: "Industrial Building" },
-  { id: "industrial-shed", label: "Industrial Shed" },
-  { id: "warehouse", label: "Godown/Warehouse" },
-  { id: "other-business", label: "Other business" },
-];
-
-const RENT_RANGES = [
-  { value: "0-10000", label: "Under 10,000" },
-  { value: "10000-20000", label: "10,000 - 20,000" },
-  { value: "20000-30000", label: "20,000 - 30,000" },
-  { value: "30000-50000", label: "30,000 - 50,000" },
-  { value: "50000+", label: "50,000+" },
 ];
 
 type TabType = "rent" | "commercial";
@@ -82,18 +47,21 @@ export function NoBrokerSearch() {
     const localitySlug = locality.trim() ? locality.toLowerCase().replace(/\s+/g, "-") : "";
     
     const params = new URLSearchParams();
-    if (activeTab === "rent") {
-      params.set("subtype", residentialType);
-      if (selectedBhks.length > 0) params.set("bhk", selectedBhks.join(","));
-    } else {
+    if (activeTab === "commercial") {
       params.set("type", "commercial");
       if (selectedCommercialTypes.length > 0) {
         params.set("propertyType", selectedCommercialTypes.join(","));
       }
+    } else {
+      if (selectedBhks.length > 0) {
+        params.set("bhk", selectedBhks.join(","));
+      }
     }
     if (rentRange) {
-      if (rentRange === "50000+") {
-        params.set("rentMin", "50000");
+      if (rentRange.endsWith("+")) {
+        const min = rentRange.replace("+", "");
+        params.set("rentMin", min);
+        params.set("rentMax", "999999");
       } else {
         const [min, max] = rentRange.split("-");
         if (min) params.set("rentMin", min);
@@ -227,15 +195,15 @@ export function NoBrokerSearch() {
                   <div className="space-y-2">
                     {BHK_OPTIONS.map((bhk) => (
                       <label
-                        key={bhk.id}
+                        key={bhk}
                         className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-muted"
                       >
                         <Checkbox
-                          checked={selectedBhks.includes(bhk.id)}
-                          onCheckedChange={() => toggleBhk(bhk.id)}
-                          data-testid={`checkbox-${bhk.id}`}
+                          checked={selectedBhks.includes(bhk)}
+                          onCheckedChange={() => toggleBhk(bhk)}
+                          data-testid={`checkbox-bhk-${bhk.toLowerCase().replace(/\s+/g, "-")}`}
                         />
-                        <span className="text-sm">{bhk.label}</span>
+                        <span className="text-sm">{bhk}</span>
                       </label>
                     ))}
                   </div>
@@ -273,17 +241,17 @@ export function NoBrokerSearch() {
                 </PopoverTrigger>
                 <PopoverContent className="w-56 p-2" align="start">
                   <div className="space-y-2">
-                    {COMMERCIAL_TYPES.map((type) => (
+                    {PROPERTY_TYPES_COMMERCIAL.map((type) => (
                       <label
-                        key={type.id}
+                        key={type}
                         className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-muted"
                       >
                         <Checkbox
-                          checked={selectedCommercialTypes.includes(type.id)}
-                          onCheckedChange={() => toggleCommercialType(type.id)}
-                          data-testid={`checkbox-${type.id}`}
+                          checked={selectedCommercialTypes.includes(type)}
+                          onCheckedChange={() => toggleCommercialType(type)}
+                          data-testid={`checkbox-commercial-${type.toLowerCase().replace(/\s+/g, "-")}`}
                         />
-                        <span className="text-sm">{type.label}</span>
+                        <span className="text-sm">{type}</span>
                       </label>
                     ))}
                   </div>
