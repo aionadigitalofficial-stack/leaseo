@@ -113,10 +113,14 @@ export default function PostPropertyPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<PropertyFormData>(initialFormData);
   const [showVerifyDialog, setShowVerifyDialog] = useState(false);
+  const [verifyMethod, setVerifyMethod] = useState<"email" | "phone">("email");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
+  const [isOtpLoading, setIsOtpLoading] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
 
   const progress = (currentStep / STEPS.length) * 100;
@@ -214,24 +218,75 @@ export default function PostPropertyPage() {
     }));
   };
 
-  const handleSendOtp = () => {
-    if (phoneNumber.length >= 10) {
+  const handleSendOtp = async () => {
+    if (verifyMethod === "email" && !email) {
+      toast({ title: "Email Required", description: "Please enter your email address", variant: "destructive" });
+      return;
+    }
+    if (verifyMethod === "phone" && phoneNumber.length < 10) {
+      toast({ title: "Phone Required", description: "Please enter a valid phone number", variant: "destructive" });
+      return;
+    }
+
+    setIsOtpLoading(true);
+    try {
+      const response = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: verifyMethod === "email" ? email : undefined,
+          phone: verifyMethod === "phone" ? phoneNumber : undefined,
+          purpose: verifyMethod === "email" ? "verify_email" : "verify_phone",
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
+      if (data.devCode) setDevCode(data.devCode);
       setOtpSent(true);
       toast({
-        title: "OTP Sent",
-        description: `OTP sent to +91 ${phoneNumber}`,
+        title: "Verification Code Sent",
+        description: `Code sent to ${verifyMethod === "email" ? email : `+91 ${phoneNumber}`}`,
       });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to send code", variant: "destructive" });
+    } finally {
+      setIsOtpLoading(false);
     }
   };
 
-  const handleVerifyOtp = () => {
-    if (otp.length === 6) {
+  const handleVerifyOtp = async () => {
+    if (otp.length !== 6) {
+      toast({ title: "Invalid Code", description: "Please enter the 6-digit code", variant: "destructive" });
+      return;
+    }
+
+    setIsOtpLoading(true);
+    try {
+      const response = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: verifyMethod === "email" ? email : undefined,
+          phone: verifyMethod === "phone" ? phoneNumber : undefined,
+          code: otp,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
       setIsVerified(true);
       setShowVerifyDialog(false);
       toast({
-        title: "Phone Verified",
-        description: "Your phone number has been verified successfully.",
+        title: "Verified",
+        description: `Your ${verifyMethod === "email" ? "email" : "phone"} has been verified successfully.`,
       });
+    } catch (error: any) {
+      toast({ title: "Verification Failed", description: error.message || "Invalid code", variant: "destructive" });
+    } finally {
+      setIsOtpLoading(false);
     }
   };
 
@@ -962,71 +1017,113 @@ export default function PostPropertyPage() {
       <Dialog open={showVerifyDialog} onOpenChange={setShowVerifyDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Verify Your Phone Number</DialogTitle>
+            <DialogTitle>Verify Your Identity</DialogTitle>
             <DialogDescription>
-              We need to verify your phone before publishing the listing
+              We need to verify your email or phone before publishing the listing
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {!otpSent ? (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="verify-phone">Phone Number</Label>
-                  <div className="flex gap-2">
-                    <div className="flex items-center px-3 border rounded-md bg-muted text-sm">
-                      +91
-                    </div>
+                <div className="flex gap-2 p-1 bg-muted rounded-md">
+                  <Button
+                    variant={verifyMethod === "email" ? "default" : "ghost"}
+                    className="flex-1"
+                    onClick={() => setVerifyMethod("email")}
+                    data-testid="button-verify-email-tab"
+                  >
+                    Email
+                  </Button>
+                  <Button
+                    variant={verifyMethod === "phone" ? "default" : "ghost"}
+                    className="flex-1"
+                    onClick={() => setVerifyMethod("phone")}
+                    data-testid="button-verify-phone-tab"
+                  >
+                    Phone
+                  </Button>
+                </div>
+
+                {verifyMethod === "email" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="verify-email">Email Address</Label>
                     <Input
-                      id="verify-phone"
-                      type="tel"
-                      placeholder="Enter 10-digit number"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                      className="flex-1"
-                      data-testid="input-verify-phone"
+                      id="verify-email"
+                      type="email"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      data-testid="input-verify-email"
                     />
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="verify-phone">Phone Number</Label>
+                    <div className="flex gap-2">
+                      <div className="flex items-center px-3 border rounded-md bg-muted text-sm">
+                        +91
+                      </div>
+                      <Input
+                        id="verify-phone"
+                        type="tel"
+                        placeholder="Enter 10-digit number"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                        className="flex-1"
+                        data-testid="input-verify-phone"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <Button
                   className="w-full"
                   onClick={handleSendOtp}
-                  disabled={phoneNumber.length < 10}
+                  disabled={isOtpLoading || (verifyMethod === "email" ? !email : phoneNumber.length < 10)}
                   data-testid="button-send-otp-listing"
                 >
-                  Send OTP
+                  {isOtpLoading ? "Sending..." : "Send Verification Code"}
                 </Button>
               </>
             ) : (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="verify-otp">Enter OTP</Label>
+                  <Label htmlFor="verify-otp">Enter Verification Code</Label>
                   <Input
                     id="verify-otp"
                     type="text"
-                    placeholder="Enter 6-digit OTP"
+                    placeholder="Enter 6-digit code"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     className="text-center text-lg tracking-widest"
                     data-testid="input-verify-otp"
                   />
                   <p className="text-sm text-muted-foreground">
-                    OTP sent to +91 {phoneNumber}
+                    Code sent to {verifyMethod === "email" ? email : `+91 ${phoneNumber}`}
                   </p>
                 </div>
+
+                {devCode && (
+                  <div className="bg-muted/50 border rounded-md p-3 text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Development Mode - Your code:</p>
+                    <p className="text-lg font-mono font-bold tracking-widest">{devCode}</p>
+                  </div>
+                )}
+
                 <Button
                   className="w-full"
                   onClick={handleVerifyOtp}
-                  disabled={otp.length < 6}
+                  disabled={isOtpLoading || otp.length < 6}
                   data-testid="button-verify-otp-listing"
                 >
-                  Verify
+                  {isOtpLoading ? "Verifying..." : "Verify"}
                 </Button>
                 <Button
                   variant="ghost"
                   className="w-full"
-                  onClick={() => setOtpSent(false)}
+                  onClick={() => { setOtpSent(false); setOtp(""); setDevCode(null); }}
                 >
-                  Change Number
+                  Change {verifyMethod === "email" ? "Email" : "Number"}
                 </Button>
               </>
             )}

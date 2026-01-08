@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents } from "@shared/schema";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, otpRequests } from "@shared/schema";
+import { and, gt } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, seedAdminUser } from "./auth";
 import { db } from "./db";
@@ -437,6 +438,154 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
+  // ==================== OTP VERIFICATION ====================
+
+  // Send OTP (email or phone)
+  app.post("/api/auth/otp/send", async (req, res) => {
+    try {
+      const { email, phone, purpose = "verify_email" } = req.body;
+
+      if (!email && !phone) {
+        return res.status(400).json({ error: "Email or phone is required" });
+      }
+
+      // Generate 6-digit OTP
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const codeHash = await hashPassword(code);
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Delete any existing OTPs for this email/phone
+      if (email) {
+        await db.delete(otpRequests).where(eq(otpRequests.email, email));
+      }
+      if (phone) {
+        await db.delete(otpRequests).where(eq(otpRequests.phone, phone));
+      }
+
+      // Create new OTP request
+      await db.insert(otpRequests).values({
+        email: email || null,
+        phone: phone || null,
+        codeHash,
+        purpose: purpose as any,
+        expiresAt,
+        attemptCount: 0,
+        maxAttempts: 3,
+      });
+
+      // In development, log OTP. In production, send via email/SMS
+      console.log(`[OTP] Code for ${email || phone}: ${code}`);
+
+      // TODO: Integrate with email/SMS service for production
+      // For now, we'll return success and log the OTP
+
+      res.json({ 
+        success: true, 
+        message: `Verification code sent to ${email || phone}`,
+        // In development mode, include code for testing
+        ...(process.env.NODE_ENV === "development" && { devCode: code })
+      });
+    } catch (error) {
+      console.error("Error sending OTP:", error);
+      res.status(500).json({ error: "Failed to send verification code" });
+    }
+  });
+
+  // Verify OTP
+  app.post("/api/auth/otp/verify", async (req, res) => {
+    try {
+      const { email, phone, code } = req.body;
+
+      if (!email && !phone) {
+        return res.status(400).json({ error: "Email or phone is required" });
+      }
+
+      if (!code) {
+        return res.status(400).json({ error: "Verification code is required" });
+      }
+
+      // Find valid OTP
+      const [otpRequest] = await db.select().from(otpRequests).where(
+        and(
+          email ? eq(otpRequests.email, email) : eq(otpRequests.phone, phone!),
+          gt(otpRequests.expiresAt, new Date())
+        )
+      );
+
+      if (!otpRequest) {
+        return res.status(400).json({ error: "Verification code expired or not found" });
+      }
+
+      if (otpRequest.attemptCount && otpRequest.attemptCount >= (otpRequest.maxAttempts || 3)) {
+        return res.status(400).json({ error: "Too many attempts. Please request a new code" });
+      }
+
+      // Verify code
+      const isValid = await verifyPassword(code, otpRequest.codeHash);
+
+      if (!isValid) {
+        // Increment attempt count
+        await db.update(otpRequests)
+          .set({ attemptCount: (otpRequest.attemptCount || 0) + 1 })
+          .where(eq(otpRequests.id, otpRequest.id));
+        return res.status(400).json({ error: "Invalid verification code" });
+      }
+
+      // Mark OTP as consumed
+      await db.update(otpRequests)
+        .set({ consumedAt: new Date() })
+        .where(eq(otpRequests.id, otpRequest.id));
+
+      // If verifying for a user, update their verified status
+      if (email) {
+        await db.update(users)
+          .set({ emailVerifiedAt: new Date() })
+          .where(eq(users.email, email));
+      }
+      if (phone) {
+        await db.update(users)
+          .set({ phoneVerifiedAt: new Date() })
+          .where(eq(users.phone, phone));
+      }
+
+      res.json({ 
+        success: true, 
+        message: "Verification successful",
+        verified: true
+      });
+    } catch (error) {
+      console.error("Error verifying OTP:", error);
+      res.status(500).json({ error: "Failed to verify code" });
+    }
+  });
+
+  // Check verification status
+  app.get("/api/auth/verification-status", async (req, res) => {
+    try {
+      const { email, phone } = req.query;
+
+      if (!email && !phone) {
+        return res.status(400).json({ error: "Email or phone is required" });
+      }
+
+      const [user] = await db.select().from(users).where(
+        email ? eq(users.email, email as string) : eq(users.phone, phone as string)
+      );
+
+      if (!user) {
+        return res.json({ emailVerified: false, phoneVerified: false });
+      }
+
+      res.json({
+        emailVerified: !!user.emailVerifiedAt,
+        phoneVerified: !!user.phoneVerifiedAt,
+      });
+    } catch (error) {
+      console.error("Error checking verification status:", error);
+      res.status(500).json({ error: "Failed to check verification status" });
     }
   });
 
