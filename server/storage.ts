@@ -1,17 +1,17 @@
 import {
   users,
   properties,
-  inquiries,
-  savedProperties,
+  enquiries,
+  shortlists,
   featureFlags,
   type User,
   type InsertUser,
   type Property,
   type InsertProperty,
-  type Inquiry,
-  type InsertInquiry,
-  type SavedProperty,
-  type InsertSavedProperty,
+  type Enquiry,
+  type InsertEnquiry,
+  type Shortlist,
+  type InsertShortlist,
   type FeatureFlag,
   type InsertFeatureFlag,
   type PropertyFilters,
@@ -34,16 +34,16 @@ export interface IStorage {
   updateProperty(id: string, property: Partial<InsertProperty>): Promise<Property | undefined>;
   deleteProperty(id: string): Promise<boolean>;
 
-  // Inquiries
-  getInquiries(): Promise<Inquiry[]>;
-  getInquiry(id: string): Promise<Inquiry | undefined>;
-  createInquiry(inquiry: InsertInquiry): Promise<Inquiry>;
-  updateInquiryStatus(id: string, status: string): Promise<Inquiry | undefined>;
+  // Enquiries
+  getEnquiries(): Promise<Enquiry[]>;
+  getEnquiry(id: string): Promise<Enquiry | undefined>;
+  createEnquiry(enquiry: InsertEnquiry): Promise<Enquiry>;
+  updateEnquiryStatus(id: string, status: string): Promise<Enquiry | undefined>;
 
-  // Saved Properties
-  getSavedProperties(userId: string): Promise<SavedProperty[]>;
-  saveProperty(data: InsertSavedProperty): Promise<SavedProperty>;
-  unsaveProperty(userId: string, propertyId: string): Promise<boolean>;
+  // Shortlists (Saved Properties)
+  getShortlists(userId: string): Promise<Shortlist[]>;
+  addToShortlist(data: InsertShortlist): Promise<Shortlist>;
+  removeFromShortlist(userId: string, propertyId: string): Promise<boolean>;
 
   // Feature Flags
   getFeatureFlags(): Promise<FeatureFlag[]>;
@@ -172,50 +172,50 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  // Inquiries
-  async getInquiries(): Promise<Inquiry[]> {
-    return await db.select().from(inquiries).orderBy(desc(inquiries.createdAt));
+  // Enquiries
+  async getEnquiries(): Promise<Enquiry[]> {
+    return await db.select().from(enquiries).orderBy(desc(enquiries.createdAt));
   }
 
-  async getInquiry(id: string): Promise<Inquiry | undefined> {
-    const [inquiry] = await db.select().from(inquiries).where(eq(inquiries.id, id));
-    return inquiry || undefined;
+  async getEnquiry(id: string): Promise<Enquiry | undefined> {
+    const [enquiry] = await db.select().from(enquiries).where(eq(enquiries.id, id));
+    return enquiry || undefined;
   }
 
-  async createInquiry(inquiry: InsertInquiry): Promise<Inquiry> {
-    const [newInquiry] = await db.insert(inquiries).values(inquiry).returning();
-    return newInquiry;
+  async createEnquiry(enquiry: InsertEnquiry): Promise<Enquiry> {
+    const [newEnquiry] = await db.insert(enquiries).values(enquiry).returning();
+    return newEnquiry;
   }
 
-  async updateInquiryStatus(id: string, status: string): Promise<Inquiry | undefined> {
+  async updateEnquiryStatus(id: string, status: string): Promise<Enquiry | undefined> {
     const [updated] = await db
-      .update(inquiries)
+      .update(enquiries)
       .set({ status })
-      .where(eq(inquiries.id, id))
+      .where(eq(enquiries.id, id))
       .returning();
     return updated || undefined;
   }
 
-  // Saved Properties
-  async getSavedProperties(userId: string): Promise<SavedProperty[]> {
+  // Shortlists
+  async getShortlists(userId: string): Promise<Shortlist[]> {
     return await db
       .select()
-      .from(savedProperties)
-      .where(eq(savedProperties.userId, userId));
+      .from(shortlists)
+      .where(eq(shortlists.userId, userId));
   }
 
-  async saveProperty(data: InsertSavedProperty): Promise<SavedProperty> {
-    const [saved] = await db.insert(savedProperties).values(data).returning();
+  async addToShortlist(data: InsertShortlist): Promise<Shortlist> {
+    const [saved] = await db.insert(shortlists).values(data).returning();
     return saved;
   }
 
-  async unsaveProperty(userId: string, propertyId: string): Promise<boolean> {
+  async removeFromShortlist(userId: string, propertyId: string): Promise<boolean> {
     const result = await db
-      .delete(savedProperties)
+      .delete(shortlists)
       .where(
         and(
-          eq(savedProperties.userId, userId),
-          eq(savedProperties.propertyId, propertyId)
+          eq(shortlists.userId, userId),
+          eq(shortlists.propertyId, propertyId)
         )
       )
       .returning();

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertInquirySchema } from "@shared/schema";
+import { insertPropertySchema, insertEnquirySchema } from "@shared/schema";
 import type { PropertyFilters } from "@shared/schema";
 
 export async function registerRoutes(
@@ -131,23 +131,23 @@ export async function registerRoutes(
     }
   });
 
-  // ==================== INQUIRIES ====================
+  // ==================== ENQUIRIES ====================
 
-  // Get all inquiries
+  // Get all enquiries
   app.get("/api/inquiries", async (req, res) => {
     try {
-      const inquiries = await storage.getInquiries();
-      res.json(inquiries);
+      const enquiries = await storage.getEnquiries();
+      res.json(enquiries);
     } catch (error) {
-      console.error("Error fetching inquiries:", error);
-      res.status(500).json({ error: "Failed to fetch inquiries" });
+      console.error("Error fetching enquiries:", error);
+      res.status(500).json({ error: "Failed to fetch enquiries" });
     }
   });
 
-  // Create new inquiry
+  // Create new enquiry
   app.post("/api/inquiries", async (req, res) => {
     try {
-      const validationResult = insertInquirySchema.safeParse(req.body);
+      const validationResult = insertEnquirySchema.safeParse(req.body);
       if (!validationResult.success) {
         return res.status(400).json({ 
           error: "Validation failed", 
@@ -155,15 +155,15 @@ export async function registerRoutes(
         });
       }
 
-      const inquiry = await storage.createInquiry(validationResult.data);
-      res.status(201).json(inquiry);
+      const enquiry = await storage.createEnquiry(validationResult.data);
+      res.status(201).json(enquiry);
     } catch (error) {
-      console.error("Error creating inquiry:", error);
-      res.status(500).json({ error: "Failed to create inquiry" });
+      console.error("Error creating enquiry:", error);
+      res.status(500).json({ error: "Failed to create enquiry" });
     }
   });
 
-  // Update inquiry status
+  // Update enquiry status
   app.patch("/api/inquiries/:id", async (req, res) => {
     try {
       const { status } = req.body;
@@ -171,14 +171,14 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Status is required" });
       }
 
-      const inquiry = await storage.updateInquiryStatus(req.params.id, status);
-      if (!inquiry) {
-        return res.status(404).json({ error: "Inquiry not found" });
+      const enquiry = await storage.updateEnquiryStatus(req.params.id, status);
+      if (!enquiry) {
+        return res.status(404).json({ error: "Enquiry not found" });
       }
-      res.json(inquiry);
+      res.json(enquiry);
     } catch (error) {
-      console.error("Error updating inquiry:", error);
-      res.status(500).json({ error: "Failed to update inquiry" });
+      console.error("Error updating enquiry:", error);
+      res.status(500).json({ error: "Failed to update enquiry" });
     }
   });
 
