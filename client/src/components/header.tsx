@@ -58,10 +58,10 @@ export function Header() {
             <Heart className="h-5 w-5" />
           </Button>
           <ThemeToggle />
-          <Link href="/admin">
-            <Button variant="outline" size="sm" className="hidden sm:flex gap-2" data-testid="button-admin">
+          <Link href="/login">
+            <Button size="sm" className="hidden sm:flex gap-2" data-testid="button-login">
               <User className="h-4 w-4" />
-              Admin
+              Sign In
             </Button>
           </Link>
 
@@ -87,12 +87,12 @@ export function Header() {
                     </Link>
                   </SheetClose>
                 ))}
-                <div className="border-t pt-4 mt-4">
+                <div className="border-t pt-4 mt-4 space-y-2">
                   <SheetClose asChild>
-                    <Link href="/admin">
-                      <Button variant="outline" className="w-full gap-2">
+                    <Link href="/login">
+                      <Button className="w-full gap-2">
                         <User className="h-4 w-4" />
-                        Admin Panel
+                        Sign In
                       </Button>
                     </Link>
                   </SheetClose>

@@ -10,6 +10,9 @@ import PropertyDetailPage from "@/pages/property-detail";
 import AboutPage from "@/pages/about";
 import ContactPage from "@/pages/contact";
 import AdminPage from "@/pages/admin";
+import LoginPage from "@/pages/login";
+import ProfileCompletePage from "@/pages/profile-complete";
+import DashboardPage from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -20,6 +23,9 @@ function Router() {
       <Route path="/property/:id" component={PropertyDetailPage} />
       <Route path="/about" component={AboutPage} />
       <Route path="/contact" component={ContactPage} />
+      <Route path="/login" component={LoginPage} />
+      <Route path="/profile/complete" component={ProfileCompletePage} />
+      <Route path="/dashboard" component={DashboardPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
