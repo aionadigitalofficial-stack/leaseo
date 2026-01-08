@@ -24,8 +24,8 @@ export async function registerRoutes(
       if (req.query.propertyType) {
         filters.propertyType = req.query.propertyType as string;
       }
-      if (req.query.city) {
-        filters.city = req.query.city as string;
+      if (req.query.cityId) {
+        filters.cityId = req.query.cityId as string;
       }
       if (req.query.minPrice) {
         filters.minPrice = parseInt(req.query.minPrice as string);
