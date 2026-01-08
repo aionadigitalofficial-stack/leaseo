@@ -1,112 +1,83 @@
-import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/header";
-import { Footer } from "@/components/footer";
-import { HeroSection } from "@/components/hero-section";
-import { PropertyGrid } from "@/components/property-grid";
-import { HowItWorks } from "@/components/how-it-works";
-import { PropertyCategories } from "@/components/property-categories";
-import { TrustSection } from "@/components/trust-section";
-import { Testimonials } from "@/components/testimonials";
-import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
-import { Link } from "wouter";
-import type { Property } from "@shared/schema";
+import { NoBrokerSearch } from "@/components/nobroker-search";
+import { PopularLocalities } from "@/components/popular-localities";
+import { OwnerToTenant } from "@/components/owner-to-tenant";
+import { TrustBadges } from "@/components/trust-badges";
+import { SeoFooter } from "@/components/seo-footer";
 
 export default function HomePage() {
-  const { data: featuredProperties = [], isLoading } = useQuery<Property[]>({
-    queryKey: ["/api/properties?featured=true&limit=8"],
-  });
-
-  const { data: featureFlags = [] } = useQuery<{ name: string; enabled: boolean }[]>({
-    queryKey: ["/api/feature-flags"],
-  });
-
-  const showSaleOption = featureFlags.some(
-    (flag) => flag.name === "sell_property" && flag.enabled
-  );
-
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
       
       <main className="flex-1">
-        {/* Hero Section */}
-        <HeroSection showSaleOption={showSaleOption} />
-
-        {/* Featured Properties */}
-        <section className="py-16 md:py-24">
+        <section className="py-12 md:py-20 bg-gradient-to-b from-muted/50 to-background">
           <div className="container mx-auto px-4">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
-              <div>
-                <h2 className="text-3xl md:text-4xl font-bold mb-2">Featured Properties</h2>
-                <p className="text-muted-foreground text-lg">
-                  Handpicked rentals that stand out from the crowd
-                </p>
-              </div>
-              <Link href="/properties">
-                <Button variant="outline" className="gap-2" data-testid="link-view-all-properties">
-                  View All Properties
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
+            <div className="text-center mb-8 md:mb-12">
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
+                India's Largest <span className="text-primary">Zero Brokerage</span> Property Site
+              </h1>
+              <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+                Find your perfect rental home directly from verified owners. No brokers, no hidden fees.
+              </p>
             </div>
 
-            <PropertyGrid 
-              properties={featuredProperties} 
-              isLoading={isLoading}
-              emptyMessage="No featured properties available at the moment."
-            />
+            <NoBrokerSearch />
+
+            <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm">
+              <div className="flex items-center gap-2 px-4 py-2 bg-background rounded-full border">
+                <span className="w-2 h-2 bg-green-500 rounded-full" />
+                <span className="text-muted-foreground">50,000+ Active Listings</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 bg-background rounded-full border">
+                <span className="w-2 h-2 bg-blue-500 rounded-full" />
+                <span className="text-muted-foreground">100% Verified Owners</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 bg-background rounded-full border">
+                <span className="w-2 h-2 bg-purple-500 rounded-full" />
+                <span className="text-muted-foreground">10+ Cities</span>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* How It Works */}
-        <HowItWorks />
+        <PopularLocalities />
 
-        {/* Property Categories */}
-        <PropertyCategories />
+        <OwnerToTenant />
 
-        {/* Trust Section */}
-        <TrustSection />
+        <TrustBadges />
 
-        {/* Testimonials */}
-        <Testimonials />
-
-        {/* CTA Section */}
-        <section className="py-16 md:py-24 bg-primary">
+        <section className="py-12 md:py-16 bg-primary">
           <div className="container mx-auto px-4 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-4">
+            <h2 className="text-2xl md:text-3xl font-bold text-primary-foreground mb-4">
               Ready to Find Your New Home?
             </h2>
-            <p className="text-primary-foreground/90 text-lg mb-8 max-w-2xl mx-auto">
-              Join thousands of satisfied renters who found their perfect place through Direct Rentals.
+            <p className="text-primary-foreground/90 mb-6 max-w-xl mx-auto">
+              Join thousands of happy renters who saved on brokerage with Direct Rentals
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/properties">
-                <Button 
-                  size="lg" 
-                  variant="secondary"
-                  className="text-base"
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <a href="/properties">
+                <button 
+                  className="px-6 py-3 bg-white text-primary font-medium rounded-md hover:bg-gray-100 transition-colors"
                   data-testid="cta-browse-rentals"
                 >
                   Browse Rentals
-                </Button>
-              </Link>
-              <Link href="/contact">
-                <Button 
-                  size="lg" 
-                  variant="outline"
-                  className="text-base bg-transparent border-primary-foreground text-primary-foreground hover:bg-primary-foreground/10"
-                  data-testid="cta-contact-us"
+                </button>
+              </a>
+              <a href="/login">
+                <button 
+                  className="px-6 py-3 bg-transparent border border-white text-white font-medium rounded-md hover:bg-white/10 transition-colors"
+                  data-testid="cta-list-property"
                 >
-                  Contact Us
-                </Button>
-              </Link>
+                  List Your Property
+                </button>
+              </a>
             </div>
           </div>
         </section>
       </main>
 
-      <Footer />
+      <SeoFooter />
     </div>
   );
 }

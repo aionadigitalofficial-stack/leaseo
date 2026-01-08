@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Home, Menu, X, Heart, User, Search } from "lucide-react";
+import { Home, Menu, Heart, User, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -24,7 +24,6 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-4">
-        {/* Logo */}
         <Link href="/" className="flex items-center gap-2" data-testid="link-home">
           <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
             <Home className="h-5 w-5 text-primary-foreground" />
@@ -34,8 +33,7 @@ export function Header() {
           </span>
         </Link>
 
-        {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden lg:flex items-center gap-1">
           {navLinks.map((link) => (
             <Link key={link.href} href={link.href}>
               <Button
@@ -49,25 +47,30 @@ export function Header() {
           ))}
         </nav>
 
-        {/* Right side actions */}
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="hidden sm:flex" data-testid="button-search">
-            <Search className="h-5 w-5" />
+          <Button 
+            variant="default" 
+            size="sm" 
+            className="gap-2 bg-green-600 hover:bg-green-700"
+            data-testid="button-post-property"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Post Property</span>
+            <span className="sm:hidden">Post</span>
           </Button>
           <Button variant="ghost" size="icon" className="hidden sm:flex" data-testid="button-favorites">
             <Heart className="h-5 w-5" />
           </Button>
           <ThemeToggle />
           <Link href="/login">
-            <Button size="sm" className="hidden sm:flex gap-2" data-testid="button-login">
+            <Button size="sm" variant="outline" className="hidden sm:flex gap-2" data-testid="button-login">
               <User className="h-4 w-4" />
-              Sign In
+              Login
             </Button>
           </Link>
 
-          {/* Mobile Menu */}
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
-            <SheetTrigger asChild className="md:hidden">
+            <SheetTrigger asChild className="lg:hidden">
               <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
                 <Menu className="h-5 w-5" />
               </Button>
@@ -89,10 +92,23 @@ export function Header() {
                 ))}
                 <div className="border-t pt-4 mt-4 space-y-2">
                   <SheetClose asChild>
+                    <Button 
+                      className="w-full gap-2 bg-green-600 hover:bg-green-700"
+                      data-testid="mobile-button-post-property"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Post Property
+                    </Button>
+                  </SheetClose>
+                  <SheetClose asChild>
                     <Link href="/login">
-                      <Button className="w-full gap-2">
+                      <Button 
+                        variant="outline" 
+                        className="w-full gap-2"
+                        data-testid="mobile-button-login"
+                      >
                         <User className="h-4 w-4" />
-                        Sign In
+                        Login
                       </Button>
                     </Link>
                   </SheetClose>
