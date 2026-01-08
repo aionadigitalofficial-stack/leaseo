@@ -33,7 +33,7 @@ import {
   X,
   Phone,
 } from "lucide-react";
-import { INDIAN_CITIES, BHK_OPTIONS, FURNISHING_OPTIONS, PROPERTY_TYPES_RESIDENTIAL, PROPERTY_TYPES_COMMERCIAL } from "@/lib/constants";
+import { INDIAN_CITIES, BHK_OPTIONS, FURNISHING_OPTIONS, PROPERTY_TYPES_RESIDENTIAL, PROPERTY_TYPES_COMMERCIAL, CITY_STATE_MAP } from "@/lib/constants";
 
 const STEPS = [
   { id: 1, title: "Property Type", icon: Building2 },
@@ -133,13 +133,16 @@ export default function PostPropertyPage() {
         propertyType: data.propertyType.toLowerCase().replace(/\s+/g, "_"),
         listingType: "rent",
         isCommercial: data.propertyCategory === "commercial",
+        price: data.rent.toString(),
         rent: data.rent.toString(),
         securityDeposit: data.securityDeposit.toString(),
         maintenanceCharges: data.maintenanceCharges.toString(),
         address: data.address,
+        city: data.city,
+        state: CITY_STATE_MAP[data.city] || "Maharashtra",
         pincode: data.pincode,
         bedrooms: data.bedrooms,
-        bathrooms: data.bathrooms,
+        bathrooms: data.bathrooms.toString(),
         balconies: data.balconies,
         squareFeet: data.squareFeet,
         carpetArea: data.carpetArea,

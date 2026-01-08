@@ -47,3 +47,16 @@ export const INDIAN_CITIES = [
   "Jaipur",
   "Lucknow",
 ];
+
+export const CITY_STATE_MAP: Record<string, string> = {
+  "Mumbai": "Maharashtra",
+  "Delhi": "Delhi",
+  "Bangalore": "Karnataka",
+  "Hyderabad": "Telangana",
+  "Chennai": "Tamil Nadu",
+  "Kolkata": "West Bengal",
+  "Pune": "Maharashtra",
+  "Ahmedabad": "Gujarat",
+  "Jaipur": "Rajasthan",
+  "Lucknow": "Uttar Pradesh",
+};
