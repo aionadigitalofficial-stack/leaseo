@@ -15,7 +15,7 @@ export default function HomePage() {
           <div className="container mx-auto px-4">
             <div className="text-center mb-8 md:mb-12">
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4">
-                India's Largest <span style={{ color: '#2596be' }}>Zero Brokerage</span> Property Site
+                India's Largest <span style={{ color: '#ff9a00' }}>Zero Brokerage</span> Property Site
               </h1>
               <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
                 Find your perfect rental home directly from verified owners. No brokers, no hidden fees.

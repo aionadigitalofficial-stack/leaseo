@@ -3,7 +3,7 @@ import { Mail, Phone, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import leaseoLogo from "@assets/LEASEO-1_1767865824685.png";
+import leaseoLogo from "@assets/lessso_1767868424345.png";
 
 const footerLinks = {
   company: [
@@ -106,7 +106,7 @@ export function Footer() {
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4 flex-shrink-0" />
-                <span>info@directrentals.com</span>
+                <span>info@leaseo.in</span>
               </li>
             </ul>
           </div>

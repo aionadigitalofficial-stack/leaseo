@@ -60,8 +60,9 @@ import {
   Users,
   TrendingUp,
   Loader2,
+  Save,
 } from "lucide-react";
-import type { Property, Inquiry, FeatureFlag } from "@shared/schema";
+import type { Property, Enquiry, FeatureFlag } from "@shared/schema";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -83,18 +84,32 @@ const propertyFormSchema = z.object({
 
 type PropertyFormData = z.infer<typeof propertyFormSchema>;
 
+interface FooterSettings {
+  companyDescription: string;
+  address: string;
+  phone: string;
+  email: string;
+}
+
 export default function AdminPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
+  const [footerSettings, setFooterSettings] = useState<FooterSettings>({
+    companyDescription: "Find your perfect rental property. We connect renters directly with property owners for a seamless experience.",
+    address: "Mumbai, Maharashtra, India",
+    phone: "+91 98765 43210",
+    email: "info@leaseo.in",
+  });
+  const [isSavingFooter, setIsSavingFooter] = useState(false);
 
   const { data: properties = [], isLoading: propertiesLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
 
-  const { data: inquiries = [], isLoading: inquiriesLoading } = useQuery<Inquiry[]>({
-    queryKey: ["/api/inquiries"],
+  const { data: enquiries = [], isLoading: enquiriesLoading } = useQuery<Enquiry[]>({
+    queryKey: ["/api/enquiries"],
   });
 
   const { data: featureFlags = [], isLoading: flagsLoading } = useQuery<FeatureFlag[]>({
@@ -184,6 +199,31 @@ export default function AdminPage() {
 
   const sellPropertyFlag = featureFlags.find((f) => f.name === "sell_property");
 
+  const handleSaveFooter = async () => {
+    setIsSavingFooter(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("/api/admin/pages/footer", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: "Footer Settings",
+          content: footerSettings,
+        }),
+      });
+      
+      if (!response.ok) throw new Error("Failed to save");
+      toast({ title: "Success", description: "Footer settings saved successfully" });
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to save footer settings", variant: "destructive" });
+    } finally {
+      setIsSavingFooter(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -232,7 +272,7 @@ export default function AdminPage() {
                     <MessageSquare className="h-6 w-6 text-blue-500" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold">{inquiries.length}</p>
+                    <p className="text-2xl font-bold">{enquiries.length}</p>
                     <p className="text-sm text-muted-foreground">Inquiries</p>
                   </div>
                 </div>
@@ -610,7 +650,7 @@ export default function AdminPage() {
                               <div>
                                 <p className="font-medium">{property.title}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  {property.city}, {property.state}
+                                  {property.address}
                                 </p>
                               </div>
                             </TableCell>
@@ -620,8 +660,8 @@ export default function AdminPage() {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              {formatPrice(property.price)}
-                              {property.listingType === "rent" && (
+                              {property.rent ? formatPrice(property.rent) : property.salePrice ? formatPrice(property.salePrice) : "-"}
+                              {property.listingType === "rent" && property.rent && (
                                 <span className="text-muted-foreground text-sm">
                                   /{property.priceUnit}
                                 </span>
@@ -677,13 +717,13 @@ export default function AdminPage() {
                   <CardDescription>View and manage property inquiries</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {inquiriesLoading ? (
+                  {enquiriesLoading ? (
                     <div className="space-y-4">
                       {[1, 2, 3].map((i) => (
                         <Skeleton key={i} className="h-16 w-full" />
                       ))}
                     </div>
-                  ) : inquiries.length === 0 ? (
+                  ) : enquiries.length === 0 ? (
                     <div className="text-center py-12">
                       <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-muted-foreground">No inquiries yet.</p>
@@ -700,24 +740,24 @@ export default function AdminPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {inquiries.map((inquiry) => (
-                          <TableRow key={inquiry.id} data-testid={`row-inquiry-${inquiry.id}`}>
-                            <TableCell className="font-medium">{inquiry.name}</TableCell>
-                            <TableCell>{inquiry.email}</TableCell>
+                        {enquiries.map((enquiry) => (
+                          <TableRow key={enquiry.id} data-testid={`row-enquiry-${enquiry.id}`}>
+                            <TableCell className="font-medium">{enquiry.name}</TableCell>
+                            <TableCell>{enquiry.email}</TableCell>
                             <TableCell className="max-w-[300px] truncate">
-                              {inquiry.message}
+                              {enquiry.message}
                             </TableCell>
                             <TableCell>
                               <Badge
-                                variant={inquiry.status === "new" ? "default" : "secondary"}
+                                variant={enquiry.status === "pending" ? "default" : "secondary"}
                                 className="capitalize"
                               >
-                                {inquiry.status}
+                                {enquiry.status}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-muted-foreground">
-                              {inquiry.createdAt
-                                ? new Date(inquiry.createdAt).toLocaleDateString()
+                              {enquiry.createdAt
+                                ? new Date(enquiry.createdAt).toLocaleDateString()
                                 : "-"}
                             </TableCell>
                           </TableRow>
@@ -803,6 +843,100 @@ export default function AdminPage() {
                         ))}
                     </>
                   )}
+                </CardContent>
+              </Card>
+
+              {/* Footer Settings */}
+              <Card className="mt-6">
+                <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <div>
+                    <CardTitle>Footer Settings</CardTitle>
+                    <CardDescription>
+                      Edit footer content displayed on all pages
+                    </CardDescription>
+                  </div>
+                  <Button
+                    onClick={handleSaveFooter}
+                    disabled={isSavingFooter}
+                    className="gap-2"
+                    data-testid="button-save-footer"
+                  >
+                    {isSavingFooter ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Save Footer
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="footer-description">Company Description</Label>
+                    <Textarea
+                      id="footer-description"
+                      value={footerSettings.companyDescription}
+                      onChange={(e) =>
+                        setFooterSettings((prev) => ({
+                          ...prev,
+                          companyDescription: e.target.value,
+                        }))
+                      }
+                      placeholder="Company description for footer"
+                      className="min-h-[80px]"
+                      data-testid="input-footer-description"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="footer-address">Address</Label>
+                      <Input
+                        id="footer-address"
+                        value={footerSettings.address}
+                        onChange={(e) =>
+                          setFooterSettings((prev) => ({
+                            ...prev,
+                            address: e.target.value,
+                          }))
+                        }
+                        placeholder="Office address"
+                        data-testid="input-footer-address"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="footer-phone">Phone Number</Label>
+                      <Input
+                        id="footer-phone"
+                        value={footerSettings.phone}
+                        onChange={(e) =>
+                          setFooterSettings((prev) => ({
+                            ...prev,
+                            phone: e.target.value,
+                          }))
+                        }
+                        placeholder="+91 XXXXX XXXXX"
+                        data-testid="input-footer-phone"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="footer-email">Email Address</Label>
+                    <Input
+                      id="footer-email"
+                      type="email"
+                      value={footerSettings.email}
+                      onChange={(e) =>
+                        setFooterSettings((prev) => ({
+                          ...prev,
+                          email: e.target.value,
+                        }))
+                      }
+                      placeholder="info@leaseo.in"
+                      data-testid="input-footer-email"
+                    />
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
