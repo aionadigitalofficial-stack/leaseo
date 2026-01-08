@@ -48,16 +48,18 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Button 
-            variant="default" 
-            size="sm" 
-            className="gap-2 bg-orange-500 hover:bg-orange-600 dark:bg-orange-600 dark:hover:bg-orange-700"
-            data-testid="button-post-property"
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Post Property</span>
-            <span className="sm:hidden">Post</span>
-          </Button>
+          <Link href="/post-property">
+            <Button 
+              variant="default" 
+              size="sm" 
+              className="gap-2"
+              data-testid="button-post-property"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Post Property</span>
+              <span className="sm:hidden">Post</span>
+            </Button>
+          </Link>
           <Button variant="ghost" size="icon" className="hidden sm:flex" data-testid="button-favorites">
             <Heart className="h-5 w-5" />
           </Button>
@@ -92,13 +94,15 @@ export function Header() {
                 ))}
                 <div className="border-t pt-4 mt-4 space-y-2">
                   <SheetClose asChild>
-                    <Button 
-                      className="w-full gap-2 bg-orange-500 hover:bg-orange-600 dark:bg-orange-600 dark:hover:bg-orange-700"
-                      data-testid="mobile-button-post-property"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Post Property
-                    </Button>
+                    <Link href="/post-property">
+                      <Button 
+                        className="w-full gap-2"
+                        data-testid="mobile-button-post-property"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Post Property
+                      </Button>
+                    </Link>
                   </SheetClose>
                   <SheetClose asChild>
                     <Link href="/login">

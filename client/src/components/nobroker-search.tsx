@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Search, ChevronDown, Check, Building2, Home, Users, Bed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -277,13 +277,14 @@ export function NoBrokerSearch() {
 
       <div className="mt-6 text-center">
         <p className="text-sm text-muted-foreground mb-4">Are you a Property Owner?</p>
-        <Button
-          variant="default"
-          className="bg-green-600 hover:bg-green-700 text-white"
-          data-testid="button-post-property"
-        >
-          Post Free Property Ad
-        </Button>
+        <Link href="/post-property">
+          <Button
+            variant="default"
+            data-testid="button-post-property"
+          >
+            Post Free Property Ad
+          </Button>
+        </Link>
       </div>
     </div>
   );
