@@ -40,7 +40,7 @@ export function Testimonials() {
         <div className="text-center mb-12">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">What Our Users Say</h2>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Hear from renters and landlords who found success with Direct Rentals.
+            Hear from renters and landlords who found success with Leaseo.
           </p>
         </div>
 

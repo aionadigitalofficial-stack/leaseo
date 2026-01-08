@@ -68,7 +68,7 @@ export default function AboutPage() {
           <div className="relative container mx-auto px-4">
             <div className="max-w-2xl">
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-                About Direct Rentals
+                About Leaseo
               </h1>
               <p className="text-lg md:text-xl text-white/90 mb-8">
                 We're on a mission to transform the rental experience by connecting 
@@ -93,7 +93,7 @@ export default function AboutPage() {
                 <h2 className="text-3xl md:text-4xl font-bold mb-6">Our Story</h2>
                 <div className="space-y-4 text-muted-foreground">
                   <p>
-                    Direct Rentals was born from a simple frustration: why does renting 
+                    Leaseo was born from a simple frustration: why does renting 
                     have to be so complicated and expensive? As renters ourselves, we 
                     experienced firsthand the hidden fees, poor communication, and lack 
                     of transparency that plagues the rental industry.
@@ -153,7 +153,7 @@ export default function AboutPage() {
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold mb-4">Meet Our Team</h2>
               <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                The passionate people behind Direct Rentals who work every day 
+                The passionate people behind Leaseo who work every day 
                 to make your rental experience better.
               </p>
             </div>

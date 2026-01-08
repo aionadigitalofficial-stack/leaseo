@@ -65,7 +65,7 @@ export function SeoFooter() {
               <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
                 <Home className="h-5 w-5 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-xl">Direct Rentals</span>
+              <span className="font-semibold text-xl">Leaseo</span>
             </Link>
             <p className="text-sm text-muted-foreground mb-4 max-w-sm">
               India's leading no-brokerage property rental platform. Connect directly with property owners and save on brokerage fees.
@@ -155,7 +155,7 @@ export function SeoFooter() {
 
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-sm text-muted-foreground">
-            2024 Direct Rentals. All rights reserved.
+            2024 Leaseo. All rights reserved.
           </p>
           <p className="text-xs text-muted-foreground">
             Made with care in India

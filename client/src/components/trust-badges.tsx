@@ -45,7 +45,7 @@ export function TrustBadges() {
       <div className="container mx-auto px-4">
         <div className="text-center mb-10">
           <h2 className="text-2xl md:text-3xl font-bold mb-2">
-            Why Choose Direct Rentals?
+            Why Choose Leaseo?
           </h2>
           <p className="text-muted-foreground">
             India's most trusted property rental platform

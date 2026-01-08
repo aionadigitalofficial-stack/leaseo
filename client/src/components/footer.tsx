@@ -1,8 +1,9 @@
 import { Link } from "wouter";
-import { Home, Mail, Phone, MapPin } from "lucide-react";
+import { Mail, Phone, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import leaseoLogo from "@assets/LEASEO-1_1767865824685.png";
 
 const footerLinks = {
   company: [
@@ -33,10 +34,11 @@ export function Footer() {
           {/* Brand & Newsletter */}
           <div className="lg:col-span-2">
             <Link href="/" className="flex items-center gap-2 mb-4" data-testid="footer-logo">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
-                <Home className="h-5 w-5 text-primary-foreground" />
-              </div>
-              <span className="font-semibold text-xl">Direct Rentals</span>
+              <img 
+                src={leaseoLogo} 
+                alt="Leaseo" 
+                className="h-10 w-auto"
+              />
             </Link>
             <p className="text-muted-foreground mb-4 max-w-sm">
               Find your perfect rental property. We connect renters directly with property owners for a seamless experience.
@@ -114,7 +116,7 @@ export function Footer() {
 
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-sm text-muted-foreground">
-            2024 Direct Rentals. All rights reserved.
+            2024 Leaseo. All rights reserved.
           </p>
           <div className="flex gap-4">
             {footerLinks.legal.map((link) => (

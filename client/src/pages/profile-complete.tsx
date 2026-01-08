@@ -65,7 +65,7 @@ export default function ProfileCompletePage() {
       if (!formData.selectedRole) {
         toast({
           title: "Select a Role",
-          description: "Please choose how you want to use Direct Rentals",
+          description: "Please choose how you want to use Leaseo",
           variant: "destructive",
         });
         return;
@@ -127,7 +127,7 @@ export default function ProfileCompletePage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">
-                {step === 1 ? "Personal Information" : "How will you use Direct Rentals?"}
+                {step === 1 ? "Personal Information" : "How will you use Leaseo?"}
               </CardTitle>
               <CardDescription>
                 {step === 1 

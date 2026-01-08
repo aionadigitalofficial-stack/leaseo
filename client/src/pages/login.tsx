@@ -73,7 +73,7 @@ export default function LoginPage() {
       setIsLoading(false);
       toast({
         title: "Login Successful",
-        description: "Welcome to Direct Rentals!",
+        description: "Welcome to Leaseo!",
       });
       // Redirect to profile completion or dashboard
       window.location.href = "/profile/complete";
@@ -113,7 +113,7 @@ export default function LoginPage() {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
               <Home className="w-8 h-8 text-primary" />
             </div>
-            <h1 className="text-2xl font-bold" data-testid="text-login-title">Welcome to Direct Rentals</h1>
+            <h1 className="text-2xl font-bold" data-testid="text-login-title">Welcome to Leaseo</h1>
             <p className="text-muted-foreground mt-2">
               Sign in to find your perfect property or list your own
             </p>

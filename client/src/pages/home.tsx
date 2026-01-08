@@ -53,7 +53,7 @@ export default function HomePage() {
               Ready to Find Your New Home?
             </h2>
             <p className="text-primary-foreground/90 mb-6 max-w-xl mx-auto">
-              Join thousands of happy renters who saved on brokerage with Direct Rentals
+              Join thousands of happy renters who saved on brokerage with Leaseo
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <a href="/properties">

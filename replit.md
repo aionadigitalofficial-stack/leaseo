@@ -1,4 +1,4 @@
-# Direct Rentals - Property Rental Platform
+# Leaseo - Property Rental Platform
 
 ## Overview
 A full-stack property rental platform connecting renters directly with landlords in India. Features property listings, search/filtering, enquiries, shortlists, and an admin panel. Supports role-based access control with role switching.

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Home, Menu, Heart, User, Plus } from "lucide-react";
+import { Menu, Heart, User, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -9,6 +9,7 @@ import {
   SheetTrigger,
   SheetClose,
 } from "@/components/ui/sheet";
+import leaseoLogo from "@assets/LEASEO-1_1767865824685.png";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -25,12 +26,11 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-4">
         <Link href="/" className="flex items-center gap-2" data-testid="link-home">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
-            <Home className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="hidden font-semibold text-xl sm:inline-block">
-            Direct Rentals
-          </span>
+          <img 
+            src={leaseoLogo} 
+            alt="Leaseo" 
+            className="h-10 w-auto"
+          />
         </Link>
 
         <nav className="hidden lg:flex items-center gap-1">
@@ -51,7 +51,7 @@ export function Header() {
           <Button 
             variant="default" 
             size="sm" 
-            className="gap-2 bg-green-600 hover:bg-green-700"
+            className="gap-2 bg-orange-500 hover:bg-orange-600 dark:bg-orange-600 dark:hover:bg-orange-700"
             data-testid="button-post-property"
           >
             <Plus className="h-4 w-4" />
@@ -93,7 +93,7 @@ export function Header() {
                 <div className="border-t pt-4 mt-4 space-y-2">
                   <SheetClose asChild>
                     <Button 
-                      className="w-full gap-2 bg-green-600 hover:bg-green-700"
+                      className="w-full gap-2 bg-orange-500 hover:bg-orange-600 dark:bg-orange-600 dark:hover:bg-orange-700"
                       data-testid="mobile-button-post-property"
                     >
                       <Plus className="h-4 w-4" />
