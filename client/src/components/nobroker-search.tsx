@@ -78,22 +78,32 @@ export function NoBrokerSearch() {
   const [rentRange, setRentRange] = useState("");
 
   const handleSearch = () => {
+    const citySlug = city.toLowerCase().replace(/\s+/g, "-");
+    const localitySlug = locality.trim() ? locality.toLowerCase().replace(/\s+/g, "-") : "";
+    
     const params = new URLSearchParams();
-    params.set("city", city);
-    if (locality) params.set("locality", locality);
     if (activeTab === "rent") {
-      params.set("type", "residential");
       params.set("subtype", residentialType);
       if (selectedBhks.length > 0) params.set("bhk", selectedBhks.join(","));
     } else {
       params.set("type", "commercial");
       if (selectedCommercialTypes.length > 0) {
-        params.set("commercial_type", selectedCommercialTypes.join(","));
+        params.set("propertyType", selectedCommercialTypes.join(","));
       }
     }
-    if (rentRange) params.set("rent", rentRange);
+    if (rentRange) {
+      if (rentRange === "50000+") {
+        params.set("rentMin", "50000");
+      } else {
+        const [min, max] = rentRange.split("-");
+        if (min) params.set("rentMin", min);
+        if (max) params.set("rentMax", max);
+      }
+    }
     
-    setLocation(`/properties?${params.toString()}`);
+    const basePath = localitySlug ? `/rent/${citySlug}/${localitySlug}` : `/rent/${citySlug}`;
+    const queryString = params.toString();
+    setLocation(queryString ? `${basePath}?${queryString}` : basePath);
   };
 
   const toggleBhk = (bhkId: string) => {

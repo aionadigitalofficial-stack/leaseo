@@ -56,7 +56,7 @@ export function PopularLocalities() {
                 {localities.map((loc) => (
                   <li key={loc.name}>
                     <Link
-                      href={`/properties?city=${city}&locality=${loc.name}`}
+                      href={`/rent/${city.toLowerCase().replace(/\s+/g, "-")}/${loc.name.toLowerCase().replace(/\s+/g, "-")}`}
                       className="flex items-center justify-between py-2 px-3 rounded-md hover-elevate transition-colors group"
                       data-testid={`link-locality-${loc.name.toLowerCase().replace(" ", "-")}`}
                     >

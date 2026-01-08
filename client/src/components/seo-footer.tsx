@@ -9,12 +9,12 @@ const CITIES = [
 ];
 
 const PROPERTY_TYPES = [
-  { label: "1 BHK for Rent", href: "/properties?bhk=1bhk" },
-  { label: "2 BHK for Rent", href: "/properties?bhk=2bhk" },
-  { label: "3 BHK for Rent", href: "/properties?bhk=3bhk" },
-  { label: "PG/Hostel", href: "/properties?subtype=pg-hostel" },
-  { label: "Commercial Space", href: "/properties?type=commercial" },
-  { label: "Office Space", href: "/properties?commercial_type=office-space" },
+  { label: "1 BHK for Rent", href: "/rent/mumbai?bhk=1+BHK" },
+  { label: "2 BHK for Rent", href: "/rent/mumbai?bhk=2+BHK" },
+  { label: "3 BHK for Rent", href: "/rent/mumbai?bhk=3+BHK" },
+  { label: "PG/Hostel", href: "/rent/mumbai?subtype=pg-hostel" },
+  { label: "Commercial Space", href: "/rent/mumbai?type=commercial" },
+  { label: "Office Space", href: "/rent/mumbai?type=commercial&propertyType=Office+Space" },
 ];
 
 const COMPANY_LINKS = [
@@ -47,7 +47,7 @@ export function SeoFooter() {
             {CITIES.map((city) => (
               <Link
                 key={city}
-                href={`/properties?city=${city}`}
+                href={`/rent/${city.toLowerCase().replace(/\s+/g, "-")}`}
                 className="text-sm text-muted-foreground hover:text-primary transition-colors px-3 py-1 bg-background rounded-full border"
                 data-testid={`footer-city-${city.toLowerCase()}`}
               >
