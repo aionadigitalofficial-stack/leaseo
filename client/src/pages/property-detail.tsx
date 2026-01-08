@@ -98,7 +98,6 @@ const PLACEHOLDER_IMAGES = [
 interface ExtendedProperty extends Property {
   images?: string[];
   locality?: string;
-  city?: string;
   ownerName?: string;
   ownerPhone?: string;
   ownerVerified?: boolean;
@@ -117,17 +116,15 @@ export default function PropertyDetailPage() {
   const [otp, setOtp] = useState("");
   const [revealedPhone, setRevealedPhone] = useState<string | null>(null);
 
-  const propertyId = id?.split("-").pop() || id;
-
   const { data: property, isLoading, error } = useQuery<ExtendedProperty>({
-    queryKey: ["/api/properties", propertyId],
-    enabled: !!propertyId,
+    queryKey: ["/api/properties", id],
+    enabled: !!id,
   });
 
   const cityParam = property?.cityId || "";
   const { data: similarProperties = [] } = useQuery<ExtendedProperty[]>({
-    queryKey: [`/api/properties?cityId=${encodeURIComponent(cityParam)}&limit=4&exclude=${propertyId}`],
-    enabled: !!cityParam && !!propertyId,
+    queryKey: [`/api/properties?cityId=${encodeURIComponent(cityParam)}&limit=4&exclude=${id}`],
+    enabled: !!cityParam && !!id,
   });
 
   const handleSendOtp = () => {

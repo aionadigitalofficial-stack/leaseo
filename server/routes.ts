@@ -136,8 +136,8 @@ export async function registerRoutes(
 
   // ==================== ENQUIRIES ====================
 
-  // Get all enquiries
-  app.get("/api/inquiries", async (req, res) => {
+  // Get all enquiries (supports both /api/enquiries and /api/inquiries)
+  const getEnquiriesHandler = async (req: any, res: any) => {
     try {
       const enquiries = await storage.getEnquiries();
       res.json(enquiries);
@@ -145,10 +145,12 @@ export async function registerRoutes(
       console.error("Error fetching enquiries:", error);
       res.status(500).json({ error: "Failed to fetch enquiries" });
     }
-  });
+  };
+  app.get("/api/inquiries", getEnquiriesHandler);
+  app.get("/api/enquiries", getEnquiriesHandler);
 
   // Create new enquiry
-  app.post("/api/inquiries", async (req, res) => {
+  const createEnquiryHandler = async (req: any, res: any) => {
     try {
       const validationResult = insertEnquirySchema.safeParse(req.body);
       if (!validationResult.success) {
@@ -164,10 +166,12 @@ export async function registerRoutes(
       console.error("Error creating enquiry:", error);
       res.status(500).json({ error: "Failed to create enquiry" });
     }
-  });
+  };
+  app.post("/api/inquiries", createEnquiryHandler);
+  app.post("/api/enquiries", createEnquiryHandler);
 
   // Update enquiry status
-  app.patch("/api/inquiries/:id", async (req, res) => {
+  const updateEnquiryHandler = async (req: any, res: any) => {
     try {
       const { status } = req.body;
       if (!status) {
@@ -183,7 +187,9 @@ export async function registerRoutes(
       console.error("Error updating enquiry:", error);
       res.status(500).json({ error: "Failed to update enquiry" });
     }
-  });
+  };
+  app.patch("/api/inquiries/:id", updateEnquiryHandler);
+  app.patch("/api/enquiries/:id", updateEnquiryHandler);
 
   // ==================== SHORTLISTS ====================
 

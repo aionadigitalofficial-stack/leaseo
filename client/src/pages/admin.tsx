@@ -105,7 +105,6 @@ const blogFormSchema = z.object({
   slug: z.string().min(3, "Slug is required"),
   excerpt: z.string().min(10, "Excerpt is required"),
   content: z.string().min(50, "Content must be at least 50 characters"),
-  category: z.string().min(2, "Category is required"),
   status: z.enum(["draft", "published"]),
 });
 
@@ -203,7 +202,7 @@ export default function AdminPage() {
 
   const blogForm = useForm({
     resolver: zodResolver(blogFormSchema),
-    defaultValues: { title: "", slug: "", excerpt: "", content: "", category: "guides", status: "draft" as const },
+    defaultValues: { title: "", slug: "", excerpt: "", content: "", status: "draft" as const },
   });
 
   const employeeForm = useForm({
@@ -726,7 +725,7 @@ export default function AdminPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
-                  <TableHead>Category</TableHead>
+                  <TableHead>Slug</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -736,7 +735,7 @@ export default function AdminPage() {
                 {blogPosts.map((post) => (
                   <TableRow key={post.id}>
                     <TableCell className="font-medium max-w-[200px] truncate">{post.title}</TableCell>
-                    <TableCell><Badge variant="outline">{post.category}</Badge></TableCell>
+                    <TableCell><Badge variant="outline">{post.slug}</Badge></TableCell>
                     <TableCell>
                       <Badge variant={post.status === "published" ? "default" : "secondary"}>{post.status}</Badge>
                     </TableCell>
@@ -1192,36 +1191,19 @@ export default function AdminPage() {
                   <FormMessage />
                 </FormItem>
               )} />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField control={blogForm.control} name="category" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>
-                        <SelectItem value="guides">Guides</SelectItem>
-                        <SelectItem value="news">News</SelectItem>
-                        <SelectItem value="tips">Tips</SelectItem>
-                        <SelectItem value="market">Market Insights</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={blogForm.control} name="status" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="published">Published</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
+              <FormField control={blogForm.control} name="status" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Status</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="published">Published</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsAddBlogOpen(false)}>Cancel</Button>
                 <Button type="submit" disabled={createBlogMutation.isPending}>
