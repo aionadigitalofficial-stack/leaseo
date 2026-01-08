@@ -3,6 +3,7 @@ import {
   properties,
   enquiries,
   shortlists,
+  reports,
   featureFlags,
   type User,
   type InsertUser,
@@ -12,6 +13,8 @@ import {
   type InsertEnquiry,
   type Shortlist,
   type InsertShortlist,
+  type Report,
+  type InsertReport,
   type FeatureFlag,
   type InsertFeatureFlag,
   type PropertyFilters,
@@ -45,6 +48,16 @@ export interface IStorage {
   addToShortlist(data: InsertShortlist): Promise<Shortlist>;
   removeFromShortlist(userId: string, propertyId: string): Promise<boolean>;
 
+  // Reports
+  getReports(): Promise<Report[]>;
+  createReport(data: { propertyId: string; reporterId: string; reason: string; description?: string }): Promise<Report>;
+  updateReportStatus(id: string, data: { status?: string; reviewedBy?: string; resolution?: string }): Promise<Report | undefined>;
+
+  // Owner Dashboard
+  getOwnerProperties(ownerId: string): Promise<Property[]>;
+  getOwnerEnquiries(ownerId: string): Promise<Enquiry[]>;
+  getTenantEnquiries(tenantId: string): Promise<Enquiry[]>;
+
   // Feature Flags
   getFeatureFlags(): Promise<FeatureFlag[]>;
   getFeatureFlag(name: string): Promise<FeatureFlag | undefined>;
@@ -60,7 +73,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+    const [user] = await db.select().from(users).where(eq(users.email, username));
     return user || undefined;
   }
 
@@ -81,14 +94,14 @@ export class DatabaseStorage implements IStorage {
       if (filters.propertyType) {
         conditions.push(eq(properties.propertyType, filters.propertyType as any));
       }
-      if (filters.city) {
-        conditions.push(ilike(properties.city, `%${filters.city}%`));
+      if (filters.cityId) {
+        conditions.push(eq(properties.cityId, filters.cityId));
       }
-      if (filters.minPrice) {
-        conditions.push(gte(properties.price, filters.minPrice.toString()));
+      if (filters.minRent) {
+        conditions.push(gte(properties.rent, filters.minRent.toString()));
       }
-      if (filters.maxPrice) {
-        conditions.push(lte(properties.price, filters.maxPrice.toString()));
+      if (filters.maxRent) {
+        conditions.push(lte(properties.rent, filters.maxRent.toString()));
       }
       if (filters.minBedrooms) {
         conditions.push(gte(properties.bedrooms, filters.minBedrooms));
@@ -111,8 +124,8 @@ export class DatabaseStorage implements IStorage {
         .from(properties)
         .where(and(...conditions))
         .orderBy(
-          sortBy === "price-asc" ? asc(properties.price) :
-          sortBy === "price-desc" ? desc(properties.price) :
+          sortBy === "price-asc" ? asc(properties.rent) :
+          sortBy === "price-desc" ? desc(properties.rent) :
           sortBy === "beds-desc" ? desc(properties.bedrooms) :
           desc(properties.createdAt)
         );
@@ -139,13 +152,13 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
-  async getSimilarProperties(city: string, excludeId: string, limit: number = 4): Promise<Property[]> {
+  async getSimilarProperties(cityId: string, excludeId: string, limit: number = 4): Promise<Property[]> {
     return await db
       .select()
       .from(properties)
       .where(
         and(
-          ilike(properties.city, `%${city}%`),
+          eq(properties.cityId, cityId),
           ne(properties.id, excludeId),
           eq(properties.status, "active")
         )
@@ -244,6 +257,64 @@ export class DatabaseStorage implements IStorage {
       .where(eq(featureFlags.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  // Reports
+  async getReports(): Promise<Report[]> {
+    return await db.select().from(reports).orderBy(desc(reports.createdAt));
+  }
+
+  async createReport(data: { propertyId: string; reporterId: string; reason: string; description?: string }): Promise<Report> {
+    const [report] = await db.insert(reports).values({
+      propertyId: data.propertyId,
+      reporterId: data.reporterId,
+      reason: data.reason as any,
+      description: data.description,
+    }).returning();
+    return report;
+  }
+
+  async updateReportStatus(id: string, data: { status?: string; reviewedBy?: string; resolution?: string }): Promise<Report | undefined> {
+    const updateData: any = {};
+    if (data.status) updateData.status = data.status;
+    if (data.reviewedBy) {
+      updateData.reviewedBy = data.reviewedBy;
+      updateData.reviewedAt = new Date();
+    }
+    if (data.resolution) updateData.resolution = data.resolution;
+
+    const [updated] = await db
+      .update(reports)
+      .set(updateData)
+      .where(eq(reports.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  // Owner Dashboard
+  async getOwnerProperties(ownerId: string): Promise<Property[]> {
+    return await db
+      .select()
+      .from(properties)
+      .where(eq(properties.ownerId, ownerId))
+      .orderBy(desc(properties.createdAt));
+  }
+
+  async getOwnerEnquiries(ownerId: string): Promise<Enquiry[]> {
+    const ownerProperties = await this.getOwnerProperties(ownerId);
+    const propertyIds = ownerProperties.map(p => p.id);
+    if (propertyIds.length === 0) return [];
+
+    const allEnquiries = await db.select().from(enquiries).orderBy(desc(enquiries.createdAt));
+    return allEnquiries.filter(e => propertyIds.includes(e.propertyId));
+  }
+
+  async getTenantEnquiries(tenantId: string): Promise<Enquiry[]> {
+    return await db
+      .select()
+      .from(enquiries)
+      .where(eq(enquiries.userId, tenantId))
+      .orderBy(desc(enquiries.createdAt));
   }
 
   // Initialize default feature flags
