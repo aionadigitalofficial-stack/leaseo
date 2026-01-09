@@ -1,10 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, otpRequests, cities, localities, properties, propertyImages, propertyCategories } from "@shared/schema";
-import { and, gt, eq, desc } from "drizzle-orm";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories } from "@shared/schema";
+import { and, gt, eq, desc, asc, sql } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
-import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, seedAdminUser } from "./auth";
+import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
 import { db } from "./db";
 
 export async function registerRoutes(
@@ -1023,10 +1023,10 @@ export async function registerRoutes(
   // Update page content
   app.patch("/api/pages/:key", async (req, res) => {
     try {
-      const { title, content } = req.body;
+      const { title, content, metaTitle, metaDescription } = req.body;
       
-      if (!title && !content) {
-        return res.status(400).json({ error: "Title or content is required" });
+      if (!title && !content && metaTitle === undefined && metaDescription === undefined) {
+        return res.status(400).json({ error: "At least one field is required" });
       }
 
       const [existing] = await db.select().from(pageContents).where(eq(pageContents.pageKey, req.params.key));
@@ -1036,6 +1036,8 @@ export async function registerRoutes(
         const updateData: any = { updatedAt: new Date() };
         if (title !== undefined) updateData.title = title;
         if (content !== undefined) updateData.content = content;
+        if (metaTitle !== undefined) updateData.metaTitle = metaTitle;
+        if (metaDescription !== undefined) updateData.metaDescription = metaDescription;
         
         [page] = await db.update(pageContents).set(updateData).where(eq(pageContents.pageKey, req.params.key)).returning();
       } else {
@@ -1043,6 +1045,8 @@ export async function registerRoutes(
           pageKey: req.params.key,
           title: title || req.params.key,
           content: content || {},
+          metaTitle: metaTitle || null,
+          metaDescription: metaDescription || null,
         }).returning();
       }
 
@@ -1383,6 +1387,260 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching pending images:", error);
       res.status(500).json({ error: "Failed to fetch pending images" });
+    }
+  });
+
+  // ==================== LIVE PAGE EDITING ====================
+
+  // Get all pages (public: published only, admin: all)
+  app.get("/api/pages", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const isAdmin = req.user?.isAdmin;
+
+      let pages;
+      if (isAdmin) {
+        pages = await db.select().from(pageContents).orderBy(pageContents.pageKey);
+      } else {
+        pages = await db.select().from(pageContents)
+          .where(eq(pageContents.status, "published"))
+          .orderBy(pageContents.pageKey);
+      }
+      res.json(pages);
+    } catch (error) {
+      console.error("Error fetching pages:", error);
+      res.status(500).json({ error: "Failed to fetch pages" });
+    }
+  });
+
+  // Get single page by slug (public: published only, admin: any)
+  app.get("/api/pages/:slug", optionalAuthMiddleware, async (req, res) => {
+    try {
+      const isAdmin = req.user?.isAdmin;
+
+      const [page] = await db.select().from(pageContents)
+        .where(eq(pageContents.pageKey, req.params.slug));
+
+      if (!page) {
+        return res.status(404).json({ error: "Page not found" });
+      }
+
+      if (page.status !== "published" && !isAdmin) {
+        return res.status(404).json({ error: "Page not found" });
+      }
+
+      res.json(page);
+    } catch (error) {
+      console.error("Error fetching page:", error);
+      res.status(500).json({ error: "Failed to fetch page" });
+    }
+  });
+
+  // Create page (admin only)
+  app.post("/api/pages", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { pageKey, title, content, metaTitle, metaDescription, status } = req.body;
+      if (!pageKey || !title) {
+        return res.status(400).json({ error: "Page key and title are required" });
+      }
+
+      const [page] = await db.insert(pageContents).values({
+        pageKey,
+        title,
+        content: content || {},
+        metaTitle: metaTitle || title,
+        metaDescription: metaDescription || "",
+        status: status || "draft",
+        lastEditedBy: req.user?.id,
+      }).returning();
+
+      res.status(201).json(page);
+    } catch (error: any) {
+      console.error("Error creating page:", error);
+      if (error.code === "23505") {
+        return res.status(400).json({ error: "Page with this key already exists" });
+      }
+      res.status(500).json({ error: "Failed to create page" });
+    }
+  });
+
+  // Update page content (admin only) - creates version automatically
+  app.patch("/api/pages/:slug", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { title, content, metaTitle, metaDescription, status } = req.body;
+
+      // Get current page
+      const [currentPage] = await db.select().from(pageContents)
+        .where(eq(pageContents.pageKey, req.params.slug));
+
+      if (!currentPage) {
+        return res.status(404).json({ error: "Page not found" });
+      }
+
+      // Save current version before updating
+      const [latestVersion] = await db.select()
+        .from(pageVersions)
+        .where(eq(pageVersions.pageId, currentPage.id))
+        .orderBy(desc(pageVersions.versionNumber))
+        .limit(1);
+
+      const nextVersion = (latestVersion?.versionNumber || 0) + 1;
+
+      await db.insert(pageVersions).values({
+        pageId: currentPage.id,
+        content: currentPage.content,
+        metaTitle: currentPage.metaTitle,
+        metaDescription: currentPage.metaDescription,
+        versionNumber: nextVersion,
+        editedBy: req.user?.id,
+      });
+
+      // Update page
+      const updateData: any = { updatedAt: new Date() };
+      if (title !== undefined) updateData.title = title;
+      if (content !== undefined) updateData.content = content;
+      if (metaTitle !== undefined) updateData.metaTitle = metaTitle;
+      if (metaDescription !== undefined) updateData.metaDescription = metaDescription;
+      if (status !== undefined) updateData.status = status;
+      if (req.user?.id) updateData.lastEditedBy = req.user.id;
+
+      const [updated] = await db.update(pageContents)
+        .set(updateData)
+        .where(eq(pageContents.pageKey, req.params.slug))
+        .returning();
+
+      res.json({ ...updated, versionNumber: nextVersion });
+    } catch (error) {
+      console.error("Error updating page:", error);
+      res.status(500).json({ error: "Failed to update page" });
+    }
+  });
+
+  // Get page version history (admin only)
+  app.get("/api/pages/:slug/versions", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [page] = await db.select().from(pageContents)
+        .where(eq(pageContents.pageKey, req.params.slug));
+
+      if (!page) {
+        return res.status(404).json({ error: "Page not found" });
+      }
+
+      const versions = await db.select({
+        id: pageVersions.id,
+        versionNumber: pageVersions.versionNumber,
+        metaTitle: pageVersions.metaTitle,
+        createdAt: pageVersions.createdAt,
+        editedBy: pageVersions.editedBy,
+      })
+        .from(pageVersions)
+        .where(eq(pageVersions.pageId, page.id))
+        .orderBy(desc(pageVersions.versionNumber));
+
+      res.json(versions);
+    } catch (error) {
+      console.error("Error fetching page versions:", error);
+      res.status(500).json({ error: "Failed to fetch versions" });
+    }
+  });
+
+  // Get specific version content (admin only)
+  app.get("/api/pages/:slug/versions/:versionId", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [version] = await db.select().from(pageVersions)
+        .where(eq(pageVersions.id, req.params.versionId));
+
+      if (!version) {
+        return res.status(404).json({ error: "Version not found" });
+      }
+
+      res.json(version);
+    } catch (error) {
+      console.error("Error fetching version:", error);
+      res.status(500).json({ error: "Failed to fetch version" });
+    }
+  });
+
+  // Rollback to specific version (admin only)
+  app.post("/api/pages/:slug/rollback", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { versionId } = req.body;
+      if (!versionId) {
+        return res.status(400).json({ error: "Version ID is required" });
+      }
+
+      // Get the version to restore
+      const [version] = await db.select().from(pageVersions)
+        .where(eq(pageVersions.id, versionId));
+
+      if (!version) {
+        return res.status(404).json({ error: "Version not found" });
+      }
+
+      // Get current page
+      const [currentPage] = await db.select().from(pageContents)
+        .where(eq(pageContents.pageKey, req.params.slug));
+
+      if (!currentPage) {
+        return res.status(404).json({ error: "Page not found" });
+      }
+
+      // Save current as new version before rollback
+      const [latestVersion] = await db.select()
+        .from(pageVersions)
+        .where(eq(pageVersions.pageId, currentPage.id))
+        .orderBy(desc(pageVersions.versionNumber))
+        .limit(1);
+
+      const nextVersion = (latestVersion?.versionNumber || 0) + 1;
+
+      await db.insert(pageVersions).values({
+        pageId: currentPage.id,
+        content: currentPage.content,
+        metaTitle: currentPage.metaTitle,
+        metaDescription: currentPage.metaDescription,
+        versionNumber: nextVersion,
+        editedBy: req.user?.id,
+      });
+
+      // Restore the selected version
+      const [updated] = await db.update(pageContents)
+        .set({
+          content: version.content,
+          metaTitle: version.metaTitle,
+          metaDescription: version.metaDescription,
+          lastEditedBy: req.user?.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(pageContents.pageKey, req.params.slug))
+        .returning();
+
+      res.json({ ...updated, restoredFromVersion: version.versionNumber });
+    } catch (error) {
+      console.error("Error rolling back page:", error);
+      res.status(500).json({ error: "Failed to rollback page" });
+    }
+  });
+
+  // Delete page (admin only)
+  app.delete("/api/pages/:slug", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [page] = await db.select().from(pageContents)
+        .where(eq(pageContents.pageKey, req.params.slug));
+
+      if (!page) {
+        return res.status(404).json({ error: "Page not found" });
+      }
+
+      // Delete versions first
+      await db.delete(pageVersions).where(eq(pageVersions.pageId, page.id));
+
+      // Delete page
+      await db.delete(pageContents).where(eq(pageContents.id, page.id));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting page:", error);
+      res.status(500).json({ error: "Failed to delete page" });
     }
   });
 
