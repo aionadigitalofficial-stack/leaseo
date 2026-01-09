@@ -546,6 +546,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: "New password must be at least 8 characters" });
       }
 
+      if (!/\d/.test(newPassword)) {
+        return res.status(400).json({ error: "New password must contain at least one number" });
+      }
+
+      if (!/[A-Z]/.test(newPassword)) {
+        return res.status(400).json({ error: "New password must contain at least one uppercase letter" });
+      }
+
+      if (!/[a-z]/.test(newPassword)) {
+        return res.status(400).json({ error: "New password must contain at least one lowercase letter" });
+      }
+
       const [user] = await db.select().from(users).where(eq(users.id, userId));
       if (!user) {
         return res.status(404).json({ error: "User not found" });
@@ -557,7 +569,7 @@ export async function registerRoutes(
 
       const isCurrentPasswordValid = await verifyPassword(currentPassword, user.passwordHash);
       if (!isCurrentPasswordValid) {
-        return res.status(401).json({ error: "Current password is incorrect" });
+        return res.status(400).json({ error: "Current password is incorrect" });
       }
 
       const newPasswordHash = await hashPassword(newPassword);
