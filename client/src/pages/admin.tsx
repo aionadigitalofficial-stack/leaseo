@@ -84,7 +84,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon } from "lucide-react";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "blog" | "pages" | "seo" | "settings";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "blog" | "pages" | "seo" | "settings";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -160,6 +160,7 @@ const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "categories", label: "Categories", icon: Tag },
   { id: "boosts", label: "Listing Boosts", icon: TrendingUp },
   { id: "payments", label: "Payments", icon: CreditCard },
+  { id: "gateway", label: "Payment Gateway", icon: KeyIcon },
   { id: "employees", label: "Employees", icon: Users },
   { id: "cities", label: "Cities & Localities", icon: MapPin },
   { id: "blog", label: "Blog", icon: PenTool },
@@ -2495,6 +2496,309 @@ export default function AdminPage() {
     </div>
   );
 
+  const [gatewayMode, setGatewayMode] = useState<"sandbox" | "live">("sandbox");
+  const [gatewayActive, setGatewayActive] = useState(false);
+  const [gatewayApiKey, setGatewayApiKey] = useState("");
+  const [gatewayAuthToken, setGatewayAuthToken] = useState("");
+  const [gatewaySandboxApiKey, setGatewaySandboxApiKey] = useState("");
+  const [gatewaySandboxAuthToken, setGatewaySandboxAuthToken] = useState("");
+  const [gatewayTesting, setGatewayTesting] = useState(false);
+
+  const { data: gatewaySettings, isLoading: gatewayLoading } = useQuery({
+    queryKey: ["/api/admin/payment-providers", "instamojo"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/payment-providers/instamojo", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (gatewaySettings) {
+      setGatewayMode(gatewaySettings.mode || "sandbox");
+      setGatewayActive(gatewaySettings.isActive || false);
+    }
+  }, [gatewaySettings]);
+
+  const updateGatewayMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch("/api/admin/payment-providers/instamojo", {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}` 
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to update");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Settings saved", description: "Payment gateway settings have been updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/payment-providers", "instamojo"] });
+      setGatewayApiKey("");
+      setGatewayAuthToken("");
+      setGatewaySandboxApiKey("");
+      setGatewaySandboxAuthToken("");
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const testGatewayMutation = useMutation({
+    mutationFn: async () => {
+      setGatewayTesting(true);
+      const res = await fetch("/api/admin/payment-providers/instamojo/test", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}` 
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Connection test failed");
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Connection successful", description: "Instamojo API credentials are valid" });
+      setGatewayTesting(false);
+    },
+    onError: (error: any) => {
+      toast({ title: "Connection failed", description: error.message, variant: "destructive" });
+      setGatewayTesting(false);
+    },
+  });
+
+  const renderGateway = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Payment Gateway</h1>
+        <p className="text-muted-foreground">Configure Instamojo payment gateway for boost payments</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KeyIcon className="h-5 w-5" />
+            Instamojo Configuration
+          </CardTitle>
+          <CardDescription>
+            Configure your Instamojo API credentials for processing boost payments
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {gatewayLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">Payment Gateway Status</p>
+                  <p className="text-sm text-muted-foreground">
+                    Enable or disable Instamojo payments
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={gatewayActive ? "default" : "secondary"}>
+                    {gatewayActive ? "Active" : "Inactive"}
+                  </Badge>
+                  <Switch
+                    checked={gatewayActive}
+                    onCheckedChange={(checked) => {
+                      setGatewayActive(checked);
+                      updateGatewayMutation.mutate({ isActive: checked });
+                    }}
+                    data-testid="switch-gateway-active"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-base font-semibold">Environment Mode</Label>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Select sandbox for testing or live for production
+                  </p>
+                  <Select
+                    value={gatewayMode}
+                    onValueChange={(value: "sandbox" | "live") => {
+                      setGatewayMode(value);
+                      updateGatewayMutation.mutate({ mode: value });
+                    }}
+                  >
+                    <SelectTrigger className="w-[200px]" data-testid="select-gateway-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sandbox">Sandbox (Testing)</SelectItem>
+                      <SelectItem value="live">Live (Production)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <Separator />
+
+              <Tabs defaultValue="sandbox" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="sandbox">Sandbox Credentials</TabsTrigger>
+                  <TabsTrigger value="live">Live Credentials</TabsTrigger>
+                </TabsList>
+                <TabsContent value="sandbox" className="space-y-4 mt-4">
+                  <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      Sandbox credentials are used for testing. Use test.instamojo.com credentials here.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sandbox-api-key">Sandbox API Key</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="sandbox-api-key"
+                        type="text"
+                        placeholder={gatewaySettings?.hasSandboxApiKey ? "••••••••" + (gatewaySettings?.sandboxApiKey?.slice(-4) || "") : "Enter sandbox API key"}
+                        value={gatewaySandboxApiKey}
+                        onChange={(e) => setGatewaySandboxApiKey(e.target.value)}
+                        data-testid="input-sandbox-api-key"
+                      />
+                    </div>
+                    {gatewaySettings?.hasSandboxApiKey && (
+                      <p className="text-xs text-muted-foreground">Current: {gatewaySettings?.sandboxApiKey}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sandbox-auth-token">Sandbox Auth Token</Label>
+                    <Input
+                      id="sandbox-auth-token"
+                      type="password"
+                      placeholder={gatewaySettings?.hasSandboxAuthToken ? "••••••••" + (gatewaySettings?.sandboxAuthToken?.slice(-4) || "") : "Enter sandbox auth token"}
+                      value={gatewaySandboxAuthToken}
+                      onChange={(e) => setGatewaySandboxAuthToken(e.target.value)}
+                      data-testid="input-sandbox-auth-token"
+                    />
+                    {gatewaySettings?.hasSandboxAuthToken && (
+                      <p className="text-xs text-muted-foreground">Current: {gatewaySettings?.sandboxAuthToken}</p>
+                    )}
+                  </div>
+                  <Button
+                    onClick={() => updateGatewayMutation.mutate({
+                      sandboxApiKey: gatewaySandboxApiKey,
+                      sandboxAuthToken: gatewaySandboxAuthToken,
+                    })}
+                    disabled={updateGatewayMutation.isPending || (!gatewaySandboxApiKey && !gatewaySandboxAuthToken)}
+                    data-testid="button-save-sandbox-credentials"
+                  >
+                    {updateGatewayMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                    Save Sandbox Credentials
+                  </Button>
+                </TabsContent>
+                <TabsContent value="live" className="space-y-4 mt-4">
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <p className="text-sm text-red-800 dark:text-red-200">
+                      Live credentials are used for real payments. Use www.instamojo.com credentials here.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="live-api-key">Live API Key</Label>
+                    <Input
+                      id="live-api-key"
+                      type="text"
+                      placeholder={gatewaySettings?.hasApiKey ? "••••••••" + (gatewaySettings?.apiKey?.slice(-4) || "") : "Enter live API key"}
+                      value={gatewayApiKey}
+                      onChange={(e) => setGatewayApiKey(e.target.value)}
+                      data-testid="input-live-api-key"
+                    />
+                    {gatewaySettings?.hasApiKey && (
+                      <p className="text-xs text-muted-foreground">Current: {gatewaySettings?.apiKey}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="live-auth-token">Live Auth Token</Label>
+                    <Input
+                      id="live-auth-token"
+                      type="password"
+                      placeholder={gatewaySettings?.hasAuthToken ? "••••••••" + (gatewaySettings?.authToken?.slice(-4) || "") : "Enter live auth token"}
+                      value={gatewayAuthToken}
+                      onChange={(e) => setGatewayAuthToken(e.target.value)}
+                      data-testid="input-live-auth-token"
+                    />
+                    {gatewaySettings?.hasAuthToken && (
+                      <p className="text-xs text-muted-foreground">Current: {gatewaySettings?.authToken}</p>
+                    )}
+                  </div>
+                  <Button
+                    onClick={() => updateGatewayMutation.mutate({
+                      apiKey: gatewayApiKey,
+                      authToken: gatewayAuthToken,
+                    })}
+                    disabled={updateGatewayMutation.isPending || (!gatewayApiKey && !gatewayAuthToken)}
+                    data-testid="button-save-live-credentials"
+                  >
+                    {updateGatewayMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                    Save Live Credentials
+                  </Button>
+                </TabsContent>
+              </Tabs>
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Test Connection</p>
+                  <p className="text-sm text-muted-foreground">
+                    Verify your {gatewayMode} credentials are working
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => testGatewayMutation.mutate()}
+                  disabled={gatewayTesting}
+                  data-testid="button-test-connection"
+                >
+                  {gatewayTesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Test Connection
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>How to Get Instamojo Credentials</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <h4 className="font-medium">For Sandbox (Testing):</h4>
+            <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+              <li>Go to <a href="https://test.instamojo.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">test.instamojo.com</a></li>
+              <li>Create a free test account</li>
+              <li>Navigate to API & Plugins → Generate Credentials</li>
+              <li>Copy the API Key and Auth Token</li>
+            </ol>
+          </div>
+          <div className="space-y-2">
+            <h4 className="font-medium">For Live (Production):</h4>
+            <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+              <li>Go to <a href="https://www.instamojo.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">www.instamojo.com</a></li>
+              <li>Sign in to your verified business account</li>
+              <li>Navigate to API & Plugins → Generate Credentials</li>
+              <li>Copy the API Key and Auth Token</li>
+            </ol>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
@@ -2592,6 +2896,7 @@ export default function AdminPage() {
       case "categories": return renderCategories();
       case "boosts": return renderBoosts();
       case "payments": return renderPayments();
+      case "gateway": return renderGateway();
       case "employees": return renderEmployees();
       case "cities": return renderCities();
       case "blog": return renderBlog();

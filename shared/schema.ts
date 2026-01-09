@@ -387,6 +387,27 @@ export const listingBoosts = pgTable("listing_boosts", {
   index("boosts_dates_idx").on(table.startDate, table.endDate),
 ]);
 
+// ==================== PAYMENT PROVIDERS TABLE ====================
+
+export const paymentProviders = pgTable("payment_providers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerName: text("provider_name").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  isActive: boolean("is_active").default(false),
+  mode: text("mode").default("sandbox"),
+  apiKey: text("api_key"),
+  authToken: text("auth_token"),
+  webhookSecret: text("webhook_secret"),
+  sandboxApiKey: text("sandbox_api_key"),
+  sandboxAuthToken: text("sandbox_auth_token"),
+  configJson: jsonb("config_json"),
+  updatedBy: varchar("updated_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("payment_providers_name_idx").on(table.providerName),
+]);
+
 // ==================== AUTH TABLES ====================
 
 export const otpRequests = pgTable("otp_requests", {
@@ -784,6 +805,15 @@ export type Payment = typeof payments.$inferSelect;
 
 export type InsertListingBoost = z.infer<typeof insertListingBoostSchema>;
 export type ListingBoost = typeof listingBoosts.$inferSelect;
+
+export const insertPaymentProviderSchema = createInsertSchema(paymentProviders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPaymentProvider = z.infer<typeof insertPaymentProviderSchema>;
+export type PaymentProvider = typeof paymentProviders.$inferSelect;
 
 export type InsertFeatureFlag = z.infer<typeof insertFeatureFlagSchema>;
 export type FeatureFlag = typeof featureFlags.$inferSelect;

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries } from "@shared/schema";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries, paymentProviders } from "@shared/schema";
 import { and, gt, eq, desc, asc, sql, isNotNull } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
@@ -2112,6 +2112,169 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating enquiry:", error);
       res.status(500).json({ error: "Failed to update enquiry" });
+    }
+  });
+
+  // ==================== ADMIN: PAYMENT PROVIDER SETTINGS ====================
+
+  // Get payment provider settings
+  app.get("/api/admin/payment-providers/:provider", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { provider } = req.params;
+      
+      const [providerSettings] = await db.select()
+        .from(paymentProviders)
+        .where(eq(paymentProviders.providerName, provider));
+      
+      if (!providerSettings) {
+        return res.status(404).json({ error: "Payment provider not found" });
+      }
+      
+      // Mask sensitive credentials for security
+      const maskedSettings = {
+        ...providerSettings,
+        apiKey: providerSettings.apiKey ? "••••••••" + providerSettings.apiKey.slice(-4) : null,
+        authToken: providerSettings.authToken ? "••••••••" + providerSettings.authToken.slice(-4) : null,
+        webhookSecret: providerSettings.webhookSecret ? "••••••••" : null,
+        sandboxApiKey: providerSettings.sandboxApiKey ? "••••••••" + providerSettings.sandboxApiKey.slice(-4) : null,
+        sandboxAuthToken: providerSettings.sandboxAuthToken ? "••••••••" + providerSettings.sandboxAuthToken.slice(-4) : null,
+        hasApiKey: !!providerSettings.apiKey,
+        hasAuthToken: !!providerSettings.authToken,
+        hasSandboxApiKey: !!providerSettings.sandboxApiKey,
+        hasSandboxAuthToken: !!providerSettings.sandboxAuthToken,
+      };
+      
+      res.json(maskedSettings);
+    } catch (error) {
+      console.error("Error fetching payment provider:", error);
+      res.status(500).json({ error: "Failed to fetch payment provider settings" });
+    }
+  });
+
+  // Update payment provider settings
+  app.put("/api/admin/payment-providers/:provider", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { provider } = req.params;
+      const userId = req.user?.id;
+      const { 
+        isActive, 
+        mode, 
+        apiKey, 
+        authToken, 
+        webhookSecret,
+        sandboxApiKey,
+        sandboxAuthToken,
+      } = req.body;
+      
+      // Validate mode
+      if (mode && !["sandbox", "live"].includes(mode)) {
+        return res.status(400).json({ error: "Mode must be 'sandbox' or 'live'" });
+      }
+      
+      // Build update object - only update fields that are provided
+      const updateData: any = {
+        updatedBy: userId,
+        updatedAt: new Date(),
+      };
+      
+      if (typeof isActive === "boolean") updateData.isActive = isActive;
+      if (mode) updateData.mode = mode;
+      if (apiKey !== undefined && apiKey !== "") updateData.apiKey = apiKey;
+      if (authToken !== undefined && authToken !== "") updateData.authToken = authToken;
+      if (webhookSecret !== undefined) updateData.webhookSecret = webhookSecret || null;
+      if (sandboxApiKey !== undefined && sandboxApiKey !== "") updateData.sandboxApiKey = sandboxApiKey;
+      if (sandboxAuthToken !== undefined && sandboxAuthToken !== "") updateData.sandboxAuthToken = sandboxAuthToken;
+      
+      const [updated] = await db.update(paymentProviders)
+        .set(updateData)
+        .where(eq(paymentProviders.providerName, provider))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Payment provider not found" });
+      }
+      
+      // Return masked response
+      const maskedResponse = {
+        ...updated,
+        apiKey: updated.apiKey ? "••••••••" + updated.apiKey.slice(-4) : null,
+        authToken: updated.authToken ? "••••••••" + updated.authToken.slice(-4) : null,
+        webhookSecret: updated.webhookSecret ? "••••••••" : null,
+        sandboxApiKey: updated.sandboxApiKey ? "••••••••" + updated.sandboxApiKey.slice(-4) : null,
+        sandboxAuthToken: updated.sandboxAuthToken ? "••••••••" + updated.sandboxAuthToken.slice(-4) : null,
+      };
+      
+      res.json({ success: true, provider: maskedResponse });
+    } catch (error) {
+      console.error("Error updating payment provider:", error);
+      res.status(500).json({ error: "Failed to update payment provider settings" });
+    }
+  });
+
+  // Test payment provider connection
+  app.post("/api/admin/payment-providers/:provider/test", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { provider } = req.params;
+      
+      const [providerSettings] = await db.select()
+        .from(paymentProviders)
+        .where(eq(paymentProviders.providerName, provider));
+      
+      if (!providerSettings) {
+        return res.status(404).json({ error: "Payment provider not found" });
+      }
+      
+      // For Instamojo, test the API credentials
+      if (provider === "instamojo") {
+        const apiKey = providerSettings.mode === "live" 
+          ? providerSettings.apiKey 
+          : providerSettings.sandboxApiKey;
+        const authToken = providerSettings.mode === "live" 
+          ? providerSettings.authToken 
+          : providerSettings.sandboxAuthToken;
+        
+        if (!apiKey || !authToken) {
+          return res.status(400).json({ 
+            success: false, 
+            error: `Missing ${providerSettings.mode} mode credentials` 
+          });
+        }
+        
+        // Test Instamojo API by fetching payment requests
+        const baseUrl = providerSettings.mode === "live" 
+          ? "https://www.instamojo.com/api/1.1" 
+          : "https://test.instamojo.com/api/1.1";
+        
+        try {
+          const testResponse = await fetch(`${baseUrl}/payment-requests/`, {
+            method: "GET",
+            headers: {
+              "X-Api-Key": apiKey,
+              "X-Auth-Token": authToken,
+            },
+          });
+          
+          if (testResponse.ok) {
+            res.json({ success: true, message: "Connection successful" });
+          } else {
+            const errorData = await testResponse.json();
+            res.status(400).json({ 
+              success: false, 
+              error: errorData.message || "Invalid credentials" 
+            });
+          }
+        } catch (fetchError) {
+          res.status(400).json({ 
+            success: false, 
+            error: "Could not connect to Instamojo API" 
+          });
+        }
+      } else {
+        res.status(400).json({ error: "Unknown payment provider" });
+      }
+    } catch (error) {
+      console.error("Error testing payment provider:", error);
+      res.status(500).json({ error: "Failed to test payment provider" });
     }
   });
 
