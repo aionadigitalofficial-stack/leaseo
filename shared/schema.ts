@@ -77,6 +77,15 @@ export const boostTypeEnum = pgEnum("boost_type", [
   "urgent"
 ]);
 
+export const boostStatusEnum = pgEnum("boost_status", [
+  "pending_payment",
+  "pending_approval",
+  "approved",
+  "rejected",
+  "expired",
+  "cancelled"
+]);
+
 // ==================== ROLES TABLE ====================
 
 export const roles = pgTable("roles", {
@@ -337,8 +346,9 @@ export const payments = pgTable("payments", {
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   currency: text("currency").default("INR"),
   status: paymentStatusEnum("status").default("pending"),
-  paymentMethod: text("payment_method"),
+  paymentMethod: text("payment_method").default("instamojo"),
   transactionId: text("transaction_id"),
+  paymentRequestId: text("payment_request_id"),
   gatewayResponse: jsonb("gateway_response"),
   description: text("description"),
   paidAt: timestamp("paid_at"),
@@ -347,6 +357,7 @@ export const payments = pgTable("payments", {
   index("payments_user_idx").on(table.userId),
   index("payments_property_idx").on(table.propertyId),
   index("payments_status_idx").on(table.status),
+  index("payments_transaction_idx").on(table.transactionId),
 ]);
 
 // ==================== LISTING BOOSTS TABLE ====================
@@ -356,17 +367,23 @@ export const listingBoosts = pgTable("listing_boosts", {
   propertyId: varchar("property_id").references(() => properties.id).notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   boostType: boostTypeEnum("boost_type").notNull(),
+  status: boostStatusEnum("boost_status").default("pending_payment"),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   paymentId: varchar("payment_id").references(() => payments.id),
-  startDate: timestamp("start_date").notNull(),
-  endDate: timestamp("end_date").notNull(),
-  isActive: boolean("is_active").default(true),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  isActive: boolean("is_active").default(false),
   impressions: integer("impressions").default(0),
   clicks: integer("clicks").default(0),
+  adminNotes: text("admin_notes"),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("boosts_property_idx").on(table.propertyId),
   index("boosts_user_idx").on(table.userId),
   index("boosts_active_idx").on(table.isActive),
+  index("boosts_status_idx").on(table.status),
   index("boosts_dates_idx").on(table.startDate, table.endDate),
 ]);
 

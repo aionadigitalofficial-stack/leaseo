@@ -70,10 +70,16 @@ import {
   Check,
   X,
   Image,
+  TrendingUp,
+  CreditCard,
+  Clock,
+  IndianRupee,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "employees" | "cities" | "categories" | "blog" | "pages" | "seo" | "settings";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "employees" | "cities" | "categories" | "boosts" | "payments" | "blog" | "pages" | "seo" | "settings";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -141,6 +147,8 @@ const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "properties", label: "Properties", icon: Building2 },
   { id: "enquiries", label: "Enquiries", icon: MessageSquare },
   { id: "categories", label: "Categories", icon: Tag },
+  { id: "boosts", label: "Listing Boosts", icon: TrendingUp },
+  { id: "payments", label: "Payments", icon: CreditCard },
   { id: "employees", label: "Employees", icon: Users },
   { id: "cities", label: "Cities & Localities", icon: MapPin },
   { id: "blog", label: "Blog", icon: PenTool },
@@ -204,6 +212,14 @@ export default function AdminPage() {
 
   const { data: categories = [], isLoading: categoriesLoading } = useQuery<PropertyCategory[]>({
     queryKey: ["/api/categories"],
+  });
+
+  const { data: boosts = [], isLoading: boostsLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/boosts"],
+  });
+
+  const { data: paymentsData = [], isLoading: paymentsLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/payments"],
   });
 
   const { data: propertyImages = [], isLoading: imagesLoading } = useQuery<PropertyImage[]>({
@@ -394,6 +410,30 @@ export default function AdminPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feature-flags"] });
       toast({ title: "Feature flag updated" });
+    },
+  });
+
+  const approveBoostMutation = useMutation({
+    mutationFn: async ({ id, adminNotes }: { id: string; adminNotes?: string }) =>
+      apiRequest("PATCH", `/api/admin/boosts/${id}/approve`, { adminNotes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/boosts"] });
+      toast({ title: "Boost approved", description: "The listing boost has been activated" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to approve boost", variant: "destructive" });
+    },
+  });
+
+  const rejectBoostMutation = useMutation({
+    mutationFn: async ({ id, adminNotes }: { id: string; adminNotes?: string }) =>
+      apiRequest("PATCH", `/api/admin/boosts/${id}/reject`, { adminNotes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/boosts"] });
+      toast({ title: "Boost rejected", description: "The listing boost has been rejected" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to reject boost", variant: "destructive" });
     },
   });
 
@@ -1514,6 +1554,198 @@ export default function AdminPage() {
     </div>
   );
 
+  const getBoostStatusBadge = (status: string) => {
+    const variants: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+      pending_payment: { variant: "secondary", label: "Pending Payment" },
+      pending_approval: { variant: "outline", label: "Pending Approval" },
+      approved: { variant: "default", label: "Approved" },
+      rejected: { variant: "destructive", label: "Rejected" },
+      expired: { variant: "secondary", label: "Expired" },
+      cancelled: { variant: "secondary", label: "Cancelled" },
+    };
+    const config = variants[status] || { variant: "secondary" as const, label: status };
+    return <Badge variant={config.variant}>{config.label}</Badge>;
+  };
+
+  const renderBoosts = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Listing Boosts</h1>
+        <p className="text-muted-foreground">Manage property boost requests and approvals</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Boost Requests
+          </CardTitle>
+          <CardDescription>Review and approve paid boost requests</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {boostsLoading ? (
+            <div className="space-y-4">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+          ) : boosts.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No boost requests yet</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Property</TableHead>
+                  <TableHead>User</TableHead>
+                  <TableHead>Boost Type</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {boosts.map((boost: any) => (
+                  <TableRow key={boost.id} data-testid={`boost-row-${boost.id}`}>
+                    <TableCell className="font-medium">{boost.propertyTitle || "N/A"}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{boost.userName || "Unknown"}</p>
+                        <p className="text-sm text-muted-foreground">{boost.userEmail}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">{boost.boostType}</Badge>
+                    </TableCell>
+                    <TableCell className="flex items-center gap-1">
+                      <IndianRupee className="h-3 w-3" />
+                      {boost.amount}
+                    </TableCell>
+                    <TableCell>{getBoostStatusBadge(boost.status)}</TableCell>
+                    <TableCell>
+                      {boost.createdAt ? new Date(boost.createdAt).toLocaleDateString("en-IN") : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      {boost.status === "pending_approval" && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => approveBoostMutation.mutate({ id: boost.id })}
+                            disabled={approveBoostMutation.isPending}
+                            data-testid={`approve-boost-${boost.id}`}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => rejectBoostMutation.mutate({ id: boost.id })}
+                            disabled={rejectBoostMutation.isPending}
+                            data-testid={`reject-boost-${boost.id}`}
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      )}
+                      {boost.status === "approved" && boost.isActive && (
+                        <Badge className="bg-green-500">Active</Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const getPaymentStatusBadge = (status: string) => {
+    const variants: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+      pending: { variant: "secondary", label: "Pending" },
+      completed: { variant: "default", label: "Completed" },
+      failed: { variant: "destructive", label: "Failed" },
+      refunded: { variant: "outline", label: "Refunded" },
+    };
+    const config = variants[status] || { variant: "secondary" as const, label: status };
+    return <Badge variant={config.variant}>{config.label}</Badge>;
+  };
+
+  const renderPayments = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Payments</h1>
+        <p className="text-muted-foreground">View all payment transactions</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Payment Records
+          </CardTitle>
+          <CardDescription>All payment transactions from boost purchases</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {paymentsLoading ? (
+            <div className="space-y-4">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+          ) : paymentsData.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No payments yet</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Transaction ID</TableHead>
+                  <TableHead>User</TableHead>
+                  <TableHead>Property</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paymentsData.map((payment: any) => (
+                  <TableRow key={payment.id} data-testid={`payment-row-${payment.id}`}>
+                    <TableCell className="font-mono text-sm">
+                      {payment.transactionId || payment.id.slice(0, 8)}
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{payment.userName || "Unknown"}</p>
+                        <p className="text-sm text-muted-foreground">{payment.userEmail}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{payment.propertyTitle || "N/A"}</TableCell>
+                    <TableCell className="flex items-center gap-1">
+                      <IndianRupee className="h-3 w-3" />
+                      {payment.amount} {payment.currency}
+                    </TableCell>
+                    <TableCell>{getPaymentStatusBadge(payment.status)}</TableCell>
+                    <TableCell className="capitalize">{payment.paymentMethod || "N/A"}</TableCell>
+                    <TableCell>
+                      {payment.paidAt 
+                        ? new Date(payment.paidAt).toLocaleDateString("en-IN")
+                        : payment.createdAt 
+                          ? new Date(payment.createdAt).toLocaleDateString("en-IN")
+                          : "N/A"
+                      }
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
@@ -1573,6 +1805,8 @@ export default function AdminPage() {
       case "properties": return renderProperties();
       case "enquiries": return renderEnquiries();
       case "categories": return renderCategories();
+      case "boosts": return renderBoosts();
+      case "payments": return renderPayments();
       case "employees": return renderEmployees();
       case "cities": return renderCities();
       case "blog": return renderBlog();

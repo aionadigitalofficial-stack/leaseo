@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories } from "@shared/schema";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries } from "@shared/schema";
 import { and, gt, eq, desc, asc, sql } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
@@ -1742,6 +1742,197 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting page:", error);
       res.status(500).json({ error: "Failed to delete page" });
+    }
+  });
+
+  // ==================== ADMIN: LISTING BOOSTS ====================
+
+  // Get all listing boosts (admin)
+  app.get("/api/admin/boosts", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const boosts = await db.select({
+        id: listingBoosts.id,
+        propertyId: listingBoosts.propertyId,
+        userId: listingBoosts.userId,
+        boostType: listingBoosts.boostType,
+        status: listingBoosts.status,
+        amount: listingBoosts.amount,
+        paymentId: listingBoosts.paymentId,
+        startDate: listingBoosts.startDate,
+        endDate: listingBoosts.endDate,
+        isActive: listingBoosts.isActive,
+        impressions: listingBoosts.impressions,
+        clicks: listingBoosts.clicks,
+        adminNotes: listingBoosts.adminNotes,
+        approvedBy: listingBoosts.approvedBy,
+        approvedAt: listingBoosts.approvedAt,
+        createdAt: listingBoosts.createdAt,
+        propertyTitle: properties.title,
+        userName: sql<string>`CONCAT(${users.firstName}, ' ', ${users.lastName})`.as('userName'),
+        userEmail: users.email,
+      })
+      .from(listingBoosts)
+      .leftJoin(properties, eq(listingBoosts.propertyId, properties.id))
+      .leftJoin(users, eq(listingBoosts.userId, users.id))
+      .orderBy(desc(listingBoosts.createdAt));
+
+      res.json(boosts);
+    } catch (error) {
+      console.error("Error fetching boosts:", error);
+      res.status(500).json({ error: "Failed to fetch boosts" });
+    }
+  });
+
+  // Approve boost (admin)
+  app.patch("/api/admin/boosts/:id/approve", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { adminNotes } = req.body;
+      const now = new Date();
+      const endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+
+      const [boost] = await db.update(listingBoosts)
+        .set({
+          status: "approved",
+          isActive: true,
+          startDate: now,
+          endDate,
+          adminNotes,
+          approvedBy: req.user?.id,
+          approvedAt: now,
+        })
+        .where(eq(listingBoosts.id, id))
+        .returning();
+
+      if (!boost) {
+        return res.status(404).json({ error: "Boost not found" });
+      }
+
+      // Update property flags based on boost type
+      if (boost.boostType === "featured") {
+        await db.update(properties).set({ isFeatured: true }).where(eq(properties.id, boost.propertyId));
+      } else if (boost.boostType === "premium") {
+        await db.update(properties).set({ isPremium: true }).where(eq(properties.id, boost.propertyId));
+      }
+
+      res.json(boost);
+    } catch (error) {
+      console.error("Error approving boost:", error);
+      res.status(500).json({ error: "Failed to approve boost" });
+    }
+  });
+
+  // Reject boost (admin)
+  app.patch("/api/admin/boosts/:id/reject", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { adminNotes } = req.body;
+
+      const [boost] = await db.update(listingBoosts)
+        .set({
+          status: "rejected",
+          isActive: false,
+          adminNotes,
+          approvedBy: req.user?.id,
+          approvedAt: new Date(),
+        })
+        .where(eq(listingBoosts.id, id))
+        .returning();
+
+      if (!boost) {
+        return res.status(404).json({ error: "Boost not found" });
+      }
+
+      res.json(boost);
+    } catch (error) {
+      console.error("Error rejecting boost:", error);
+      res.status(500).json({ error: "Failed to reject boost" });
+    }
+  });
+
+  // ==================== ADMIN: PAYMENTS ====================
+
+  // Get all payments (admin)
+  app.get("/api/admin/payments", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const paymentsList = await db.select({
+        id: payments.id,
+        userId: payments.userId,
+        propertyId: payments.propertyId,
+        boostId: payments.boostId,
+        amount: payments.amount,
+        currency: payments.currency,
+        status: payments.status,
+        paymentMethod: payments.paymentMethod,
+        transactionId: payments.transactionId,
+        paymentRequestId: payments.paymentRequestId,
+        description: payments.description,
+        paidAt: payments.paidAt,
+        createdAt: payments.createdAt,
+        userName: sql<string>`CONCAT(${users.firstName}, ' ', ${users.lastName})`.as('userName'),
+        userEmail: users.email,
+        propertyTitle: properties.title,
+      })
+      .from(payments)
+      .leftJoin(users, eq(payments.userId, users.id))
+      .leftJoin(properties, eq(payments.propertyId, properties.id))
+      .orderBy(desc(payments.createdAt));
+
+      res.json(paymentsList);
+    } catch (error) {
+      console.error("Error fetching payments:", error);
+      res.status(500).json({ error: "Failed to fetch payments" });
+    }
+  });
+
+  // ==================== ADMIN: ENQUIRIES ====================
+
+  // Get all enquiries (admin)
+  app.get("/api/admin/enquiries", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const enquiriesList = await db.select({
+        id: enquiries.id,
+        propertyId: enquiries.propertyId,
+        userId: enquiries.userId,
+        name: enquiries.name,
+        email: enquiries.email,
+        phone: enquiries.phone,
+        message: enquiries.message,
+        status: enquiries.status,
+        createdAt: enquiries.createdAt,
+        propertyTitle: properties.title,
+        propertyOwnerId: properties.ownerId,
+      })
+      .from(enquiries)
+      .leftJoin(properties, eq(enquiries.propertyId, properties.id))
+      .orderBy(desc(enquiries.createdAt));
+
+      res.json(enquiriesList);
+    } catch (error) {
+      console.error("Error fetching enquiries:", error);
+      res.status(500).json({ error: "Failed to fetch enquiries" });
+    }
+  });
+
+  // Update enquiry status (admin)
+  app.patch("/api/admin/enquiries/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      const [enquiry] = await db.update(enquiries)
+        .set({ status })
+        .where(eq(enquiries.id, id))
+        .returning();
+
+      if (!enquiry) {
+        return res.status(404).json({ error: "Enquiry not found" });
+      }
+
+      res.json(enquiry);
+    } catch (error) {
+      console.error("Error updating enquiry:", error);
+      res.status(500).json({ error: "Failed to update enquiry" });
     }
   });
 
