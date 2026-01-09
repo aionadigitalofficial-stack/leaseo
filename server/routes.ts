@@ -2819,5 +2819,168 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== NEWSLETTER SUBSCRIPTION ====================
+
+  // Import newsletter table
+  const { newsletterSubscribers } = await import("@shared/schema");
+
+  // Public: Subscribe to newsletter
+  app.post("/api/newsletter/subscribe", async (req, res) => {
+    try {
+      const { email, name, source } = req.body;
+      
+      if (!email || !email.includes("@")) {
+        return res.status(400).json({ error: "Valid email is required" });
+      }
+
+      // Check if already subscribed
+      const [existing] = await db.select().from(newsletterSubscribers)
+        .where(eq(newsletterSubscribers.email, email.toLowerCase().trim()));
+
+      if (existing) {
+        if (existing.isActive) {
+          return res.status(200).json({ message: "Already subscribed", subscriber: existing });
+        } else {
+          // Reactivate subscription
+          const [updated] = await db.update(newsletterSubscribers)
+            .set({ isActive: true, unsubscribedAt: null })
+            .where(eq(newsletterSubscribers.id, existing.id))
+            .returning();
+          return res.status(200).json({ message: "Subscription reactivated", subscriber: updated });
+        }
+      }
+
+      const [subscriber] = await db.insert(newsletterSubscribers).values({
+        email: email.toLowerCase().trim(),
+        name: name || null,
+        source: source || "website",
+      }).returning();
+
+      res.status(201).json({ message: "Successfully subscribed", subscriber });
+    } catch (error) {
+      console.error("Error subscribing:", error);
+      res.status(500).json({ error: "Failed to subscribe" });
+    }
+  });
+
+  // Public: Unsubscribe from newsletter
+  app.post("/api/newsletter/unsubscribe", async (req, res) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      const [updated] = await db.update(newsletterSubscribers)
+        .set({ isActive: false, unsubscribedAt: new Date() })
+        .where(eq(newsletterSubscribers.email, email.toLowerCase().trim()))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "Subscriber not found" });
+      }
+
+      res.json({ message: "Successfully unsubscribed" });
+    } catch (error) {
+      console.error("Error unsubscribing:", error);
+      res.status(500).json({ error: "Failed to unsubscribe" });
+    }
+  });
+
+  // Admin: Get all newsletter subscribers
+  app.get("/api/admin/newsletter", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const subscribers = await db.select().from(newsletterSubscribers)
+        .orderBy(desc(newsletterSubscribers.subscribedAt));
+      res.json(subscribers);
+    } catch (error) {
+      console.error("Error fetching subscribers:", error);
+      res.status(500).json({ error: "Failed to fetch subscribers" });
+    }
+  });
+
+  // Admin: Get newsletter stats
+  app.get("/api/admin/newsletter/stats", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [stats] = await db.select({
+        total: sql<number>`count(*)`,
+        active: sql<number>`count(*) filter (where is_active = true)`,
+        inactive: sql<number>`count(*) filter (where is_active = false)`,
+      }).from(newsletterSubscribers);
+
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching newsletter stats:", error);
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  });
+
+  // Admin: Delete subscriber
+  app.delete("/api/admin/newsletter/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [deleted] = await db.delete(newsletterSubscribers)
+        .where(eq(newsletterSubscribers.id, req.params.id))
+        .returning();
+
+      if (!deleted) {
+        return res.status(404).json({ error: "Subscriber not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting subscriber:", error);
+      res.status(500).json({ error: "Failed to delete subscriber" });
+    }
+  });
+
+  // Admin: Toggle subscriber status
+  app.patch("/api/admin/newsletter/:id/toggle", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [subscriber] = await db.select().from(newsletterSubscribers)
+        .where(eq(newsletterSubscribers.id, req.params.id));
+
+      if (!subscriber) {
+        return res.status(404).json({ error: "Subscriber not found" });
+      }
+
+      const [updated] = await db.update(newsletterSubscribers)
+        .set({ 
+          isActive: !subscriber.isActive,
+          unsubscribedAt: subscriber.isActive ? new Date() : null 
+        })
+        .where(eq(newsletterSubscribers.id, req.params.id))
+        .returning();
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error toggling subscriber:", error);
+      res.status(500).json({ error: "Failed to update subscriber" });
+    }
+  });
+
+  // Admin: Export subscribers as CSV
+  app.get("/api/admin/newsletter/export", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const subscribers = await db.select().from(newsletterSubscribers)
+        .where(eq(newsletterSubscribers.isActive, true))
+        .orderBy(newsletterSubscribers.email);
+
+      const csv = [
+        "Email,Name,Subscribed At,Source",
+        ...subscribers.map(s => 
+          `${s.email},"${s.name || ""}",${s.subscribedAt?.toISOString() || ""},${s.source || ""}`
+        )
+      ].join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=newsletter-subscribers.csv");
+      res.send(csv);
+    } catch (error) {
+      console.error("Error exporting subscribers:", error);
+      res.status(500).json({ error: "Failed to export subscribers" });
+    }
+  });
+
   return httpServer;
 }

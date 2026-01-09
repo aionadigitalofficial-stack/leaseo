@@ -317,6 +317,22 @@ export const shortlists = pgTable("shortlists", {
   index("shortlists_property_idx").on(table.propertyId),
 ]);
 
+// ==================== NEWSLETTER SUBSCRIBERS TABLE ====================
+
+export const newsletterSubscribers = pgTable("newsletter_subscribers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  name: text("name"),
+  isActive: boolean("is_active").default(true),
+  source: text("source").default("website"),
+  subscribedAt: timestamp("subscribed_at").defaultNow(),
+  unsubscribedAt: timestamp("unsubscribed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("newsletter_email_idx").on(table.email),
+  index("newsletter_active_idx").on(table.isActive),
+]);
+
 // ==================== REPORTS TABLE ====================
 
 export const reports = pgTable("reports", {
@@ -757,6 +773,12 @@ export const insertShortlistSchema = createInsertSchema(shortlists).omit({
   createdAt: true,
 });
 
+export const insertNewsletterSubscriberSchema = createInsertSchema(newsletterSubscribers).omit({
+  id: true,
+  createdAt: true,
+  subscribedAt: true,
+});
+
 export const insertReportSchema = createInsertSchema(reports).omit({
   id: true,
   createdAt: true,
@@ -822,6 +844,9 @@ export type Enquiry = typeof enquiries.$inferSelect;
 
 export type InsertShortlist = z.infer<typeof insertShortlistSchema>;
 export type Shortlist = typeof shortlists.$inferSelect;
+
+export type InsertNewsletterSubscriber = z.infer<typeof insertNewsletterSubscriberSchema>;
+export type NewsletterSubscriber = typeof newsletterSubscribers.$inferSelect;
 
 export type InsertReport = z.infer<typeof insertReportSchema>;
 export type Report = typeof reports.$inferSelect;
