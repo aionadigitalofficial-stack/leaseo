@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BedDouble,
   Bath,
@@ -35,6 +36,7 @@ import {
   Home,
   ArrowLeft,
   MessageCircle,
+  Mail,
   BadgeCheck,
   Clock,
   Users,
@@ -110,9 +112,11 @@ export default function PropertyDetailPage() {
   const [isFavorited, setIsFavorited] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [showContactDialog, setShowContactDialog] = useState(false);
+  const [verifyMethod, setVerifyMethod] = useState<"phone" | "email">("phone");
   const [otpSent, setOtpSent] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [revealedPhone, setRevealedPhone] = useState<string | null>(null);
 
@@ -128,10 +132,16 @@ export default function PropertyDetailPage() {
   });
 
   const handleSendOtp = () => {
-    if (phoneNumber.length >= 10) {
+    if (verifyMethod === "phone" && phoneNumber.length >= 10) {
+      setOtpSent(true);
+    } else if (verifyMethod === "email" && email.includes("@")) {
       setOtpSent(true);
     }
   };
+
+  const isValidContact = verifyMethod === "phone" 
+    ? phoneNumber.length >= 10 
+    : email.includes("@") && email.includes(".");
 
   const handleVerifyOtp = () => {
     if (otp.length === 6) {
@@ -615,40 +625,73 @@ export default function PropertyDetailPage() {
       <Dialog open={showContactDialog} onOpenChange={setShowContactDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Verify Your Phone Number</DialogTitle>
+            <DialogTitle>Verify to View Contact</DialogTitle>
             <DialogDescription>
-              Enter your phone number to view the owner's contact details
+              Enter your phone number or email to view the owner's contact details
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {!otpSent ? (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <div className="flex gap-2">
-                    <div className="flex items-center px-3 border rounded-md bg-muted text-sm">
-                      +91
+              <Tabs value={verifyMethod} onValueChange={(v) => setVerifyMethod(v as "phone" | "email")} className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="phone" data-testid="tab-phone-verify">
+                    <Phone className="h-4 w-4 mr-2" />
+                    Phone
+                  </TabsTrigger>
+                  <TabsTrigger value="email" data-testid="tab-email-verify">
+                    <Mail className="h-4 w-4 mr-2" />
+                    Email
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="phone" className="mt-4 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <div className="flex gap-2">
+                      <div className="flex items-center px-3 border rounded-md bg-muted text-sm">
+                        +91
+                      </div>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        placeholder="Enter 10-digit number"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                        className="flex-1"
+                        data-testid="input-phone-verify"
+                      />
                     </div>
+                  </div>
+                  <Button 
+                    className="w-full" 
+                    onClick={handleSendOtp}
+                    disabled={phoneNumber.length < 10}
+                    data-testid="button-send-otp-phone"
+                  >
+                    Send OTP
+                  </Button>
+                </TabsContent>
+                <TabsContent value="email" className="mt-4 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email Address</Label>
                     <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="Enter 10-digit number"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                      className="flex-1"
-                      data-testid="input-phone-verify"
+                      id="email"
+                      type="email"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      data-testid="input-email-verify"
                     />
                   </div>
-                </div>
-                <Button 
-                  className="w-full" 
-                  onClick={handleSendOtp}
-                  disabled={phoneNumber.length < 10}
-                  data-testid="button-send-otp"
-                >
-                  Send OTP
-                </Button>
-              </>
+                  <Button 
+                    className="w-full" 
+                    onClick={handleSendOtp}
+                    disabled={!email.includes("@") || !email.includes(".")}
+                    data-testid="button-send-otp-email"
+                  >
+                    Send OTP
+                  </Button>
+                </TabsContent>
+              </Tabs>
             ) : (
               <>
                 <div className="space-y-2">
@@ -663,7 +706,7 @@ export default function PropertyDetailPage() {
                     data-testid="input-otp"
                   />
                   <p className="text-sm text-muted-foreground">
-                    OTP sent to +91 {phoneNumber}
+                    OTP sent to {verifyMethod === "phone" ? `+91 ${phoneNumber}` : email}
                   </p>
                 </div>
                 <Button 
@@ -679,7 +722,7 @@ export default function PropertyDetailPage() {
                   className="w-full"
                   onClick={() => setOtpSent(false)}
                 >
-                  Change Number
+                  Change {verifyMethod === "phone" ? "Number" : "Email"}
                 </Button>
               </>
             )}
