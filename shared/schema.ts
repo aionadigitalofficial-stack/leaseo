@@ -452,14 +452,36 @@ export const blogPosts = pgTable("blog_posts", {
 
 // ==================== PAGE CONTENT (CMS) ====================
 
+export const pageStatusEnum = pgEnum("page_status", ["draft", "published"]);
+
 export const pageContents = pgTable("page_contents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   pageKey: text("page_key").notNull().unique(),
   title: text("title").notNull(),
   content: jsonb("content").notNull(),
+  metaTitle: text("meta_title"),
+  metaDescription: text("meta_description"),
+  status: pageStatusEnum("status").default("published"),
   lastEditedBy: varchar("last_edited_by").references(() => users.id),
   updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ==================== PAGE VERSIONS (VERSION CONTROL) ====================
+
+export const pageVersions = pgTable("page_versions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pageId: varchar("page_id").references(() => pageContents.id).notNull(),
+  content: jsonb("content").notNull(),
+  metaTitle: text("meta_title"),
+  metaDescription: text("meta_description"),
+  versionNumber: integer("version_number").notNull(),
+  editedBy: varchar("edited_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("page_versions_page_idx").on(table.pageId),
+  index("page_versions_number_idx").on(table.versionNumber),
+]);
 
 // ==================== RELATIONS ====================
 
@@ -749,6 +771,12 @@ export const insertBlogPostSchema = createInsertSchema(blogPosts).omit({
 export const insertPageContentSchema = createInsertSchema(pageContents).omit({
   id: true,
   updatedAt: true,
+  createdAt: true,
+});
+
+export const insertPageVersionSchema = createInsertSchema(pageVersions).omit({
+  id: true,
+  createdAt: true,
 });
 
 export type InsertBlogPost = z.infer<typeof insertBlogPostSchema>;
@@ -756,6 +784,9 @@ export type BlogPost = typeof blogPosts.$inferSelect;
 
 export type InsertPageContent = z.infer<typeof insertPageContentSchema>;
 export type PageContent = typeof pageContents.$inferSelect;
+
+export type InsertPageVersion = z.infer<typeof insertPageVersionSchema>;
+export type PageVersion = typeof pageVersions.$inferSelect;
 
 export const insertPropertyCategorySchema = createInsertSchema(propertyCategories).omit({
   id: true,
