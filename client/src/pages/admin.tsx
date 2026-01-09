@@ -66,10 +66,14 @@ import {
   LayoutDashboard,
   Mail,
   Reply,
+  Tag,
+  Check,
+  X,
+  Image,
 } from "lucide-react";
-import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent } from "@shared/schema";
+import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "employees" | "cities" | "blog" | "pages" | "seo" | "settings";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "employees" | "cities" | "categories" | "blog" | "pages" | "seo" | "settings";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -120,10 +124,18 @@ const pageFormSchema = z.object({
   content: z.string().min(10, "Content is required"),
 });
 
+const categoryFormSchema = z.object({
+  name: z.string().min(2, "Category name is required"),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+  displayOrder: z.string().optional(),
+});
+
 const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "properties", label: "Properties", icon: Building2 },
   { id: "enquiries", label: "Enquiries", icon: MessageSquare },
+  { id: "categories", label: "Categories", icon: Tag },
   { id: "employees", label: "Employees", icon: Users },
   { id: "cities", label: "Cities & Localities", icon: MapPin },
   { id: "blog", label: "Blog", icon: PenTool },
@@ -146,6 +158,8 @@ export default function AdminPage() {
   const [viewingEnquiry, setViewingEnquiry] = useState<Enquiry | null>(null);
   const [editingPage, setEditingPage] = useState<PageContent | null>(null);
   const [replyMessage, setReplyMessage] = useState("");
+  const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<PropertyCategory | null>(null);
 
   const { data: properties = [], isLoading: propertiesLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -181,6 +195,15 @@ export default function AdminPage() {
 
   const { data: pages = [], isLoading: pagesLoading } = useQuery<PageContent[]>({
     queryKey: ["/api/pages"],
+  });
+
+  const { data: categories = [], isLoading: categoriesLoading } = useQuery<PropertyCategory[]>({
+    queryKey: ["/api/categories"],
+  });
+
+  const { data: propertyImages = [], isLoading: imagesLoading } = useQuery<PropertyImage[]>({
+    queryKey: ["/api/properties", editingProperty?.id, "images"],
+    enabled: !!editingProperty?.id,
   });
 
   const sellPropertyFlag = featureFlags.find((f) => f.name === "sell_property");
@@ -228,6 +251,24 @@ export default function AdminPage() {
     resolver: zodResolver(pageFormSchema),
     defaultValues: { title: "", content: "" },
   });
+
+  const categoryForm = useForm({
+    resolver: zodResolver(categoryFormSchema),
+    defaultValues: { name: "", description: "", icon: "", displayOrder: "0" },
+  });
+
+  useEffect(() => {
+    if (editingCategory) {
+      categoryForm.reset({
+        name: editingCategory.name,
+        description: editingCategory.description || "",
+        icon: editingCategory.icon || "",
+        displayOrder: String(editingCategory.displayOrder || 0),
+      });
+    } else {
+      categoryForm.reset({ name: "", description: "", icon: "", displayOrder: "0" });
+    }
+  }, [editingCategory, categoryForm]);
 
   useEffect(() => {
     if (editingProperty) {
@@ -446,6 +487,67 @@ export default function AdminPage() {
     },
   });
 
+  const createCategoryMutation = useMutation({
+    mutationFn: async (data: any) => apiRequest("POST", "/api/categories", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      setIsAddCategoryOpen(false);
+      categoryForm.reset();
+      toast({ title: "Category created successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create category", variant: "destructive" });
+    },
+  });
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) =>
+      apiRequest("PATCH", `/api/categories/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      setEditingCategory(null);
+      categoryForm.reset();
+      toast({ title: "Category updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update category", variant: "destructive" });
+    },
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/categories/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      toast({ title: "Category deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete category", variant: "destructive" });
+    },
+  });
+
+  const approveImageMutation = useMutation({
+    mutationFn: async ({ id, isApproved }: { id: string; isApproved: boolean }) =>
+      apiRequest("PATCH", `/api/property-images/${id}/approve`, { isApproved }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", editingProperty?.id, "images"] });
+      toast({ title: "Image status updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update image", variant: "destructive" });
+    },
+  });
+
+  const deleteImageMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/property-images/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", editingProperty?.id, "images"] });
+      toast({ title: "Image deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete image", variant: "destructive" });
+    },
+  });
+
   const [robotsTxt, setRobotsTxt] = useState(seoSettings?.robotsTxt || `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api\n\nSitemap: https://leaseo.in/sitemap.xml`);
   const [metaTitle, setMetaTitle] = useState(seoSettings?.metaTitle || "Leaseo - Zero Brokerage Property Rentals in India");
   const [metaDescription, setMetaDescription] = useState(seoSettings?.metaDescription || "Find rental properties directly from owners. Zero brokerage, verified listings across Mumbai, Pune, Delhi, Bangalore and more.");
@@ -517,6 +619,18 @@ export default function AdminPage() {
       updateEnquiryStatusMutation.mutate({ id: viewingEnquiry.id, status: "contacted" });
       setViewingEnquiry(null);
       setReplyMessage("");
+    }
+  };
+
+  const handleCategorySubmit = (data: any) => {
+    const submitData = {
+      ...data,
+      displayOrder: data.displayOrder ? parseInt(data.displayOrder) : 0,
+    };
+    if (editingCategory) {
+      updateCategoryMutation.mutate({ id: editingCategory.id, data: submitData });
+    } else {
+      createCategoryMutation.mutate(submitData);
     }
   };
 
@@ -1021,13 +1135,108 @@ export default function AdminPage() {
     </div>
   );
 
+  const renderCategories = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold">Property Categories</h1>
+          <p className="text-muted-foreground">Manage property categories</p>
+        </div>
+        <Button onClick={() => setIsAddCategoryOpen(true)} data-testid="button-add-category">
+          <Plus className="h-4 w-4 mr-2" />
+          Add Category
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          {categoriesLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : categories.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">No categories yet. Create your first category.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Slug</TableHead>
+                  <TableHead>Icon</TableHead>
+                  <TableHead>Order</TableHead>
+                  <TableHead>Active</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {categories.map((category) => (
+                  <TableRow key={category.id} data-testid={`row-category-${category.id}`}>
+                    <TableCell className="font-medium">{category.name}</TableCell>
+                    <TableCell><Badge variant="outline">{category.slug}</Badge></TableCell>
+                    <TableCell>{category.icon || "-"}</TableCell>
+                    <TableCell>{category.displayOrder || 0}</TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={category.isActive ?? true}
+                        onCheckedChange={(checked) => {
+                          updateCategoryMutation.mutate({
+                            id: category.id,
+                            data: { isActive: checked },
+                          });
+                        }}
+                        data-testid={`switch-category-active-${category.id}`}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button 
+                          size="icon" 
+                          variant="ghost"
+                          onClick={() => setEditingCategory(category)}
+                          data-testid={`button-edit-category-${category.id}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          onClick={() => deleteCategoryMutation.mutate(category.id)}
+                          data-testid={`button-delete-category-${category.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderPages = () => {
     const defaultPages = [
-      { pageKey: "about", title: "About Us", content: {} },
-      { pageKey: "contact", title: "Contact Us", content: {} },
+      { pageKey: "homepage", title: "Homepage", content: { hero: "Welcome to Leaseo", description: "Find your perfect rental property" } },
+      { pageKey: "about", title: "About Us", content: { text: "About our company" } },
+      { pageKey: "contact", title: "Contact Us", content: { email: "contact@leaseo.in", phone: "+91 XXXXXXXXXX" } },
+      { pageKey: "privacy", title: "Privacy Policy", content: { text: "Privacy policy content" } },
+      { pageKey: "terms", title: "Terms of Service", content: { text: "Terms of service content" } },
     ];
     
-    const displayPages = pages.length > 0 ? pages : defaultPages;
+    const mergedPages = defaultPages.map(dp => {
+      const existingPage = pages.find(p => p.pageKey === dp.pageKey);
+      return existingPage || dp;
+    });
+
+    const getContentPreview = (content: any) => {
+      if (!content) return "No content";
+      if (typeof content === 'string') return content.substring(0, 100) + (content.length > 100 ? "..." : "");
+      const text = content.text || content.hero || content.description || JSON.stringify(content);
+      return String(text).substring(0, 100) + (String(text).length > 100 ? "..." : "");
+    };
 
     return (
       <div className="space-y-6">
@@ -1040,7 +1249,7 @@ export default function AdminPage() {
           <CardContent className="pt-6">
             {pagesLoading ? (
               <div className="space-y-4">
-                {[1, 2].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+                {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
               </div>
             ) : (
               <Table>
@@ -1048,15 +1257,19 @@ export default function AdminPage() {
                   <TableRow>
                     <TableHead>Page</TableHead>
                     <TableHead>Title</TableHead>
+                    <TableHead>Content Preview</TableHead>
                     <TableHead>Last Updated</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {displayPages.map((page) => (
+                  {mergedPages.map((page) => (
                     <TableRow key={page.pageKey} data-testid={`row-page-${page.pageKey}`}>
                       <TableCell className="font-medium capitalize">{page.pageKey}</TableCell>
                       <TableCell>{page.title}</TableCell>
+                      <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">
+                        {getContentPreview(page.content)}
+                      </TableCell>
                       <TableCell>
                         {(page as PageContent).updatedAt 
                           ? new Date((page as PageContent).updatedAt!).toLocaleDateString() 
@@ -1232,6 +1445,7 @@ export default function AdminPage() {
       case "dashboard": return renderDashboard();
       case "properties": return renderProperties();
       case "enquiries": return renderEnquiries();
+      case "categories": return renderCategories();
       case "employees": return renderEmployees();
       case "cities": return renderCities();
       case "blog": return renderBlog();
@@ -1402,6 +1616,76 @@ export default function AdminPage() {
                   <FormLabel className="!mt-0">Featured Property</FormLabel>
                 </FormItem>
               )} />
+
+              {editingProperty && (
+                <div className="space-y-3 pt-4 border-t">
+                  <div className="flex items-center gap-2">
+                    <Image className="h-4 w-4" />
+                    <Label className="font-semibold">Property Images</Label>
+                  </div>
+                  {imagesLoading ? (
+                    <div className="grid grid-cols-3 gap-3">
+                      {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full rounded-md" />)}
+                    </div>
+                  ) : propertyImages.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No images uploaded yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-3">
+                      {propertyImages.map((image) => (
+                        <div key={image.id} className="relative group border rounded-md overflow-hidden" data-testid={`image-${image.id}`}>
+                          <img 
+                            src={image.url} 
+                            alt={image.caption || "Property image"} 
+                            className="w-full h-24 object-cover"
+                          />
+                          <div className="absolute top-1 left-1">
+                            <Badge variant={image.isApproved ? "default" : "secondary"} className="text-xs">
+                              {image.isApproved ? "Approved" : "Pending"}
+                            </Badge>
+                          </div>
+                          <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {!image.isApproved && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="secondary"
+                                className="h-6 w-6"
+                                onClick={() => approveImageMutation.mutate({ id: image.id, isApproved: true })}
+                                data-testid={`button-approve-image-${image.id}`}
+                              >
+                                <Check className="h-3 w-3" />
+                              </Button>
+                            )}
+                            {image.isApproved && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="secondary"
+                                className="h-6 w-6"
+                                onClick={() => approveImageMutation.mutate({ id: image.id, isApproved: false })}
+                                data-testid={`button-reject-image-${image.id}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="destructive"
+                              className="h-6 w-6"
+                              onClick={() => deleteImageMutation.mutate(image.id)}
+                              data-testid={`button-delete-image-${image.id}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => {
                   setIsAddPropertyOpen(false);
@@ -1724,6 +2008,66 @@ export default function AdminPage() {
                 <Button type="submit" disabled={updatePageMutation.isPending}>
                   {updatePageMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                   Save Page
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAddCategoryOpen || !!editingCategory} onOpenChange={(open) => {
+        if (!open) {
+          setIsAddCategoryOpen(false);
+          setEditingCategory(null);
+          categoryForm.reset();
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingCategory ? "Edit Category" : "Add Category"}</DialogTitle>
+            <DialogDescription>{editingCategory ? "Update category details" : "Create a new property category"}</DialogDescription>
+          </DialogHeader>
+          <Form {...categoryForm}>
+            <form onSubmit={categoryForm.handleSubmit(handleCategorySubmit)} className="space-y-4">
+              <FormField control={categoryForm.control} name="name" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category Name</FormLabel>
+                  <FormControl><Input {...field} placeholder="e.g., Apartments" data-testid="input-category-name" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={categoryForm.control} name="description" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description (Optional)</FormLabel>
+                  <FormControl><Textarea {...field} placeholder="Category description..." rows={2} data-testid="input-category-description" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={categoryForm.control} name="icon" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Icon Name (Optional)</FormLabel>
+                    <FormControl><Input {...field} placeholder="e.g., building" data-testid="input-category-icon" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={categoryForm.control} name="displayOrder" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Display Order</FormLabel>
+                    <FormControl><Input {...field} type="number" placeholder="0" data-testid="input-category-order" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => {
+                  setIsAddCategoryOpen(false);
+                  setEditingCategory(null);
+                  categoryForm.reset();
+                }}>Cancel</Button>
+                <Button type="submit" disabled={createCategoryMutation.isPending || updateCategoryMutation.isPending}>
+                  {(createCategoryMutation.isPending || updateCategoryMutation.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  {editingCategory ? "Update Category" : "Add Category"}
                 </Button>
               </DialogFooter>
             </form>

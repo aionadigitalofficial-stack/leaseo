@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, otpRequests, cities, localities, properties } from "@shared/schema";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, otpRequests, cities, localities, properties, propertyImages, propertyCategories } from "@shared/schema";
 import { and, gt, eq, desc } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, seedAdminUser } from "./auth";
@@ -1206,6 +1206,183 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error generating sitemap:", error);
       res.status(500).json({ error: "Failed to generate sitemap" });
+    }
+  });
+
+  // ==================== PROPERTY CATEGORIES ====================
+
+  // Get all categories
+  app.get("/api/categories", async (req, res) => {
+    try {
+      const categories = await db.select().from(propertyCategories).orderBy(propertyCategories.displayOrder);
+      res.json(categories);
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+      res.status(500).json({ error: "Failed to fetch categories" });
+    }
+  });
+
+  // Create category (admin only)
+  app.post("/api/categories", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { name, description, icon, displayOrder } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "Category name is required" });
+      }
+      const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      const [category] = await db.insert(propertyCategories).values({
+        name,
+        slug,
+        description: description || null,
+        icon: icon || null,
+        displayOrder: displayOrder || 0,
+      }).returning();
+      res.status(201).json(category);
+    } catch (error: any) {
+      console.error("Error creating category:", error);
+      if (error.code === "23505") {
+        return res.status(400).json({ error: "Category with this name already exists" });
+      }
+      res.status(500).json({ error: "Failed to create category" });
+    }
+  });
+
+  // Update category (admin only)
+  app.patch("/api/categories/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { name, description, icon, displayOrder, isActive } = req.body;
+      const updateData: any = {};
+      if (name !== undefined) {
+        updateData.name = name;
+        updateData.slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      }
+      if (description !== undefined) updateData.description = description;
+      if (icon !== undefined) updateData.icon = icon;
+      if (displayOrder !== undefined) updateData.displayOrder = displayOrder;
+      if (isActive !== undefined) updateData.isActive = isActive;
+
+      const [updated] = await db.update(propertyCategories)
+        .set(updateData)
+        .where(eq(propertyCategories.id, req.params.id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "Category not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating category:", error);
+      res.status(500).json({ error: "Failed to update category" });
+    }
+  });
+
+  // Delete category (admin only)
+  app.delete("/api/categories/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [deleted] = await db.delete(propertyCategories)
+        .where(eq(propertyCategories.id, req.params.id))
+        .returning();
+      if (!deleted) {
+        return res.status(404).json({ error: "Category not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting category:", error);
+      res.status(500).json({ error: "Failed to delete category" });
+    }
+  });
+
+  // ==================== PROPERTY IMAGES ====================
+
+  // Get images for a property
+  app.get("/api/properties/:id/images", async (req, res) => {
+    try {
+      const images = await db.select().from(propertyImages)
+        .where(eq(propertyImages.propertyId, req.params.id))
+        .orderBy(propertyImages.displayOrder);
+      res.json(images);
+    } catch (error) {
+      console.error("Error fetching property images:", error);
+      res.status(500).json({ error: "Failed to fetch images" });
+    }
+  });
+
+  // Upload image for property (returns URL - actual file handling would be done by Replit Object Storage)
+  app.post("/api/properties/:id/images", authMiddleware, async (req, res) => {
+    try {
+      const { url, caption, isPrimary, isVideo, fileSize } = req.body;
+      if (!url) {
+        return res.status(400).json({ error: "Image URL is required" });
+      }
+
+      // Get next display order
+      const existingImages = await db.select().from(propertyImages)
+        .where(eq(propertyImages.propertyId, req.params.id));
+      const displayOrder = existingImages.length;
+
+      const [image] = await db.insert(propertyImages).values({
+        propertyId: req.params.id,
+        url,
+        caption: caption || null,
+        displayOrder,
+        isPrimary: isPrimary || false,
+        isApproved: false,
+        isVideo: isVideo || false,
+        fileSize: fileSize || null,
+      }).returning();
+
+      res.status(201).json(image);
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      res.status(500).json({ error: "Failed to upload image" });
+    }
+  });
+
+  // Approve/reject image (admin only)
+  app.patch("/api/property-images/:id/approve", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { isApproved } = req.body;
+      const [updated] = await db.update(propertyImages)
+        .set({ isApproved: isApproved !== false })
+        .where(eq(propertyImages.id, req.params.id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating image approval:", error);
+      res.status(500).json({ error: "Failed to update image" });
+    }
+  });
+
+  // Delete image (admin only)
+  app.delete("/api/property-images/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [deleted] = await db.delete(propertyImages)
+        .where(eq(propertyImages.id, req.params.id))
+        .returning();
+      if (!deleted) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting image:", error);
+      res.status(500).json({ error: "Failed to delete image" });
+    }
+  });
+
+  // Get all images pending approval (admin only)
+  app.get("/api/admin/pending-images", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const pendingImages = await db.select().from(propertyImages)
+        .where(eq(propertyImages.isApproved, false))
+        .orderBy(desc(propertyImages.createdAt));
+      res.json(pendingImages);
+    } catch (error) {
+      console.error("Error fetching pending images:", error);
+      res.status(500).json({ error: "Failed to fetch pending images" });
     }
   });
 

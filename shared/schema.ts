@@ -246,9 +246,27 @@ export const propertyImages = pgTable("property_images", {
   caption: text("caption"),
   displayOrder: integer("display_order").default(0),
   isPrimary: boolean("is_primary").default(false),
+  isApproved: boolean("is_approved").default(false),
+  isVideo: boolean("is_video").default(false),
+  fileSize: integer("file_size"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("property_images_property_idx").on(table.propertyId),
+]);
+
+// ==================== PROPERTY CATEGORIES TABLE ====================
+
+export const propertyCategories = pgTable("property_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  icon: text("icon"),
+  displayOrder: integer("display_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("property_categories_slug_idx").on(table.slug),
 ]);
 
 // ==================== ENQUIRIES TABLE ====================
@@ -738,6 +756,14 @@ export type BlogPost = typeof blogPosts.$inferSelect;
 
 export type InsertPageContent = z.infer<typeof insertPageContentSchema>;
 export type PageContent = typeof pageContents.$inferSelect;
+
+export const insertPropertyCategorySchema = createInsertSchema(propertyCategories).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPropertyCategory = z.infer<typeof insertPropertyCategorySchema>;
+export type PropertyCategory = typeof propertyCategories.$inferSelect;
 
 export type InsertOtpRequest = z.infer<typeof insertOtpRequestSchema>;
 export type OtpRequest = typeof otpRequests.$inferSelect;
