@@ -54,6 +54,8 @@ const AMENITIES = [
 const PREFERRED_TENANTS = ["Family", "Bachelor Male", "Bachelor Female", "Company", "Any"];
 
 interface PropertyFormData {
+  segment: "rent" | "buy" | "commercial";
+  listingType: "rent" | "sale";
   propertyCategory: "residential" | "commercial";
   propertyType: string;
   city: string;
@@ -71,6 +73,7 @@ interface PropertyFormData {
   furnishing: string;
   amenities: string[];
   rent: number;
+  price: number;
   securityDeposit: number;
   maintenanceCharges: number;
   availableFrom: string;
@@ -81,6 +84,8 @@ interface PropertyFormData {
 }
 
 const initialFormData: PropertyFormData = {
+  segment: "rent",
+  listingType: "rent",
   propertyCategory: "residential",
   propertyType: "",
   city: "",
@@ -98,6 +103,7 @@ const initialFormData: PropertyFormData = {
   furnishing: "unfurnished",
   amenities: [],
   rent: 0,
+  price: 0,
   securityDeposit: 0,
   maintenanceCharges: 0,
   availableFrom: "",
@@ -127,23 +133,28 @@ export default function PostPropertyPage() {
 
   const createPropertyMutation = useMutation({
     mutationFn: async (data: PropertyFormData) => {
+      const isForSale = data.listingType === "sale";
+      const titleType = isForSale ? "Sale" : "Rent";
       const propertyData = {
-        title: `${formData.bedrooms} BHK ${formData.propertyType} for Rent in ${formData.locality}`,
+        title: data.segment === "commercial" 
+          ? `${data.propertyType} for ${titleType} in ${data.locality}`
+          : `${data.bedrooms} BHK ${data.propertyType} for ${titleType} in ${data.locality}`,
         description: data.description,
         propertyType: data.propertyType.toLowerCase().replace(/\s+/g, "_"),
-        listingType: "rent",
-        isCommercial: data.propertyCategory === "commercial",
-        price: data.rent.toString(),
-        rent: data.rent.toString(),
-        securityDeposit: data.securityDeposit.toString(),
-        maintenanceCharges: data.maintenanceCharges.toString(),
+        listingType: data.listingType,
+        isCommercial: data.segment === "commercial",
+        price: isForSale ? data.price.toString() : data.rent.toString(),
+        rent: !isForSale ? data.rent.toString() : undefined,
+        salePrice: isForSale ? data.price.toString() : undefined,
+        securityDeposit: !isForSale && data.securityDeposit > 0 ? data.securityDeposit.toString() : undefined,
+        maintenanceCharges: data.maintenanceCharges > 0 ? data.maintenanceCharges.toString() : undefined,
         address: data.address,
         city: data.city,
         state: CITY_STATE_MAP[data.city] || "Maharashtra",
         pincode: data.pincode,
-        bedrooms: data.bedrooms,
+        bedrooms: data.segment !== "commercial" ? data.bedrooms : undefined,
         bathrooms: data.bathrooms.toString(),
-        balconies: data.balconies,
+        balconies: data.segment !== "commercial" ? data.balconies : undefined,
         squareFeet: data.squareFeet,
         carpetArea: data.carpetArea,
         floorNumber: data.floorNumber,
@@ -151,7 +162,7 @@ export default function PostPropertyPage() {
         facing: data.facing,
         furnishing: data.furnishing,
         amenities: data.amenities,
-        availableFrom: data.availableFrom ? new Date(data.availableFrom) : null,
+        availableFrom: data.availableFrom ? new Date(data.availableFrom) : undefined,
       };
       return apiRequest("POST", "/api/properties", propertyData);
     },
@@ -296,15 +307,15 @@ export default function PostPropertyPage() {
   const canProceed = (): boolean => {
     switch (currentStep) {
       case 1:
-        return !!formData.propertyCategory && !!formData.propertyType;
+        return !!formData.segment && !!formData.propertyType;
       case 2:
         return !!formData.city && !!formData.locality && !!formData.address;
       case 3:
         return formData.squareFeet > 0;
       case 4:
-        return formData.rent > 0;
+        return formData.listingType === "sale" ? formData.price > 0 : formData.rent > 0;
       case 5:
-        return formData.preferredTenants.length > 0;
+        return formData.listingType === "sale" || formData.preferredTenants.length > 0;
       case 6:
         return formData.images.length >= 3;
       case 7:
@@ -340,34 +351,51 @@ export default function PostPropertyPage() {
         return (
           <div className="space-y-6">
             <div>
-              <Label className="text-base font-medium mb-3 block">What type of property?</Label>
+              <Label className="text-base font-medium mb-3 block">What do you want to list?</Label>
               <RadioGroup
-                value={formData.propertyCategory}
-                onValueChange={(value: "residential" | "commercial") => {
-                  updateFormData("propertyCategory", value);
+                value={formData.segment}
+                onValueChange={(value: "rent" | "buy" | "commercial") => {
+                  updateFormData("segment", value);
                   updateFormData("propertyType", "");
+                  updateFormData("propertyCategory", value === "commercial" ? "commercial" : "residential");
+                  updateFormData("listingType", value === "buy" ? "sale" : "rent");
                 }}
-                className="grid grid-cols-2 gap-4"
+                className="grid grid-cols-3 gap-4"
               >
                 <Label
-                  htmlFor="residential"
+                  htmlFor="rent"
                   className={`flex flex-col items-center gap-2 p-6 border rounded-lg cursor-pointer transition-all ${
-                    formData.propertyCategory === "residential"
+                    formData.segment === "rent"
                       ? "border-primary bg-primary/5"
                       : "border-border hover:border-primary/50"
                   }`}
                 >
-                  <RadioGroupItem value="residential" id="residential" className="sr-only" />
+                  <RadioGroupItem value="rent" id="rent" className="sr-only" />
                   <Home className="h-10 w-10 text-primary" />
-                  <span className="font-medium">Residential</span>
+                  <span className="font-medium">For Rent</span>
                   <span className="text-xs text-muted-foreground text-center">
-                    Apartment, House, Villa
+                    Residential properties
+                  </span>
+                </Label>
+                <Label
+                  htmlFor="buy"
+                  className={`flex flex-col items-center gap-2 p-6 border rounded-lg cursor-pointer transition-all ${
+                    formData.segment === "buy"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <RadioGroupItem value="buy" id="buy" className="sr-only" />
+                  <Home className="h-10 w-10 text-primary" />
+                  <span className="font-medium">For Sale</span>
+                  <span className="text-xs text-muted-foreground text-center">
+                    Residential properties
                   </span>
                 </Label>
                 <Label
                   htmlFor="commercial"
                   className={`flex flex-col items-center gap-2 p-6 border rounded-lg cursor-pointer transition-all ${
-                    formData.propertyCategory === "commercial"
+                    formData.segment === "commercial"
                       ? "border-primary bg-primary/5"
                       : "border-border hover:border-primary/50"
                   }`}
@@ -382,10 +410,48 @@ export default function PostPropertyPage() {
               </RadioGroup>
             </div>
 
+            {formData.segment === "commercial" && (
+              <div>
+                <Label className="text-base font-medium mb-3 block">Listing type</Label>
+                <RadioGroup
+                  value={formData.listingType}
+                  onValueChange={(value: "rent" | "sale") => {
+                    updateFormData("listingType", value);
+                  }}
+                  className="grid grid-cols-2 gap-4"
+                >
+                  <Label
+                    htmlFor="commercial-rent"
+                    className={`flex flex-col items-center gap-2 p-4 border rounded-lg cursor-pointer transition-all ${
+                      formData.listingType === "rent"
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    <RadioGroupItem value="rent" id="commercial-rent" className="sr-only" />
+                    <span className="font-medium">For Rent</span>
+                    <span className="text-xs text-muted-foreground">Monthly/Yearly lease</span>
+                  </Label>
+                  <Label
+                    htmlFor="commercial-sale"
+                    className={`flex flex-col items-center gap-2 p-4 border rounded-lg cursor-pointer transition-all ${
+                      formData.listingType === "sale"
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    <RadioGroupItem value="sale" id="commercial-sale" className="sr-only" />
+                    <span className="font-medium">For Sale</span>
+                    <span className="text-xs text-muted-foreground">Buy/Sell outright</span>
+                  </Label>
+                </RadioGroup>
+              </div>
+            )}
+
             <div>
               <Label className="text-base font-medium mb-3 block">Select property type</Label>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {(formData.propertyCategory === "commercial"
+                {(formData.segment === "commercial"
                   ? PROPERTY_TYPES_COMMERCIAL
                   : PROPERTY_TYPES_RESIDENTIAL
                 ).map((type) => (
@@ -638,64 +704,111 @@ export default function PostPropertyPage() {
       case 4:
         return (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="rent">Monthly Rent</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    {"\u20B9"}
-                  </span>
-                  <Input
-                    id="rent"
-                    type="number"
-                    placeholder="25000"
-                    value={formData.rent || ""}
-                    onChange={(e) => updateFormData("rent", parseInt(e.target.value) || 0)}
-                    className="pl-8"
-                    data-testid="input-rent"
-                  />
+            {formData.listingType === "sale" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="price">Sale Price</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="price"
+                      type="number"
+                      placeholder="5000000"
+                      value={formData.price || ""}
+                      onChange={(e) => updateFormData("price", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-price"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Total sale price in INR
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maintenance">Maintenance (per month)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="maintenance"
+                      type="number"
+                      placeholder="2500"
+                      value={formData.maintenanceCharges || ""}
+                      onChange={(e) => updateFormData("maintenanceCharges", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-maintenance"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Optional: Monthly society/maintenance charges
+                  </p>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="deposit">Security Deposit</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    {"\u20B9"}
-                  </span>
-                  <Input
-                    id="deposit"
-                    type="number"
-                    placeholder="100000"
-                    value={formData.securityDeposit || ""}
-                    onChange={(e) => updateFormData("securityDeposit", parseInt(e.target.value) || 0)}
-                    className="pl-8"
-                    data-testid="input-deposit"
-                  />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="rent">Monthly Rent</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="rent"
+                      type="number"
+                      placeholder="25000"
+                      value={formData.rent || ""}
+                      onChange={(e) => updateFormData("rent", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-rent"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deposit">Security Deposit</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="deposit"
+                      type="number"
+                      placeholder="100000"
+                      value={formData.securityDeposit || ""}
+                      onChange={(e) => updateFormData("securityDeposit", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-deposit"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maintenance">Maintenance (per month)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="maintenance"
+                      type="number"
+                      placeholder="2500"
+                      value={formData.maintenanceCharges || ""}
+                      onChange={(e) => updateFormData("maintenanceCharges", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-maintenance"
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="maintenance">Maintenance (per month)</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    {"\u20B9"}
-                  </span>
-                  <Input
-                    id="maintenance"
-                    type="number"
-                    placeholder="2500"
-                    value={formData.maintenanceCharges || ""}
-                    onChange={(e) => updateFormData("maintenanceCharges", parseInt(e.target.value) || 0)}
-                    className="pl-8"
-                    data-testid="input-maintenance"
-                  />
-                </div>
-              </div>
-            </div>
+            )}
 
             <div className="p-4 bg-muted/50 rounded-lg">
               <p className="text-sm text-muted-foreground">
-                Tip: Properties priced competitively get 3x more enquiries. Check similar properties
-                in your area before setting the rent.
+                {formData.listingType === "sale" 
+                  ? "Tip: Properties priced competitively sell faster. Research similar properties in your area before setting the price."
+                  : "Tip: Properties priced competitively get 3x more enquiries. Check similar properties in your area before setting the rent."
+                }
               </p>
             </div>
           </div>

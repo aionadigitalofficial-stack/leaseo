@@ -23,13 +23,15 @@ export default function PropertiesPage() {
   const [sortBy, setSortBy] = useState<string>("newest");
 
   // Parse URL params into filters
-  const parseFiltersFromUrl = (): PropertyFilters => {
+  const parseFiltersFromUrl = (): PropertyFilters & { segment?: string } => {
     const params = new URLSearchParams(search);
-    const filters: PropertyFilters = {};
+    const filters: PropertyFilters & { segment?: string } = {};
     
     if (params.get("city")) filters.city = params.get("city") || undefined;
+    if (params.get("propertyType")) filters.propertyType = params.get("propertyType") || undefined;
     if (params.get("type")) filters.propertyType = params.get("type") || undefined;
     if (params.get("listing")) filters.listingType = params.get("listing") as "rent" | "sale" | undefined;
+    if (params.get("segment")) filters.segment = params.get("segment") || undefined;
     if (params.get("minPrice")) filters.minPrice = parseInt(params.get("minPrice") || "0");
     if (params.get("maxPrice")) filters.maxPrice = parseInt(params.get("maxPrice") || "0");
     if (params.get("beds")) filters.minBedrooms = parseInt(params.get("beds") || "0");
@@ -42,8 +44,10 @@ export default function PropertiesPage() {
   // Update URL when filters change
   useEffect(() => {
     const params = new URLSearchParams();
+    const filtersWithSegment = filters as PropertyFilters & { segment?: string };
+    if (filtersWithSegment.segment) params.set("segment", filtersWithSegment.segment);
     if (filters.city) params.set("city", filters.city);
-    if (filters.propertyType) params.set("type", filters.propertyType);
+    if (filters.propertyType) params.set("propertyType", filters.propertyType);
     if (filters.listingType) params.set("listing", filters.listingType);
     if (filters.minPrice) params.set("minPrice", filters.minPrice.toString());
     if (filters.maxPrice) params.set("maxPrice", filters.maxPrice.toString());
@@ -56,6 +60,8 @@ export default function PropertiesPage() {
   // Build API URL with filters
   const buildApiUrl = () => {
     const params = new URLSearchParams();
+    const filtersWithSegment = filters as PropertyFilters & { segment?: string };
+    if (filtersWithSegment.segment) params.set("segment", filtersWithSegment.segment);
     if (filters.city) params.set("city", filters.city);
     if (filters.propertyType) params.set("propertyType", filters.propertyType);
     if (filters.listingType) params.set("listingType", filters.listingType);
@@ -89,7 +95,13 @@ export default function PropertiesPage() {
         <div className="bg-muted/30 py-8 border-b">
           <div className="container mx-auto px-4">
             <h1 className="text-3xl md:text-4xl font-bold mb-2">
-              {filters.listingType === "sale" ? "Properties for Sale" : "Rental Properties"}
+              {(() => {
+                const filtersWithSegment = filters as PropertyFilters & { segment?: string };
+                if (filtersWithSegment.segment === "buy") return "Properties for Sale";
+                if (filtersWithSegment.segment === "commercial") return "Commercial Properties";
+                if (filters.listingType === "sale") return "Properties for Sale";
+                return "Rental Properties";
+              })()}
             </h1>
             <p className="text-muted-foreground">
               {isLoading ? "Searching..." : `${properties.length} properties found`}

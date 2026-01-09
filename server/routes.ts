@@ -46,6 +46,21 @@ export async function registerRoutes(
     try {
       const filters: PropertyFilters = {};
       
+      // Support segment-based filtering (maps to listingType and isCommercial)
+      if (req.query.segment) {
+        const segment = req.query.segment as string;
+        if (segment === "rent") {
+          filters.listingType = "rent";
+          filters.isCommercial = false;
+        } else if (segment === "buy") {
+          filters.listingType = "sale";
+          filters.isCommercial = false;
+        } else if (segment === "commercial") {
+          filters.isCommercial = true;
+        }
+      }
+      
+      // Direct listingType filter (overrides segment if both provided)
       if (req.query.listingType) {
         filters.listingType = req.query.listingType as "rent" | "sale";
       }
@@ -63,7 +78,7 @@ export async function registerRoutes(
       if (req.query.locality) {
         filters.locality = req.query.locality as string;
       }
-      // Support isCommercial filter
+      // Support isCommercial filter (overrides segment if provided)
       if (req.query.isCommercial === "true") {
         filters.isCommercial = true;
       } else if (req.query.isCommercial === "false") {
@@ -1251,27 +1266,81 @@ export async function registerRoutes(
     }
   });
 
+  // Get category tree (hierarchical view)
+  app.get("/api/categories/tree", async (req, res) => {
+    try {
+      const allCategories = await db.select().from(propertyCategories).orderBy(propertyCategories.displayOrder);
+      
+      // Separate main categories (no parentId) and subcategories
+      const mainCategories = allCategories.filter(c => !c.parentId);
+      const subcategories = allCategories.filter(c => c.parentId);
+      
+      // Build tree structure
+      const tree = mainCategories.map(main => ({
+        ...main,
+        children: subcategories.filter(sub => sub.parentId === main.id)
+      }));
+      
+      res.json(tree);
+    } catch (error) {
+      console.error("Error fetching category tree:", error);
+      res.status(500).json({ error: "Failed to fetch category tree" });
+    }
+  });
+
+  // Get categories by segment (rent/buy/commercial)
+  app.get("/api/categories/segment/:segment", async (req, res) => {
+    try {
+      const { segment } = req.params;
+      if (!["rent", "buy", "commercial"].includes(segment)) {
+        return res.status(400).json({ error: "Invalid segment. Must be rent, buy, or commercial" });
+      }
+      
+      const categories = await db.select()
+        .from(propertyCategories)
+        .where(eq(propertyCategories.segment, segment))
+        .orderBy(propertyCategories.displayOrder);
+      
+      // Separate main category and subcategories
+      const mainCategory = categories.find(c => !c.parentId);
+      const subcategories = categories.filter(c => c.parentId);
+      
+      res.json({
+        main: mainCategory,
+        subcategories
+      });
+    } catch (error) {
+      console.error("Error fetching segment categories:", error);
+      res.status(500).json({ error: "Failed to fetch segment categories" });
+    }
+  });
+
   // Create category (admin only)
   app.post("/api/categories", authMiddleware, adminMiddleware, async (req, res) => {
     try {
-      const { name, description, icon, displayOrder } = req.body;
+      const { name, description, icon, displayOrder, parentId, segment, supportsRent, supportsSale, isCommercial } = req.body;
       if (!name) {
         return res.status(400).json({ error: "Category name is required" });
       }
-      const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      // Create slug with segment prefix for subcategories
+      const slugBase = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+      const slug = parentId && segment ? `${segment}-${slugBase}` : slugBase;
+      
       const [category] = await db.insert(propertyCategories).values({
         name,
         slug,
         description: description || null,
         icon: icon || null,
         displayOrder: displayOrder || 0,
+        parentId: parentId || null,
+        segment: segment || "rent",
+        supportsRent: supportsRent !== undefined ? supportsRent : true,
+        supportsSale: supportsSale !== undefined ? supportsSale : false,
+        isCommercial: isCommercial !== undefined ? isCommercial : false,
       }).returning();
       res.status(201).json(category);
     } catch (error: any) {
       console.error("Error creating category:", error);
-      if (error.code === "23505") {
-        return res.status(400).json({ error: "Category with this name already exists" });
-      }
       res.status(500).json({ error: "Failed to create category" });
     }
   });
@@ -1279,16 +1348,23 @@ export async function registerRoutes(
   // Update category (admin only)
   app.patch("/api/categories/:id", authMiddleware, adminMiddleware, async (req, res) => {
     try {
-      const { name, description, icon, displayOrder, isActive } = req.body;
+      const { name, description, icon, displayOrder, isActive, parentId, segment, supportsRent, supportsSale, isCommercial } = req.body;
       const updateData: any = {};
       if (name !== undefined) {
         updateData.name = name;
-        updateData.slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+        // Update slug with segment prefix if applicable
+        const slugBase = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+        updateData.slug = segment && parentId ? `${segment}-${slugBase}` : slugBase;
       }
       if (description !== undefined) updateData.description = description;
       if (icon !== undefined) updateData.icon = icon;
       if (displayOrder !== undefined) updateData.displayOrder = displayOrder;
       if (isActive !== undefined) updateData.isActive = isActive;
+      if (parentId !== undefined) updateData.parentId = parentId;
+      if (segment !== undefined) updateData.segment = segment;
+      if (supportsRent !== undefined) updateData.supportsRent = supportsRent;
+      if (supportsSale !== undefined) updateData.supportsSale = supportsSale;
+      if (isCommercial !== undefined) updateData.isCommercial = isCommercial;
 
       const [updated] = await db.update(propertyCategories)
         .set(updateData)

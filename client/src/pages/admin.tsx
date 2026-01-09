@@ -129,6 +129,11 @@ const categoryFormSchema = z.object({
   description: z.string().optional(),
   icon: z.string().optional(),
   displayOrder: z.string().optional(),
+  parentId: z.string().optional(),
+  segment: z.string().optional(),
+  supportsRent: z.boolean().optional(),
+  supportsSale: z.boolean().optional(),
+  isCommercial: z.boolean().optional(),
 });
 
 const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
@@ -254,7 +259,17 @@ export default function AdminPage() {
 
   const categoryForm = useForm({
     resolver: zodResolver(categoryFormSchema),
-    defaultValues: { name: "", description: "", icon: "", displayOrder: "0" },
+    defaultValues: { 
+      name: "", 
+      description: "", 
+      icon: "", 
+      displayOrder: "0",
+      parentId: "",
+      segment: "rent",
+      supportsRent: true,
+      supportsSale: false,
+      isCommercial: false,
+    },
   });
 
   useEffect(() => {
@@ -264,9 +279,24 @@ export default function AdminPage() {
         description: editingCategory.description || "",
         icon: editingCategory.icon || "",
         displayOrder: String(editingCategory.displayOrder || 0),
+        parentId: editingCategory.parentId || "",
+        segment: editingCategory.segment || "rent",
+        supportsRent: editingCategory.supportsRent ?? true,
+        supportsSale: editingCategory.supportsSale ?? false,
+        isCommercial: editingCategory.isCommercial ?? false,
       });
     } else {
-      categoryForm.reset({ name: "", description: "", icon: "", displayOrder: "0" });
+      categoryForm.reset({ 
+        name: "", 
+        description: "", 
+        icon: "", 
+        displayOrder: "0",
+        parentId: "",
+        segment: "rent",
+        supportsRent: true,
+        supportsSale: false,
+        isCommercial: false,
+      });
     }
   }, [editingCategory, categoryForm]);
 
@@ -626,6 +656,11 @@ export default function AdminPage() {
     const submitData = {
       ...data,
       displayOrder: data.displayOrder ? parseInt(data.displayOrder) : 0,
+      parentId: data.parentId || null,
+      segment: data.segment || "rent",
+      supportsRent: data.supportsRent ?? true,
+      supportsSale: data.supportsSale ?? false,
+      isCommercial: data.isCommercial ?? false,
     };
     if (editingCategory) {
       updateCategoryMutation.mutate({ id: editingCategory.id, data: submitData });
@@ -1135,12 +1170,31 @@ export default function AdminPage() {
     </div>
   );
 
+  // Build category tree from flat list
+  const categoryTree = (() => {
+    const mainCategories = categories.filter(c => !c.parentId);
+    const subcategories = categories.filter(c => c.parentId);
+    return mainCategories.map(main => ({
+      ...main,
+      children: subcategories.filter(sub => sub.parentId === main.id)
+    }));
+  })();
+
+  const getSegmentColor = (segment: string) => {
+    switch (segment) {
+      case "rent": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+      case "buy": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      case "commercial": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+    }
+  };
+
   const renderCategories = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">Property Categories</h1>
-          <p className="text-muted-foreground">Manage property categories</p>
+          <p className="text-muted-foreground">Manage property categories with hierarchy</p>
         </div>
         <Button onClick={() => setIsAddCategoryOpen(true)} data-testid="button-add-category">
           <Plus className="h-4 w-4 mr-2" />
@@ -1148,72 +1202,145 @@ export default function AdminPage() {
         </Button>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          {categoriesLoading ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
-            </div>
-          ) : categories.length === 0 ? (
+      {categoriesLoading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full" />)}
+        </div>
+      ) : categories.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6">
             <p className="text-muted-foreground text-center py-8">No categories yet. Create your first category.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Slug</TableHead>
-                  <TableHead>Icon</TableHead>
-                  <TableHead>Order</TableHead>
-                  <TableHead>Active</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {categories.map((category) => (
-                  <TableRow key={category.id} data-testid={`row-category-${category.id}`}>
-                    <TableCell className="font-medium">{category.name}</TableCell>
-                    <TableCell><Badge variant="outline">{category.slug}</Badge></TableCell>
-                    <TableCell>{category.icon || "-"}</TableCell>
-                    <TableCell>{category.displayOrder || 0}</TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={category.isActive ?? true}
-                        onCheckedChange={(checked) => {
-                          updateCategoryMutation.mutate({
-                            id: category.id,
-                            data: { isActive: checked },
-                          });
-                        }}
-                        data-testid={`switch-category-active-${category.id}`}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button 
-                          size="icon" 
-                          variant="ghost"
-                          onClick={() => setEditingCategory(category)}
-                          data-testid={`button-edit-category-${category.id}`}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          size="icon" 
-                          variant="ghost" 
-                          onClick={() => deleteCategoryMutation.mutate(category.id)}
-                          data-testid={`button-delete-category-${category.id}`}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-6">
+          {categoryTree.map((mainCategory: any) => (
+            <Card key={mainCategory.id} data-testid={`card-category-${mainCategory.id}`}>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <Badge className={getSegmentColor(mainCategory.segment)}>
+                      {mainCategory.segment?.toUpperCase() || "RENT"}
+                    </Badge>
+                    <CardTitle className="text-xl">{mainCategory.name}</CardTitle>
+                    <Badge variant="outline" className="text-xs">{mainCategory.slug}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={mainCategory.isActive ?? true}
+                      onCheckedChange={(checked) => {
+                        updateCategoryMutation.mutate({
+                          id: mainCategory.id,
+                          data: { isActive: checked },
+                        });
+                      }}
+                      data-testid={`switch-category-active-${mainCategory.id}`}
+                    />
+                    <Button 
+                      size="icon" 
+                      variant="ghost"
+                      onClick={() => setEditingCategory(mainCategory)}
+                      data-testid={`button-edit-category-${mainCategory.id}`}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                {mainCategory.description && (
+                  <CardDescription>{mainCategory.description}</CardDescription>
+                )}
+              </CardHeader>
+              <CardContent>
+                {mainCategory.children && mainCategory.children.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground mb-3">
+                      Subcategories ({mainCategory.children.length})
+                    </p>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Slug</TableHead>
+                          <TableHead>Rent</TableHead>
+                          <TableHead>Sale</TableHead>
+                          <TableHead>Commercial</TableHead>
+                          <TableHead>Order</TableHead>
+                          <TableHead>Active</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {mainCategory.children.map((child: any) => (
+                          <TableRow key={child.id} data-testid={`row-category-${child.id}`}>
+                            <TableCell className="font-medium">{child.name}</TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs">{child.slug}</Badge></TableCell>
+                            <TableCell>
+                              {child.supportsRent ? (
+                                <Badge variant="secondary" className="text-xs">Yes</Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">No</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {child.supportsSale ? (
+                                <Badge variant="secondary" className="text-xs">Yes</Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">No</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {child.isCommercial ? (
+                                <Badge variant="secondary" className="text-xs">Yes</Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">No</span>
+                              )}
+                            </TableCell>
+                            <TableCell>{child.displayOrder || 0}</TableCell>
+                            <TableCell>
+                              <Switch
+                                checked={child.isActive ?? true}
+                                onCheckedChange={(checked) => {
+                                  updateCategoryMutation.mutate({
+                                    id: child.id,
+                                    data: { isActive: checked },
+                                  });
+                                }}
+                                data-testid={`switch-category-active-${child.id}`}
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost"
+                                  onClick={() => setEditingCategory(child)}
+                                  data-testid={`button-edit-category-${child.id}`}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  size="icon" 
+                                  variant="ghost" 
+                                  onClick={() => deleteCategoryMutation.mutate(child.id)}
+                                  data-testid={`button-delete-category-${child.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-sm italic">No subcategories</p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -2044,6 +2171,45 @@ export default function AdminPage() {
                 </FormItem>
               )} />
               <div className="grid grid-cols-2 gap-4">
+                <FormField control={categoryForm.control} name="segment" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Segment</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || "rent"}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-category-segment">
+                          <SelectValue placeholder="Select segment" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="rent">Rent</SelectItem>
+                        <SelectItem value="buy">Buy</SelectItem>
+                        <SelectItem value="commercial">Commercial</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={categoryForm.control} name="parentId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Parent Category (Optional)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-category-parent">
+                          <SelectValue placeholder="None (Main Category)" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="">None (Main Category)</SelectItem>
+                        {categories.filter(c => !c.parentId).map(cat => (
+                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <FormField control={categoryForm.control} name="icon" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Icon Name (Optional)</FormLabel>
@@ -2056,6 +2222,38 @@ export default function AdminPage() {
                     <FormLabel>Display Order</FormLabel>
                     <FormControl><Input {...field} type="number" placeholder="0" data-testid="input-category-order" /></FormControl>
                     <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <FormField control={categoryForm.control} name="supportsRent" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm">Supports Rent</FormLabel>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-category-supports-rent" />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                <FormField control={categoryForm.control} name="supportsSale" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm">Supports Sale</FormLabel>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-category-supports-sale" />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                <FormField control={categoryForm.control} name="isCommercial" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm">Commercial</FormLabel>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-category-is-commercial" />
+                    </FormControl>
                   </FormItem>
                 )} />
               </div>

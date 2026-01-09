@@ -39,9 +39,13 @@ const amenitiesList = [
   "Elevator",
 ];
 
+interface ExtendedFilters extends PropertyFilters {
+  segment?: "rent" | "buy" | "commercial";
+}
+
 interface SearchFiltersProps {
-  filters: PropertyFilters;
-  onFiltersChange: (filters: PropertyFilters) => void;
+  filters: ExtendedFilters;
+  onFiltersChange: (filters: ExtendedFilters) => void;
   showSaleOption?: boolean;
   resultsCount?: number;
 }
@@ -53,7 +57,7 @@ export function SearchFilters({
   resultsCount = 0 
 }: SearchFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [localFilters, setLocalFilters] = useState<PropertyFilters>(filters);
+  const [localFilters, setLocalFilters] = useState<ExtendedFilters>(filters);
   const [searchTerm, setSearchTerm] = useState(filters.city || "");
 
   const activeFiltersCount = Object.values(filters).filter(
@@ -66,7 +70,7 @@ export function SearchFilters({
   };
 
   const handleClearFilters = () => {
-    const cleared: PropertyFilters = {};
+    const cleared: ExtendedFilters = { segment: filters.segment };
     setLocalFilters(cleared);
     setSearchTerm("");
     onFiltersChange(cleared);
@@ -74,7 +78,7 @@ export function SearchFilters({
 
   const removeFilter = (key: keyof PropertyFilters) => {
     const updated = { ...filters };
-    delete updated[key];
+    delete updated[key as keyof ExtendedFilters];
     onFiltersChange(updated);
     setLocalFilters(updated);
   };
