@@ -570,7 +570,7 @@ export default function AdminPage() {
   });
 
   const updatePageMutation = useMutation({
-    mutationFn: async ({ key, data }: { key: string; data: { title: string; content: any } }) =>
+    mutationFn: async ({ key, data }: { key: string; data: { title: string; content: any; metaTitle?: string | null; metaDescription?: string | null } }) =>
       apiRequest("PATCH", `/api/pages/${key}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
@@ -857,8 +857,11 @@ export default function AdminPage() {
     // City filter
     if (propertyFilterCity && property.city !== propertyFilterCity) return false;
     
-    // Locality filter
-    if (propertyFilterLocality && property.locality !== propertyFilterLocality) return false;
+    // Locality filter (compare by localityId -> locality name lookup)
+    if (propertyFilterLocality) {
+      const propertyLocalityName = localities.find(l => l.id === property.localityId)?.name;
+      if (propertyLocalityName !== propertyFilterLocality) return false;
+    }
     
     // Status filter
     if (propertyFilterStatus !== "all" && property.status !== propertyFilterStatus) return false;
@@ -1052,12 +1055,12 @@ export default function AdminPage() {
               </div>
               <div className="w-[150px]">
                 <Label className="text-xs text-muted-foreground">City</Label>
-                <Select value={propertyFilterCity} onValueChange={setPropertyFilterCity}>
+                <Select value={propertyFilterCity || "all"} onValueChange={(v) => setPropertyFilterCity(v === "all" ? "" : v)}>
                   <SelectTrigger data-testid="select-property-city">
                     <SelectValue placeholder="All Cities" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Cities</SelectItem>
+                    <SelectItem value="all">All Cities</SelectItem>
                     {cities.map(city => (
                       <SelectItem key={city.id} value={city.name}>{city.name}</SelectItem>
                     ))}
@@ -1093,12 +1096,12 @@ export default function AdminPage() {
               <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t items-end">
                 <div className="w-[150px]">
                   <Label className="text-xs text-muted-foreground">Locality</Label>
-                  <Select value={propertyFilterLocality} onValueChange={setPropertyFilterLocality}>
+                  <Select value={propertyFilterLocality || "all"} onValueChange={(v) => setPropertyFilterLocality(v === "all" ? "" : v)}>
                     <SelectTrigger data-testid="select-property-locality">
                       <SelectValue placeholder="All Localities" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Localities</SelectItem>
+                      <SelectItem value="all">All Localities</SelectItem>
                       {localities
                         .filter(l => !propertyFilterCity || cities.find(c => c.name === propertyFilterCity)?.id === l.cityId)
                         .map(locality => (
