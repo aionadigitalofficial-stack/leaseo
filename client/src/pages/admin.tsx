@@ -77,13 +77,14 @@ import {
   CheckCircle,
   XCircle,
   ExternalLink,
+  UserCheck,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon } from "lucide-react";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "employees" | "cities" | "categories" | "boosts" | "payments" | "blog" | "pages" | "seo" | "settings";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "blog" | "pages" | "seo" | "settings";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -154,6 +155,8 @@ const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "properties", label: "Properties", icon: Building2 },
   { id: "enquiries", label: "Enquiries", icon: MessageSquare },
+  { id: "owners", label: "Property Owners", icon: Home },
+  { id: "users", label: "Login Users", icon: UserCheck },
   { id: "categories", label: "Categories", icon: Tag },
   { id: "boosts", label: "Listing Boosts", icon: TrendingUp },
   { id: "payments", label: "Payments", icon: CreditCard },
@@ -195,6 +198,10 @@ export default function AdminPage() {
   const [propertyFilterDateTo, setPropertyFilterDateTo] = useState("");
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  
+  // Pagination state
+  const [propertyPage, setPropertyPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   const { data: properties = [], isLoading: propertiesLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -222,6 +229,14 @@ export default function AdminPage() {
 
   const { data: employees = [], isLoading: employeesLoading } = useQuery<any[]>({
     queryKey: ["/api/admin/employees"],
+  });
+
+  const { data: propertyOwners = [], isLoading: ownersLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/property-owners"],
+  });
+
+  const { data: loginUsers = [], isLoading: usersLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/login-users"],
   });
 
   const { data: seoSettings } = useQuery<any>({
@@ -882,6 +897,19 @@ export default function AdminPage() {
     return true;
   });
 
+  // Reset page when filters change or filtered results shrink
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredProperties.length / ITEMS_PER_PAGE));
+    if (propertyPage > maxPage) {
+      setPropertyPage(maxPage);
+    }
+  }, [filteredProperties.length, propertyPage]);
+
+  // Reset page when search/filters change
+  useEffect(() => {
+    setPropertyPage(1);
+  }, [propertySearch, propertyFilterCity, propertyFilterLocality, propertyFilterStatus, propertyFilterPriceMin, propertyFilterPriceMax, propertyFilterDateFrom, propertyFilterDateTo]);
+
   // Export properties to CSV (with proper escaping)
   const exportPropertiesToCSV = () => {
     const escapeCSV = (val: any) => {
@@ -915,15 +943,25 @@ export default function AdminPage() {
     toast({ title: "Export complete", description: `Exported ${filteredProperties.length} properties` });
   };
 
+  // Helper to get owner name from property
+  const getOwnerName = (property: Property) => {
+    const owner = propertyOwners.find(o => o.id === property.ownerId);
+    if (owner) {
+      return `${owner.firstName || ""} ${owner.lastName || ""}`.trim() || owner.email || "-";
+    }
+    return "-";
+  };
+
   const renderPropertyTable = (propertiesToShow: Property[]) => (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Title</TableHead>
           <TableHead>Type</TableHead>
+          <TableHead>Owner</TableHead>
           <TableHead>City</TableHead>
           <TableHead>Price</TableHead>
-          <TableHead>Owner Contact</TableHead>
+          <TableHead>Contact</TableHead>
           <TableHead>Upload Date</TableHead>
           <TableHead>Status</TableHead>
           <TableHead className="text-right">Actions</TableHead>
@@ -932,12 +970,13 @@ export default function AdminPage() {
       <TableBody>
         {propertiesToShow.map((property) => (
           <TableRow key={property.id} data-testid={`row-property-${property.id}`}>
-            <TableCell className="font-medium max-w-[180px] truncate">{property.title}</TableCell>
+            <TableCell className="font-medium max-w-[160px] truncate">{property.title}</TableCell>
             <TableCell>
               <Badge variant="outline" className="capitalize text-xs">
                 {property.isCommercial ? "Commercial" : property.listingType === "sale" ? "Buy" : "Rent"}
               </Badge>
             </TableCell>
+            <TableCell className="text-sm max-w-[100px] truncate">{getOwnerName(property)}</TableCell>
             <TableCell className="text-sm">{property.city}</TableCell>
             <TableCell className="text-sm">₹{Number(property.rent || property.price).toLocaleString()}{property.listingType === "rent" ? "/mo" : ""}</TableCell>
             <TableCell>
@@ -945,7 +984,7 @@ export default function AdminPage() {
                 {(property as any).ownerEmail && (
                   <div className="flex items-center gap-1 text-muted-foreground">
                     <Mail className="h-3 w-3" />
-                    <span className="truncate max-w-[120px]">{(property as any).ownerEmail}</span>
+                    <span className="truncate max-w-[100px]">{(property as any).ownerEmail}</span>
                   </div>
                 )}
                 {(property as any).ownerPhone && (
@@ -1171,7 +1210,7 @@ export default function AdminPage() {
         </Card>
 
         {/* Property Tabs by Segment */}
-        <Tabs value={propertySegment} onValueChange={(v) => setPropertySegment(v as any)} className="w-full">
+        <Tabs value={propertySegment} onValueChange={(v) => { setPropertySegment(v as any); setPropertyPage(1); }} className="w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="all" data-testid="tab-all-properties">
               All ({filteredProperties.length})
@@ -1199,7 +1238,40 @@ export default function AdminPage() {
                     <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground">No properties found</p>
                   </div>
-                ) : renderPropertyTable(filteredProperties)}
+                ) : (
+                  <>
+                    {renderPropertyTable(filteredProperties.slice((propertyPage - 1) * ITEMS_PER_PAGE, propertyPage * ITEMS_PER_PAGE))}
+                    {filteredProperties.length > ITEMS_PER_PAGE && (
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                        <p className="text-sm text-muted-foreground">
+                          Showing {(propertyPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(propertyPage * ITEMS_PER_PAGE, filteredProperties.length)} of {filteredProperties.length}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setPropertyPage(p => Math.max(1, p - 1))}
+                            disabled={propertyPage === 1}
+                            data-testid="button-prev-page"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            Previous
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setPropertyPage(p => p + 1)}
+                            disabled={propertyPage * ITEMS_PER_PAGE >= filteredProperties.length}
+                            data-testid="button-next-page"
+                          >
+                            Next
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1212,7 +1284,26 @@ export default function AdminPage() {
                     <Home className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground">No rental properties found</p>
                   </div>
-                ) : renderPropertyTable(rentProperties)}
+                ) : (
+                  <>
+                    {renderPropertyTable(rentProperties.slice((propertyPage - 1) * ITEMS_PER_PAGE, propertyPage * ITEMS_PER_PAGE))}
+                    {rentProperties.length > ITEMS_PER_PAGE && (
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                        <p className="text-sm text-muted-foreground">
+                          Showing {(propertyPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(propertyPage * ITEMS_PER_PAGE, rentProperties.length)} of {rentProperties.length}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => setPropertyPage(p => Math.max(1, p - 1))} disabled={propertyPage === 1}>
+                            <ChevronLeft className="h-4 w-4" /> Previous
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setPropertyPage(p => p + 1)} disabled={propertyPage * ITEMS_PER_PAGE >= rentProperties.length}>
+                            Next <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1225,7 +1316,26 @@ export default function AdminPage() {
                     <Home className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground">No sale properties found</p>
                   </div>
-                ) : renderPropertyTable(buyProperties)}
+                ) : (
+                  <>
+                    {renderPropertyTable(buyProperties.slice((propertyPage - 1) * ITEMS_PER_PAGE, propertyPage * ITEMS_PER_PAGE))}
+                    {buyProperties.length > ITEMS_PER_PAGE && (
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                        <p className="text-sm text-muted-foreground">
+                          Showing {(propertyPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(propertyPage * ITEMS_PER_PAGE, buyProperties.length)} of {buyProperties.length}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => setPropertyPage(p => Math.max(1, p - 1))} disabled={propertyPage === 1}>
+                            <ChevronLeft className="h-4 w-4" /> Previous
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setPropertyPage(p => p + 1)} disabled={propertyPage * ITEMS_PER_PAGE >= buyProperties.length}>
+                            Next <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1238,7 +1348,26 @@ export default function AdminPage() {
                     <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground">No commercial properties found</p>
                   </div>
-                ) : renderPropertyTable(commercialProperties)}
+                ) : (
+                  <>
+                    {renderPropertyTable(commercialProperties.slice((propertyPage - 1) * ITEMS_PER_PAGE, propertyPage * ITEMS_PER_PAGE))}
+                    {commercialProperties.length > ITEMS_PER_PAGE && (
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                        <p className="text-sm text-muted-foreground">
+                          Showing {(propertyPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(propertyPage * ITEMS_PER_PAGE, commercialProperties.length)} of {commercialProperties.length}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => setPropertyPage(p => Math.max(1, p - 1))} disabled={propertyPage === 1}>
+                            <ChevronLeft className="h-4 w-4" /> Previous
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setPropertyPage(p => p + 1)} disabled={propertyPage * ITEMS_PER_PAGE >= commercialProperties.length}>
+                            Next <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1474,6 +1603,161 @@ export default function AdminPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+
+  const renderOwners = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold">Property Owners</h1>
+          <p className="text-muted-foreground">Users who have listed properties on the platform</p>
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          {ownersLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+            </div>
+          ) : propertyOwners.length === 0 ? (
+            <div className="text-center py-12">
+              <Home className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No property owners yet</p>
+              <p className="text-sm text-muted-foreground mt-2">Users who list properties will appear here</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Properties</TableHead>
+                  <TableHead>Joined</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {propertyOwners.map((owner) => (
+                  <TableRow key={owner.id} data-testid={`row-owner-${owner.id}`}>
+                    <TableCell className="font-medium">{owner.firstName || "-"} {owner.lastName || ""}</TableCell>
+                    <TableCell>{owner.email || "-"}</TableCell>
+                    <TableCell>{owner.phone || "-"}</TableCell>
+                    <TableCell><Badge variant="secondary">{owner.propertyCount} listings</Badge></TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {owner.createdAt ? new Date(owner.createdAt).toLocaleDateString() : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={owner.isActive !== false ? "default" : "secondary"}>
+                        {owner.isActive !== false ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        onClick={() => setResetPasswordUserId(owner.id)}
+                        title="Reset Password"
+                        data-testid={`button-reset-password-owner-${owner.id}`}
+                      >
+                        <KeyIcon className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderUsers = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold">Login Users</h1>
+          <p className="text-muted-foreground">All registered users (owners, buyers, renters)</p>
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          {usersLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+            </div>
+          ) : loginUsers.length === 0 ? (
+            <div className="text-center py-12">
+              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No registered users yet</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Roles</TableHead>
+                  <TableHead>Joined</TableHead>
+                  <TableHead>Last Login</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loginUsers.map((user) => (
+                  <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
+                    <TableCell className="font-medium">{user.firstName || "-"} {user.lastName || ""}</TableCell>
+                    <TableCell>{user.email || "-"}</TableCell>
+                    <TableCell>{user.phone || "-"}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {user.roles?.length > 0 ? (
+                          user.roles.map((role: string) => (
+                            <Badge key={role} variant="outline" className="text-xs capitalize">
+                              {role.replace(/_/g, " ")}
+                            </Badge>
+                          ))
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">No role</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "-"}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : "Never"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={user.isActive !== false ? "default" : "secondary"}>
+                        {user.isActive !== false ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        onClick={() => setResetPasswordUserId(user.id)}
+                        title="Reset Password"
+                        data-testid={`button-reset-password-user-${user.id}`}
+                      >
+                        <KeyIcon className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -2303,6 +2587,8 @@ export default function AdminPage() {
       case "dashboard": return renderDashboard();
       case "properties": return renderProperties();
       case "enquiries": return renderEnquiries();
+      case "owners": return renderOwners();
+      case "users": return renderUsers();
       case "categories": return renderCategories();
       case "boosts": return renderBoosts();
       case "payments": return renderPayments();

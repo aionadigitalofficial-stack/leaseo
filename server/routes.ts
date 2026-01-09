@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries } from "@shared/schema";
-import { and, gt, eq, desc, asc, sql } from "drizzle-orm";
+import { and, gt, eq, desc, asc, sql, isNotNull } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
 import { db } from "./db";
@@ -1187,6 +1187,85 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting employee:", error);
       res.status(500).json({ error: "Failed to delete employee" });
+    }
+  });
+
+  // Get property owners (users who have listed properties)
+  app.get("/api/admin/property-owners", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      // Get distinct owner IDs from properties
+      const propertyOwners = await db
+        .selectDistinct({
+          id: users.id,
+          email: users.email,
+          phone: users.phone,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          createdAt: users.createdAt,
+          isActive: users.isActive,
+        })
+        .from(properties)
+        .innerJoin(users, eq(properties.ownerId, users.id))
+        .where(isNotNull(properties.ownerId));
+      
+      // Add property count for each owner
+      const ownersWithCount = await Promise.all(
+        propertyOwners.map(async (owner) => {
+          const [count] = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(properties)
+            .where(eq(properties.ownerId, owner.id));
+          return {
+            ...owner,
+            propertyCount: Number(count?.count || 0),
+          };
+        })
+      );
+      
+      res.json(ownersWithCount);
+    } catch (error) {
+      console.error("Error fetching property owners:", error);
+      res.status(500).json({ error: "Failed to fetch property owners" });
+    }
+  });
+
+  // Get all login users (owners, buyers, renters - everyone except admin employees)
+  app.get("/api/admin/login-users", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const allUsers = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          phone: users.phone,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          createdAt: users.createdAt,
+          isActive: users.isActive,
+          lastLoginAt: users.lastLoginAt,
+        })
+        .from(users)
+        .orderBy(desc(users.createdAt));
+      
+      // Get roles for each user
+      const usersWithRoles = await Promise.all(
+        allUsers.map(async (user) => {
+          const userRolesList = await db
+            .select({ roleName: roles.name })
+            .from(userRoles)
+            .innerJoin(roles, eq(userRoles.roleId, roles.id))
+            .where(eq(userRoles.userId, user.id));
+          
+          return {
+            ...user,
+            roles: userRolesList.map(r => r.roleName),
+          };
+        })
+      );
+      
+      res.json(usersWithRoles);
+    } catch (error) {
+      console.error("Error fetching login users:", error);
+      res.status(500).json({ error: "Failed to fetch login users" });
     }
   });
 
