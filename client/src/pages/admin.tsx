@@ -186,10 +186,13 @@ export default function AdminPage() {
   const [propertySegment, setPropertySegment] = useState<"all" | "rent" | "buy" | "commercial">("all");
   const [propertySearch, setPropertySearch] = useState("");
   const [propertyFilterCity, setPropertyFilterCity] = useState<string>("");
+  const [propertyFilterLocality, setPropertyFilterLocality] = useState<string>("");
   const [propertyFilterStatus, setPropertyFilterStatus] = useState<string>("all");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [propertyFilterPriceMin, setPropertyFilterPriceMin] = useState("");
   const [propertyFilterPriceMax, setPropertyFilterPriceMax] = useState("");
+  const [propertyFilterDateFrom, setPropertyFilterDateFrom] = useState("");
+  const [propertyFilterDateTo, setPropertyFilterDateTo] = useState("");
   const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
 
@@ -854,6 +857,9 @@ export default function AdminPage() {
     // City filter
     if (propertyFilterCity && property.city !== propertyFilterCity) return false;
     
+    // Locality filter
+    if (propertyFilterLocality && property.locality !== propertyFilterLocality) return false;
+    
     // Status filter
     if (propertyFilterStatus !== "all" && property.status !== propertyFilterStatus) return false;
     
@@ -861,6 +867,14 @@ export default function AdminPage() {
     const price = Number(property.rent || property.price || 0);
     if (propertyFilterPriceMin && price < Number(propertyFilterPriceMin)) return false;
     if (propertyFilterPriceMax && price > Number(propertyFilterPriceMax)) return false;
+    
+    // Date range filter
+    if (propertyFilterDateFrom || propertyFilterDateTo) {
+      const propertyDate = property.createdAt ? new Date(property.createdAt) : null;
+      if (!propertyDate) return false;
+      if (propertyFilterDateFrom && propertyDate < new Date(propertyFilterDateFrom)) return false;
+      if (propertyFilterDateTo && propertyDate > new Date(propertyFilterDateTo + "T23:59:59")) return false;
+    }
     
     return true;
   });
@@ -1076,7 +1090,23 @@ export default function AdminPage() {
             </div>
             
             {showAdvancedFilters && (
-              <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
+              <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t items-end">
+                <div className="w-[150px]">
+                  <Label className="text-xs text-muted-foreground">Locality</Label>
+                  <Select value={propertyFilterLocality} onValueChange={setPropertyFilterLocality}>
+                    <SelectTrigger data-testid="select-property-locality">
+                      <SelectValue placeholder="All Localities" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Localities</SelectItem>
+                      {localities
+                        .filter(l => !propertyFilterCity || cities.find(c => c.name === propertyFilterCity)?.id === l.cityId)
+                        .map(locality => (
+                          <SelectItem key={locality.id} value={locality.name}>{locality.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="w-[130px]">
                   <Label className="text-xs text-muted-foreground">Min Price (₹)</Label>
                   <Input
@@ -1097,15 +1127,36 @@ export default function AdminPage() {
                     data-testid="input-price-max"
                   />
                 </div>
+                <div className="w-[140px]">
+                  <Label className="text-xs text-muted-foreground">From Date</Label>
+                  <Input
+                    type="date"
+                    value={propertyFilterDateFrom}
+                    onChange={(e) => setPropertyFilterDateFrom(e.target.value)}
+                    data-testid="input-date-from"
+                  />
+                </div>
+                <div className="w-[140px]">
+                  <Label className="text-xs text-muted-foreground">To Date</Label>
+                  <Input
+                    type="date"
+                    value={propertyFilterDateTo}
+                    onChange={(e) => setPropertyFilterDateTo(e.target.value)}
+                    data-testid="input-date-to"
+                  />
+                </div>
                 <Button 
                   variant="ghost" 
                   size="sm"
                   onClick={() => {
                     setPropertySearch("");
                     setPropertyFilterCity("");
+                    setPropertyFilterLocality("");
                     setPropertyFilterStatus("all");
                     setPropertyFilterPriceMin("");
                     setPropertyFilterPriceMax("");
+                    setPropertyFilterDateFrom("");
+                    setPropertyFilterDateTo("");
                   }}
                   data-testid="button-clear-filters"
                 >
