@@ -3234,5 +3234,141 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== ORGANIZATION SETTINGS ====================
+
+  // Get organization settings
+  app.get("/api/admin/organization", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const settings = await db.select().from(siteSettings)
+        .where(sql`key LIKE 'org_%'`);
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching organization settings:", error);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  // Save organization settings
+  app.post("/api/admin/organization", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const settings = req.body;
+      
+      for (const [key, value] of Object.entries(settings)) {
+        await db.insert(siteSettings)
+          .values({ key, value: value as string })
+          .onConflictDoUpdate({
+            target: siteSettings.key,
+            set: { value: value as string, updatedAt: new Date() }
+          });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error saving organization settings:", error);
+      res.status(500).json({ error: "Failed to save settings" });
+    }
+  });
+
+  // ==================== CSV IMPORT ====================
+
+  // Download sample CSV template
+  app.get("/api/admin/properties/sample-csv", authMiddleware, adminMiddleware, (req, res) => {
+    const sampleCSV = `title,description,propertyType,listingType,isCommercial,rent,deposit,address,city,state,bedrooms,bathrooms,squareFeet,amenities,isFeatured
+"Modern 2BHK Apartment","Spacious apartment with balcony and modern amenities. Located near metro station.","apartment","rent",false,25000,50000,"123 Main Street, Koregaon Park","Pune","Maharashtra",2,2,1200,"parking,gym,security",false
+"Commercial Office Space","Prime office space in business district with 24/7 access.","office","rent",true,75000,150000,"Business Tower, Hinjewadi","Pune","Maharashtra",0,2,2500,"parking,elevator,security,ac",false
+"3BHK Villa for Rent","Beautiful villa with garden, perfect for families.","villa","rent",false,45000,90000,"Palm Meadows, Whitefield","Bangalore","Karnataka",3,3,2800,"parking,garden,security,gym",true`;
+    
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", "attachment; filename=property-import-template.csv");
+    res.send(sampleCSV);
+  });
+
+  // Import properties from CSV
+  app.post("/api/admin/properties/import-csv", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { csvData, ownerId } = req.body;
+      
+      if (!csvData || !ownerId) {
+        return res.status(400).json({ error: "CSV data and owner ID are required" });
+      }
+
+      const lines = csvData.split("\n").filter((line: string) => line.trim());
+      if (lines.length < 2) {
+        return res.status(400).json({ error: "CSV must have header and at least one data row" });
+      }
+
+      const headers = lines[0].split(",").map((h: string) => h.trim().replace(/"/g, ""));
+      const results = { success: 0, failed: 0, errors: [] as string[] };
+
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const values = parseCSVLine(lines[i]);
+          const row: any = {};
+          headers.forEach((header: string, idx: number) => {
+            row[header] = values[idx]?.trim().replace(/^"|"$/g, "") || "";
+          });
+
+          const rentValue = parseInt(row.rent) || 0;
+          
+          await db.insert(properties).values({
+            title: row.title || "Untitled Property",
+            description: row.description || "No description",
+            propertyType: row.propertyType || "apartment",
+            listingType: row.listingType || "rent",
+            isCommercial: row.isCommercial === "true",
+            price: String(rentValue),
+            rent: String(rentValue),
+            securityDeposit: String(parseInt(row.deposit) || 0),
+            address: row.address || "Address not specified",
+            city: row.city || "Unknown",
+            state: row.state || "Unknown",
+            cityId: row.cityId || null,
+            localityId: row.localityId || null,
+            bedrooms: parseInt(row.bedrooms) || 0,
+            bathrooms: String(parseInt(row.bathrooms) || 0),
+            squareFeet: parseInt(row.squareFeet) || null,
+            amenities: row.amenities ? row.amenities.split(",").map((a: string) => a.trim()) : [],
+            isFeatured: row.isFeatured === "true",
+            ownerId,
+            status: "pending",
+          });
+
+          results.success++;
+        } catch (err: any) {
+          results.failed++;
+          results.errors.push(`Row ${i + 1}: ${err.message}`);
+        }
+      }
+
+      res.json(results);
+    } catch (error) {
+      console.error("Error importing properties:", error);
+      res.status(500).json({ error: "Failed to import properties" });
+    }
+  });
+
   return httpServer;
+}
+
+// Helper function to parse CSV line with quoted values
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  
+  return result;
 }

@@ -84,10 +84,10 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon, Shield, MessageCircle } from "lucide-react";
+import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon, Shield, MessageCircle, LogOut, Upload, Building } from "lucide-react";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -313,16 +313,19 @@ const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "blog", label: "Blog", icon: PenTool },
   { id: "pages", label: "Pages", icon: FileText },
   { id: "seo", label: "SEO Settings", icon: Search },
+  { id: "organization", label: "Organization", icon: Building },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
 export default function AdminPage() {
-  const { user, isAuthenticated, isAdmin, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isAdmin, isLoading: authLoading, logout } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
+  const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
+  const [csvFileContent, setCsvFileContent] = useState("");
   const [isAddCityOpen, setIsAddCityOpen] = useState(false);
   const [isAddLocalityOpen, setIsAddLocalityOpen] = useState(false);
   const [isAddBlogOpen, setIsAddBlogOpen] = useState(false);
@@ -1163,6 +1166,58 @@ export default function AdminPage() {
     toast({ title: "Export complete", description: `Exported ${filteredProperties.length} properties` });
   };
 
+  // Import properties from CSV mutation
+  const importCSVMutation = useMutation({
+    mutationFn: async (csvData: string) => {
+      const res = await apiRequest("POST", "/api/admin/properties/import-csv", {
+        csvData,
+        ownerId: user?.id
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ 
+        title: "Import complete", 
+        description: `Successfully imported ${data.success} properties${data.failed > 0 ? `, ${data.failed} failed` : ""}` 
+      });
+      if (data.errors?.length > 0) {
+        console.log("Import errors:", data.errors);
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/properties"] });
+      setIsImportCSVOpen(false);
+      setCsvFileContent("");
+    },
+    onError: () => {
+      toast({ title: "Import failed", description: "Failed to import properties", variant: "destructive" });
+    }
+  });
+
+  const handleCSVFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setCsvFileContent(event.target?.result as string);
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const downloadSampleCSV = async () => {
+    try {
+      const res = await fetch("/api/admin/properties/sample-csv", { credentials: "include" });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "property-import-template.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Error", description: "Failed to download template", variant: "destructive" });
+    }
+  };
+
   // Helper to get owner name from property
   const getOwnerName = (property: Property) => {
     const owner = propertyOwners.find(o => o.id === property.ownerId);
@@ -1288,6 +1343,10 @@ export default function AdminPage() {
             <p className="text-muted-foreground">Manage property listings ({filteredProperties.length} total)</p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsImportCSVOpen(true)} data-testid="button-import-properties">
+              <Upload className="h-4 w-4 mr-2" />
+              Import CSV
+            </Button>
             <Button variant="outline" onClick={exportPropertiesToCSV} data-testid="button-export-properties">
               <Download className="h-4 w-4 mr-2" />
               Export CSV
@@ -3882,6 +3941,159 @@ export default function AdminPage() {
     </div>
   );
 
+  // Organization settings state
+  const [orgName, setOrgName] = useState("");
+  const [orgLogo, setOrgLogo] = useState("");
+  const [orgTagline, setOrgTagline] = useState("");
+  const [orgPhone, setOrgPhone] = useState("");
+  const [orgEmail, setOrgEmail] = useState("");
+  const [orgAddress, setOrgAddress] = useState("");
+
+  const { data: orgSettings = [], isLoading: orgLoading, refetch: refetchOrg } = useQuery<any[]>({
+    queryKey: ["/api/admin/organization"],
+    enabled: activeSection === "organization",
+  });
+
+  useEffect(() => {
+    if (orgSettings.length > 0) {
+      const settings = orgSettings.reduce((acc: any, s: any) => ({ ...acc, [s.key]: s.value }), {});
+      setOrgName(settings.org_name || "Leaseo");
+      setOrgLogo(settings.org_logo || "");
+      setOrgTagline(settings.org_tagline || "");
+      setOrgPhone(settings.org_phone || "");
+      setOrgEmail(settings.org_email || "");
+      setOrgAddress(settings.org_address || "");
+    }
+  }, [orgSettings]);
+
+  const saveOrgSettingsMutation = useMutation({
+    mutationFn: async (settings: Record<string, string>) => {
+      return apiRequest("POST", "/api/admin/organization", settings);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/organization"] });
+      toast({ title: "Organization settings saved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to save settings", variant: "destructive" });
+    },
+  });
+
+  const renderOrganization = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Organization Settings</h1>
+        <p className="text-muted-foreground">Configure your organization's name, logo, and contact details</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building className="h-5 w-5 text-primary" />
+            Brand & Identity
+          </CardTitle>
+          <CardDescription>These settings appear in the header, footer, and across the platform</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {orgLoading ? (
+            <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Organization Name</Label>
+                  <Input 
+                    value={orgName} 
+                    onChange={(e) => setOrgName(e.target.value)}
+                    placeholder="e.g., Leaseo"
+                    data-testid="input-org-name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tagline</Label>
+                  <Input 
+                    value={orgTagline} 
+                    onChange={(e) => setOrgTagline(e.target.value)}
+                    placeholder="e.g., Zero Brokerage Property Platform"
+                    data-testid="input-org-tagline"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Logo URL</Label>
+                <div className="flex gap-4 items-center">
+                  <Input 
+                    value={orgLogo} 
+                    onChange={(e) => setOrgLogo(e.target.value)}
+                    placeholder="https://example.com/logo.png"
+                    className="flex-1"
+                    data-testid="input-org-logo"
+                  />
+                  {orgLogo && (
+                    <img src={orgLogo} alt="Logo preview" className="h-10 w-auto object-contain border rounded" />
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">Enter a URL for your logo, or upload to Object Storage and paste the URL</p>
+              </div>
+
+              <Separator />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Contact Email</Label>
+                  <Input 
+                    type="email"
+                    value={orgEmail} 
+                    onChange={(e) => setOrgEmail(e.target.value)}
+                    placeholder="support@leaseo.in"
+                    data-testid="input-org-email"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contact Phone</Label>
+                  <Input 
+                    value={orgPhone} 
+                    onChange={(e) => setOrgPhone(e.target.value)}
+                    placeholder="+91 1234567890"
+                    data-testid="input-org-phone"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Address</Label>
+                <Textarea 
+                  value={orgAddress} 
+                  onChange={(e) => setOrgAddress(e.target.value)}
+                  placeholder="123 Main Street, Pune, Maharashtra, India"
+                  data-testid="input-org-address"
+                />
+              </div>
+
+              <Button 
+                onClick={() => saveOrgSettingsMutation.mutate({
+                  org_name: orgName,
+                  org_logo: orgLogo,
+                  org_tagline: orgTagline,
+                  org_phone: orgPhone,
+                  org_email: orgEmail,
+                  org_address: orgAddress,
+                })}
+                disabled={saveOrgSettingsMutation.isPending}
+                data-testid="button-save-org"
+              >
+                {saveOrgSettingsMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                <Save className="h-4 w-4 mr-2" />
+                Save Organization Settings
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
@@ -3988,6 +4200,7 @@ export default function AdminPage() {
       case "blog": return renderBlog();
       case "pages": return renderPages();
       case "seo": return renderSeo();
+      case "organization": return renderOrganization();
       case "settings": return renderSettings();
       default: return renderDashboard();
     }
@@ -4038,10 +4251,22 @@ export default function AdminPage() {
             );
           })}
         </nav>
-        <div className="p-4 border-t">
+        <div className="p-4 border-t space-y-2">
           <Button variant="outline" className="w-full hover:bg-primary/10 hover:border-primary" onClick={() => window.location.href = "/"}>
             {!sidebarCollapsed && <span>Back to Site</span>}
             {sidebarCollapsed && <Home className="h-4 w-4" />}
+          </Button>
+          <Button 
+            variant="ghost" 
+            className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive" 
+            onClick={() => {
+              logout();
+              navigate("/");
+            }}
+            data-testid="button-logout"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            {!sidebarCollapsed && <span>Logout</span>}
           </Button>
         </div>
       </aside>
@@ -4049,6 +4274,55 @@ export default function AdminPage() {
       <main className="flex-1 overflow-auto bg-muted/20">
         <div className="p-6 max-w-7xl">{renderContent()}</div>
       </main>
+
+      {/* CSV Import Dialog */}
+      <Dialog open={isImportCSVOpen} onOpenChange={setIsImportCSVOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import Properties from CSV</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file with property data to bulk import properties.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-muted rounded-md">
+              <span className="text-sm">Need a template?</span>
+              <Button variant="outline" size="sm" onClick={downloadSampleCSV} data-testid="button-download-csv-template">
+                <Download className="h-4 w-4 mr-2" />
+                Download Template
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Label>Upload CSV File</Label>
+              <Input 
+                type="file" 
+                accept=".csv" 
+                onChange={handleCSVFileUpload}
+                data-testid="input-csv-file"
+              />
+            </div>
+            {csvFileContent && (
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-sm text-muted-foreground">
+                  File loaded: {csvFileContent.split("\n").length - 1} properties detected
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setIsImportCSVOpen(false); setCsvFileContent(""); }}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => importCSVMutation.mutate(csvFileContent)} 
+              disabled={!csvFileContent || importCSVMutation.isPending}
+              data-testid="button-confirm-import"
+            >
+              {importCSVMutation.isPending ? "Importing..." : "Import Properties"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isAddPropertyOpen || !!editingProperty} onOpenChange={(open) => {
         if (!open) {
