@@ -6,6 +6,28 @@ import { and, gt, eq, desc, asc, sql } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
 import { db } from "./db";
+import DOMPurify from "isomorphic-dompurify";
+
+const sanitizeHtml = (html: string): string => {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'a', 'br', 'p', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+  });
+};
+
+const sanitizePageContent = (content: Record<string, unknown>): Record<string, unknown> => {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(content)) {
+    if (typeof value === 'string') {
+      sanitized[key] = sanitizeHtml(value);
+    } else if (typeof value === 'object' && value !== null) {
+      sanitized[key] = sanitizePageContent(value as Record<string, unknown>);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+};
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1444,11 +1466,11 @@ export async function registerRoutes(
       }
 
       const [page] = await db.insert(pageContents).values({
-        pageKey,
-        title,
-        content: content || {},
-        metaTitle: metaTitle || title,
-        metaDescription: metaDescription || "",
+        pageKey: sanitizeHtml(pageKey),
+        title: sanitizeHtml(title),
+        content: content ? sanitizePageContent(content) : {},
+        metaTitle: sanitizeHtml(metaTitle || title),
+        metaDescription: sanitizeHtml(metaDescription || ""),
         status: status || "draft",
         lastEditedBy: req.user?.id,
       }).returning();
@@ -1494,12 +1516,12 @@ export async function registerRoutes(
         editedBy: req.user?.id,
       });
 
-      // Update page
+      // Update page with sanitized content
       const updateData: any = { updatedAt: new Date() };
-      if (title !== undefined) updateData.title = title;
-      if (content !== undefined) updateData.content = content;
-      if (metaTitle !== undefined) updateData.metaTitle = metaTitle;
-      if (metaDescription !== undefined) updateData.metaDescription = metaDescription;
+      if (title !== undefined) updateData.title = sanitizeHtml(title);
+      if (content !== undefined) updateData.content = sanitizePageContent(content);
+      if (metaTitle !== undefined) updateData.metaTitle = sanitizeHtml(metaTitle);
+      if (metaDescription !== undefined) updateData.metaDescription = sanitizeHtml(metaDescription);
       if (status !== undefined) updateData.status = status;
       if (req.user?.id) updateData.lastEditedBy = req.user.id;
 

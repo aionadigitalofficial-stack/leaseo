@@ -5,6 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useEditMode } from "@/contexts/EditModeContext";
 import { cn } from "@/lib/utils";
+import DOMPurify from "isomorphic-dompurify";
+
+const sanitizeHtml = (html: string): string => {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'a', 'br', 'p', 'span'],
+    ALLOWED_ATTR: ['href', 'target', 'rel'],
+    ADD_ATTR: ['target'],
+  });
+};
 
 type TextElement = "h1" | "h2" | "h3" | "h4" | "p" | "span" | "div";
 
@@ -48,12 +57,13 @@ export function EditableText({
     setIsEditing(false);
     setShowToolbar(false);
     if (contentRef.current) {
-      const newValue = contentRef.current.innerHTML;
-      if (newValue !== value) {
-        setLocalValue(newValue);
-        onChange(newValue);
+      const rawValue = contentRef.current.innerHTML;
+      const sanitizedValue = sanitizeHtml(rawValue);
+      if (sanitizedValue !== value) {
+        setLocalValue(sanitizedValue);
+        onChange(sanitizedValue);
         if (contentKey) {
-          registerChange(contentKey, newValue);
+          registerChange(contentKey, sanitizedValue);
         }
       }
     }
@@ -93,7 +103,7 @@ export function EditableText({
     return (
       <Component
         className={className}
-        dangerouslySetInnerHTML={{ __html: localValue || placeholder }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(localValue || placeholder) }}
         data-testid={contentKey ? `text-${contentKey}` : undefined}
       />
     );
@@ -187,7 +197,7 @@ export function EditableText({
           "outline-none ring-2 ring-primary/20 rounded px-1 -mx-1 cursor-text",
           isEditing && "ring-primary"
         )}
-        dangerouslySetInnerHTML={{ __html: localValue || "" }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(localValue || "") }}
         data-testid={contentKey ? `editable-text-${contentKey}` : "editable-text"}
         data-placeholder={placeholder}
       />
