@@ -528,6 +528,48 @@ export async function registerRoutes(
     }
   });
 
+  // Reset password (authenticated user)
+  app.post("/api/auth/reset-password", authMiddleware, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Current password and new password are required" });
+      }
+
+      if (newPassword.length < 8) {
+        return res.status(400).json({ error: "New password must be at least 8 characters" });
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (!user.passwordHash) {
+        return res.status(400).json({ error: "No password set for this account. Please use OTP login." });
+      }
+
+      const isCurrentPasswordValid = await verifyPassword(currentPassword, user.passwordHash);
+      if (!isCurrentPasswordValid) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+
+      const newPasswordHash = await hashPassword(newPassword);
+      await db.update(users).set({ passwordHash: newPasswordHash }).where(eq(users.id, userId));
+
+      res.json({ success: true, message: "Password updated successfully" });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ error: "Failed to reset password" });
+    }
+  });
+
   // ==================== OTP VERIFICATION ====================
 
   // Send OTP (email or phone)

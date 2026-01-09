@@ -19,6 +19,7 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import ProfileCompletePage from "@/pages/profile-complete";
 import DashboardPage from "@/pages/dashboard";
+import ResetPasswordPage from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/register" component={RegisterPage} />
       <Route path="/profile/complete" component={ProfileCompletePage} />
       <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Menu, Heart, User, Plus, ChevronDown, Building2, Home, Warehouse, Hotel, Store, Factory, MapPin, Briefcase } from "lucide-react";
+import { Menu, Heart, User, Plus, ChevronDown, Building2, Home, Warehouse, Hotel, Store, Factory, MapPin, Briefcase, LogOut, Settings, LayoutDashboard, KeyRound } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { FeatureFlag } from "@shared/schema";
@@ -54,8 +55,9 @@ const navLinks = [
 ];
 
 export function Header() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  const { user, isAuthenticated, isAdmin, logout } = useAuth();
 
   const { data: featureFlags = [] } = useQuery<FeatureFlag[]>({
     queryKey: ["/api/feature-flags"],
@@ -64,6 +66,11 @@ export function Header() {
   const showBuyTab = featureFlags.some(
     (flag) => flag.name === "sell_property" && flag.enabled
   );
+
+  const handleLogout = () => {
+    logout();
+    setLocation("/");
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -201,12 +208,57 @@ export function Header() {
             <Heart className="h-5 w-5" />
           </Button>
           <ThemeToggle />
-          <Link href="/login">
-            <Button size="sm" variant="outline" className="hidden sm:flex gap-2" data-testid="button-login">
-              <User className="h-4 w-4" />
-              Login
-            </Button>
-          </Link>
+          
+          {isAuthenticated ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="hidden sm:flex gap-2" data-testid="button-user-menu">
+                  <User className="h-4 w-4" />
+                  {user?.firstName || user?.email?.split("@")[0] || "Account"}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard" className="flex items-center gap-2 cursor-pointer">
+                    <LayoutDashboard className="h-4 w-4" />
+                    Dashboard
+                  </Link>
+                </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin" className="flex items-center gap-2 cursor-pointer">
+                      <Settings className="h-4 w-4" />
+                      Admin Panel
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/reset-password" className="flex items-center gap-2 cursor-pointer">
+                    <KeyRound className="h-4 w-4" />
+                    Reset Password
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
+                  data-testid="button-logout"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Link href="/login">
+              <Button size="sm" variant="outline" className="hidden sm:flex gap-2" data-testid="button-login">
+                <User className="h-4 w-4" />
+                Login
+              </Button>
+            </Link>
+          )}
 
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild className="lg:hidden">
@@ -326,18 +378,73 @@ export function Header() {
                       </Button>
                     </Link>
                   </SheetClose>
-                  <SheetClose asChild>
-                    <Link href="/login">
-                      <Button 
-                        variant="outline" 
-                        className="w-full gap-2"
-                        data-testid="mobile-button-login"
-                      >
-                        <User className="h-4 w-4" />
-                        Login
-                      </Button>
-                    </Link>
-                  </SheetClose>
+                  
+                  {isAuthenticated ? (
+                    <>
+                      <SheetClose asChild>
+                        <Link href="/dashboard">
+                          <Button 
+                            variant="outline" 
+                            className="w-full gap-2"
+                            data-testid="mobile-button-dashboard"
+                          >
+                            <LayoutDashboard className="h-4 w-4" />
+                            Dashboard
+                          </Button>
+                        </Link>
+                      </SheetClose>
+                      {isAdmin && (
+                        <SheetClose asChild>
+                          <Link href="/admin">
+                            <Button 
+                              variant="outline" 
+                              className="w-full gap-2"
+                              data-testid="mobile-button-admin"
+                            >
+                              <Settings className="h-4 w-4" />
+                              Admin Panel
+                            </Button>
+                          </Link>
+                        </SheetClose>
+                      )}
+                      <SheetClose asChild>
+                        <Link href="/reset-password">
+                          <Button 
+                            variant="ghost" 
+                            className="w-full gap-2"
+                            data-testid="mobile-button-reset-password"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                            Reset Password
+                          </Button>
+                        </Link>
+                      </SheetClose>
+                      <SheetClose asChild>
+                        <Button 
+                          variant="ghost" 
+                          className="w-full gap-2 text-destructive hover:text-destructive"
+                          onClick={handleLogout}
+                          data-testid="mobile-button-logout"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Logout
+                        </Button>
+                      </SheetClose>
+                    </>
+                  ) : (
+                    <SheetClose asChild>
+                      <Link href="/login">
+                        <Button 
+                          variant="outline" 
+                          className="w-full gap-2"
+                          data-testid="mobile-button-login"
+                        >
+                          <User className="h-4 w-4" />
+                          Login
+                        </Button>
+                      </Link>
+                    </SheetClose>
+                  )}
                 </div>
               </div>
             </SheetContent>

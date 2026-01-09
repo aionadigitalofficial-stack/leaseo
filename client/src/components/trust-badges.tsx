@@ -5,7 +5,7 @@ const BADGES = [
     icon: Ban,
     title: "Zero Brokerage",
     description: "No middlemen, no broker fees",
-    color: "text-green-600 dark:text-green-400",
+    color: "text-orange-600 dark:text-orange-400",
   },
   {
     icon: Shield,
