@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Menu, Heart, User, Plus, ChevronDown, Building2, Home, Warehouse, Hotel, Store, Factory, MapPin, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import type { FeatureFlag } from "@shared/schema";
 import {
   Sheet,
   SheetContent,
@@ -55,6 +57,14 @@ export function Header() {
   const [location] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
 
+  const { data: featureFlags = [] } = useQuery<FeatureFlag[]>({
+    queryKey: ["/api/feature-flags"],
+  });
+
+  const showBuyTab = featureFlags.some(
+    (flag) => flag.name === "sell_property" && flag.enabled
+  );
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-4">
@@ -102,30 +112,32 @@ export function Header() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="text-sm gap-1" data-testid="nav-buy">
-                Buy <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuItem asChild>
-                <Link href="/properties?segment=buy" className="flex items-center gap-2 cursor-pointer">
-                  <Home className="h-4 w-4" />
-                  All Properties for Sale
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {buyCategories.map((cat) => (
-                <DropdownMenuItem key={cat.href} asChild>
-                  <Link href={cat.href} className="flex items-center gap-2 cursor-pointer">
-                    <cat.icon className="h-4 w-4" />
-                    {cat.label}
+          {showBuyTab && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="text-sm gap-1" data-testid="nav-buy">
+                  Buy <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem asChild>
+                  <Link href="/properties?segment=buy" className="flex items-center gap-2 cursor-pointer">
+                    <Home className="h-4 w-4" />
+                    All Properties for Sale
                   </Link>
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuSeparator />
+                {buyCategories.map((cat) => (
+                  <DropdownMenuItem key={cat.href} asChild>
+                    <Link href={cat.href} className="flex items-center gap-2 cursor-pointer">
+                      <cat.icon className="h-4 w-4" />
+                      {cat.label}
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -239,27 +251,29 @@ export function Header() {
                   ))}
                 </div>
 
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-muted-foreground px-4 pt-4">Buy</p>
-                  <SheetClose asChild>
-                    <Link href="/properties?segment=buy">
-                      <Button variant="ghost" className="w-full justify-start" data-testid="mobile-nav-all-buy">
-                        <Home className="h-4 w-4 mr-2" />
-                        All for Sale
-                      </Button>
-                    </Link>
-                  </SheetClose>
-                  {buyCategories.map((cat) => (
-                    <SheetClose asChild key={cat.href}>
-                      <Link href={cat.href}>
-                        <Button variant="ghost" className="w-full justify-start pl-8 text-sm" data-testid={`mobile-nav-buy-${cat.label.toLowerCase()}`}>
-                          <cat.icon className="h-4 w-4 mr-2" />
-                          {cat.label}
+                {showBuyTab && (
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-muted-foreground px-4 pt-4">Buy</p>
+                    <SheetClose asChild>
+                      <Link href="/properties?segment=buy">
+                        <Button variant="ghost" className="w-full justify-start" data-testid="mobile-nav-all-buy">
+                          <Home className="h-4 w-4 mr-2" />
+                          All for Sale
                         </Button>
                       </Link>
                     </SheetClose>
-                  ))}
-                </div>
+                    {buyCategories.map((cat) => (
+                      <SheetClose asChild key={cat.href}>
+                        <Link href={cat.href}>
+                          <Button variant="ghost" className="w-full justify-start pl-8 text-sm" data-testid={`mobile-nav-buy-${cat.label.toLowerCase()}`}>
+                            <cat.icon className="h-4 w-4 mr-2" />
+                            {cat.label}
+                          </Button>
+                        </Link>
+                      </SheetClose>
+                    ))}
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-muted-foreground px-4 pt-4">Commercial</p>
