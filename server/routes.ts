@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, permissions, rolePermissions, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries, paymentProviders, notificationProviders, siteSettings } from "@shared/schema";
 import { and, gt, eq, desc, asc, sql, isNotNull } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
-import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
+import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser, seedTestUsers } from "./auth";
 import { db } from "./db";
 import DOMPurify from "isomorphic-dompurify";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -418,8 +418,9 @@ export async function registerRoutes(
 
   // ==================== AUTHENTICATION ====================
 
-  // Seed admin on startup
+  // Seed admin and test users on startup
   await seedAdminUser();
+  await seedTestUsers();
 
   // Register new user
   app.post("/api/auth/register", async (req, res) => {

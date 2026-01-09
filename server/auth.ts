@@ -152,3 +152,54 @@ export async function seedAdminUser() {
   
   return { email: adminEmail, password: adminPassword, exists: false };
 }
+
+export async function seedTestUsers() {
+  const testUsers = [
+    {
+      email: "owner@leaseo.in",
+      password: "Owner@123",
+      firstName: "Test",
+      lastName: "Owner",
+      roleName: "residential_owner"
+    },
+    {
+      email: "tenant@leaseo.in", 
+      password: "Tenant@123",
+      firstName: "Test",
+      lastName: "Tenant",
+      roleName: "residential_tenant"
+    }
+  ];
+
+  for (const testUser of testUsers) {
+    const [existing] = await db.select().from(users).where(eq(users.email, testUser.email));
+    
+    if (existing) {
+      console.log(`Test user already exists: ${testUser.email}`);
+      continue;
+    }
+
+    const hashedPassword = await bcrypt.hash(testUser.password, 10);
+    
+    const [newUser] = await db.insert(users).values({
+      email: testUser.email,
+      passwordHash: hashedPassword,
+      firstName: testUser.firstName,
+      lastName: testUser.lastName,
+      isActive: true,
+      emailVerifiedAt: new Date(),
+    }).returning();
+
+    const [role] = await db.select().from(roles).where(eq(roles.name, testUser.roleName));
+    
+    if (role && newUser) {
+      await db.insert(userRoles).values({
+        userId: newUser.id,
+        roleId: role.id,
+      });
+      console.log(`Created test user: ${testUser.email} with role: ${testUser.roleName}`);
+    }
+  }
+
+  return testUsers.map(u => ({ email: u.email, password: u.password }));
+}
