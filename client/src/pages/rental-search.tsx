@@ -101,6 +101,8 @@ export default function RentalSearchPage() {
   const city = params.city ? decodeURIComponent(params.city).replace(/-/g, " ") : "";
   const locality = params.locality ? decodeURIComponent(params.locality).replace(/-/g, " ") : "";
   
+  const isBuyRoute = location.startsWith("/buy");
+  
   const urlParams = new URLSearchParams(window.location.search);
   const initialCommercial = urlParams.get("type") === "commercial";
   const initialSort = urlParams.get("sort") || "newest";
@@ -166,7 +168,8 @@ export default function RentalSearchPage() {
   const updateURL = (newFilters: Filters, newSort: string, newPage: number, newCommercial: boolean) => {
     const citySlug = params.city || "";
     const localitySlug = params.locality || "";
-    const basePath = localitySlug ? `/rent/${citySlug}/${localitySlug}` : `/rent/${citySlug}`;
+    const routeBase = isBuyRoute ? "/buy" : "/rent";
+    const basePath = localitySlug ? `${routeBase}/${citySlug}/${localitySlug}` : `${routeBase}/${citySlug}`;
     
     const searchParams = new URLSearchParams();
     if (newCommercial) searchParams.set("type", "commercial");
@@ -200,6 +203,7 @@ export default function RentalSearchPage() {
     if (city) queryParams.set("city", city);
     if (locality) queryParams.set("locality", locality);
     if (isCommercial) queryParams.set("isCommercial", "true");
+    if (isBuyRoute) queryParams.set("listingType", "sale");
     if (filters.rentMin) queryParams.set("minPrice", filters.rentMin.toString());
     if (filters.rentMax) queryParams.set("maxPrice", filters.rentMax.toString());
     if (filters.bhk.length) queryParams.set("bhk", filters.bhk.join(","));
@@ -307,11 +311,12 @@ export default function RentalSearchPage() {
     updateURL(defaultFilters, sortBy, 1, commercial);
   };
 
+  const listingTypeLabel = isBuyRoute ? "Sale" : "Rent";
   const pageTitle = locality 
-    ? `${isCommercial ? "Commercial" : "Residential"} Properties for Rent in ${locality}, ${city}`
+    ? `${isCommercial ? "Commercial" : "Residential"} Properties for ${listingTypeLabel} in ${locality}, ${city}`
     : city 
-    ? `${isCommercial ? "Commercial" : "Residential"} Properties for Rent in ${city}`
-    : `${isCommercial ? "Commercial" : "Residential"} Properties for Rent`;
+    ? `${isCommercial ? "Commercial" : "Residential"} Properties for ${listingTypeLabel} in ${city}`
+    : `${isCommercial ? "Commercial" : "Residential"} Properties for ${listingTypeLabel}`;
 
   const FilterSection = ({ className }: { className?: string }) => (
     <div className={cn("space-y-4", className)}>

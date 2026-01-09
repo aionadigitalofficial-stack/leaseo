@@ -27,6 +27,8 @@ function Router() {
       <Route path="/properties/:id" component={PropertyDetailPage} />
       <Route path="/rent/:city/:locality" component={RentalSearchPage} />
       <Route path="/rent/:city" component={RentalSearchPage} />
+      <Route path="/buy/:city/:locality" component={RentalSearchPage} />
+      <Route path="/buy/:city" component={RentalSearchPage} />
       <Route path="/post-property" component={PostPropertyPage} />
       <Route path="/about" component={AboutPage} />
       <Route path="/contact" component={ContactPage} />
