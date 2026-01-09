@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import { Home, Mail, Phone, MapPin, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
@@ -47,7 +47,7 @@ export function SeoFooter() {
   const [email, setEmail] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
 
-  const handleSubscribe = async (e: React.FormEvent) => {
+  const handleSubscribe = async (e: FormEvent) => {
     e.preventDefault();
     if (!email || !email.includes("@")) {
       toast({ title: "Please enter a valid email", variant: "destructive" });
