@@ -15,18 +15,21 @@ const sanitizeHtml = (html: string): string => {
   });
 };
 
-const sanitizePageContent = (content: Record<string, unknown>): Record<string, unknown> => {
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(content)) {
-    if (typeof value === 'string') {
-      sanitized[key] = sanitizeHtml(value);
-    } else if (typeof value === 'object' && value !== null) {
-      sanitized[key] = sanitizePageContent(value as Record<string, unknown>);
-    } else {
-      sanitized[key] = value;
-    }
+const sanitizePageContent = (content: unknown): unknown => {
+  if (typeof content === 'string') {
+    return sanitizeHtml(content);
   }
-  return sanitized;
+  if (Array.isArray(content)) {
+    return content.map(item => sanitizePageContent(item));
+  }
+  if (typeof content === 'object' && content !== null) {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(content)) {
+      sanitized[key] = sanitizePageContent(value);
+    }
+    return sanitized;
+  }
+  return content;
 };
 
 export async function registerRoutes(

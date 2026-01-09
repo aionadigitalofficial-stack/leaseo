@@ -9,9 +9,8 @@ import DOMPurify from "isomorphic-dompurify";
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'a', 'br', 'p', 'span'],
-    ALLOWED_ATTR: ['href', 'target', 'rel'],
-    ADD_ATTR: ['target'],
+    ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'a', 'br', 'p', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
   });
 };
 
