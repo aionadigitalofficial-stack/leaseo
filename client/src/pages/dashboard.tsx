@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
@@ -296,7 +297,7 @@ const formatPrice = (price: string | number | null | undefined): string => {
 export default function DashboardPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const [activeRole, setActiveRole] = useState<UserRoleType>(mockUser.activeRole);
+  const { user, isAuthenticated } = useAuth();
   const [boostDialogOpen, setBoostDialogOpen] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
@@ -310,19 +311,24 @@ export default function DashboardPage() {
     priceDrops: true,
   });
 
+  // Derive role from user's activeRoleId or default to residential_owner
+  const activeRole: UserRoleType = (user?.activeRoleId as UserRoleType) || "residential_owner";
   const currentRole = AVAILABLE_ROLES.find(r => r.id === activeRole);
-  const userRoles = AVAILABLE_ROLES.filter(r => mockUser.availableRoles.includes(r.id));
   const isOwnerRole = activeRole.includes("owner");
   const isTenantRole = activeRole.includes("tenant");
   const isCommercial = activeRole.includes("commercial");
 
-  const handleRoleSwitch = (roleId: UserRoleType) => {
-    setActiveRole(roleId);
-    toast({
-      title: "Role Switched",
-      description: `You're now viewing as ${AVAILABLE_ROLES.find(r => r.id === roleId)?.label}`,
-    });
-  };
+  // Fetch owner's properties from API
+  const { data: ownerProperties = [], isLoading: propertiesLoading } = useQuery<DashboardProperty[]>({
+    queryKey: ["/api/owner/properties", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const res = await fetch(`/api/owner/properties?ownerId=${user.id}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!user?.id && isOwnerRole,
+  });
 
   const handlePropertyAction = (propertyId: string, action: string) => {
     const actionLabels: Record<string, string> = {
@@ -413,7 +419,7 @@ export default function DashboardPage() {
     setReportDialogOpen(true);
   };
 
-  const ownerPropertiesForRole = mockOwnerProperties.filter(p => 
+  const ownerPropertiesForRole = ownerProperties.filter(p => 
     isCommercial ? p.isCommercial : !p.isCommercial
   );
 
@@ -433,47 +439,19 @@ export default function DashboardPage() {
               <div className="flex items-center gap-4">
                 <Avatar className="h-16 w-16">
                   <AvatarFallback className="text-lg bg-primary text-primary-foreground">
-                    {mockUser.firstName[0]}{mockUser.lastName[0]}
+                    {(user?.firstName?.[0] || "U")}{(user?.lastName?.[0] || "")}
                   </AvatarFallback>
                 </Avatar>
                 <div>
                   <h1 className="text-2xl font-bold" data-testid="text-user-name">
-                    Welcome, {mockUser.firstName}!
+                    Welcome, {user?.firstName || "User"}!
                   </h1>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-muted-foreground text-sm">{mockUser.phone}</span>
+                    <span className="text-muted-foreground text-sm">{user?.phone || user?.email || ""}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground">Viewing as:</span>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="gap-2" data-testid="button-role-switcher">
-                      {currentRole && <currentRole.icon className="w-4 h-4" />}
-                      {currentRole?.label}
-                      <ChevronDown className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>Switch Role</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {userRoles.map((role) => (
-                      <DropdownMenuItem
-                        key={role.id}
-                        onClick={() => handleRoleSwitch(role.id)}
-                        className="gap-2"
-                        data-testid={`menu-role-${role.id}`}
-                      >
-                        <role.icon className="w-4 h-4" />
-                        {role.label}
-                        {activeRole === role.id && <Check className="w-4 h-4 ml-auto" />}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
             </div>
           </div>
         </div>

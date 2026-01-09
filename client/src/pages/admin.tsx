@@ -3286,7 +3286,7 @@ export default function AdminPage() {
   });
 
   const { data: rolePermissionsData = [], isLoading: rolePermsLoading } = useQuery<any[]>({
-    queryKey: ["/api/admin/roles", selectedRoleForPermissions, "permissions"],
+    queryKey: [`/api/admin/roles/${selectedRoleForPermissions}/permissions`],
     enabled: !!selectedRoleForPermissions,
   });
 
@@ -3352,7 +3352,7 @@ export default function AdminPage() {
       return apiRequest("POST", `/api/admin/roles/${roleId}/permissions`, { permissionId });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/roles", selectedRoleForPermissions, "permissions"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/roles/${selectedRoleForPermissions}/permissions`] });
       toast({ title: "Permission assigned to role" });
     },
     onError: (error: any) => {
@@ -3365,7 +3365,7 @@ export default function AdminPage() {
       return apiRequest("DELETE", `/api/admin/roles/${roleId}/permissions/${permissionId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/roles", selectedRoleForPermissions, "permissions"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/roles/${selectedRoleForPermissions}/permissions`] });
       toast({ title: "Permission removed from role" });
     },
     onError: (error: any) => {
