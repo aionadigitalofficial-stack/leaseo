@@ -408,6 +408,32 @@ export const paymentProviders = pgTable("payment_providers", {
   index("payment_providers_name_idx").on(table.providerName),
 ]);
 
+// ==================== NOTIFICATION PROVIDERS TABLE ====================
+
+export const notificationProviders = pgTable("notification_providers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerName: text("provider_name").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  providerType: text("provider_type").notNull().default("sms"),
+  isActive: boolean("is_active").default(false),
+  mode: text("mode").default("sandbox"),
+  accountSid: text("account_sid"),
+  authToken: text("auth_token"),
+  apiKey: text("api_key"),
+  fromNumber: text("from_number"),
+  sandboxAccountSid: text("sandbox_account_sid"),
+  sandboxAuthToken: text("sandbox_auth_token"),
+  sandboxApiKey: text("sandbox_api_key"),
+  sandboxFromNumber: text("sandbox_from_number"),
+  configJson: jsonb("config_json"),
+  updatedBy: varchar("updated_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("notification_providers_name_idx").on(table.providerName),
+  index("notification_providers_type_idx").on(table.providerType),
+]);
+
 // ==================== AUTH TABLES ====================
 
 export const otpRequests = pgTable("otp_requests", {
@@ -814,6 +840,15 @@ export const insertPaymentProviderSchema = createInsertSchema(paymentProviders).
 
 export type InsertPaymentProvider = z.infer<typeof insertPaymentProviderSchema>;
 export type PaymentProvider = typeof paymentProviders.$inferSelect;
+
+export const insertNotificationProviderSchema = createInsertSchema(notificationProviders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertNotificationProvider = z.infer<typeof insertNotificationProviderSchema>;
+export type NotificationProvider = typeof notificationProviders.$inferSelect;
 
 export type InsertFeatureFlag = z.infer<typeof insertFeatureFlagSchema>;
 export type FeatureFlag = typeof featureFlags.$inferSelect;

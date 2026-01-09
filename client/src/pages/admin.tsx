@@ -3,6 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -81,10 +83,10 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon } from "lucide-react";
+import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon, Shield, MessageCircle } from "lucide-react";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "blog" | "pages" | "seo" | "settings";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "blog" | "pages" | "seo" | "settings";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -151,16 +153,157 @@ const categoryFormSchema = z.object({
   isCommercial: z.boolean().optional(),
 });
 
+interface SmsProviderField {
+  key: string;
+  label: string;
+  placeholder: string;
+  secret?: boolean;
+}
+
+interface SmsProviderCardProps {
+  provider: string;
+  displayName: string;
+  description: string;
+  providerData: any;
+  isLoading: boolean;
+  onSave: (settings: any) => void;
+  isSaving: boolean;
+  fields: SmsProviderField[];
+}
+
+function SmsProviderCard({ provider, displayName, description, providerData, isLoading, onSave, isSaving, fields }: SmsProviderCardProps) {
+  const [mode, setMode] = useState<"sandbox" | "live">("sandbox");
+  const [isActive, setIsActive] = useState(false);
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [sandboxFormValues, setSandboxFormValues] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (providerData) {
+      setMode(providerData.mode || "sandbox");
+      setIsActive(providerData.isActive || false);
+    }
+  }, [providerData]);
+
+  const handleSave = () => {
+    const settings: any = {
+      displayName,
+      providerType: "sms",
+      isActive,
+      mode,
+    };
+    
+    fields.forEach(field => {
+      if (formValues[field.key]) {
+        settings[field.key] = formValues[field.key];
+      }
+      if (sandboxFormValues[`sandbox_${field.key}`]) {
+        settings[`sandbox${field.key.charAt(0).toUpperCase()}${field.key.slice(1)}`] = sandboxFormValues[`sandbox_${field.key}`];
+      }
+    });
+    
+    onSave(settings);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>{displayName}</span>
+          <div className="flex items-center gap-2">
+            <Badge variant={isActive ? "default" : "secondary"}>
+              {isActive ? "Active" : "Inactive"}
+            </Badge>
+            <Switch
+              checked={isActive}
+              onCheckedChange={setIsActive}
+              data-testid={`switch-${provider}-active`}
+            />
+          </div>
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
+        ) : (
+          <>
+            <div className="flex items-center gap-4">
+              <Label>Mode:</Label>
+              <Select value={mode} onValueChange={(v: "sandbox" | "live") => setMode(v)}>
+                <SelectTrigger className="w-40" data-testid={`select-${provider}-mode`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sandbox">Sandbox</SelectItem>
+                  <SelectItem value="live">Live</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Tabs defaultValue="sandbox" className="w-full">
+              <TabsList>
+                <TabsTrigger value="sandbox">Sandbox Credentials</TabsTrigger>
+                <TabsTrigger value="live">Live Credentials</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="sandbox" className="space-y-4 mt-4">
+                {fields.map(field => (
+                  <div key={field.key} className="space-y-2">
+                    <Label>{field.label} (Sandbox)</Label>
+                    <Input
+                      type={field.secret ? "password" : "text"}
+                      placeholder={providerData?.[`hasSandbox${field.key.charAt(0).toUpperCase()}${field.key.slice(1)}`] 
+                        ? `••••••••${providerData[`sandbox${field.key.charAt(0).toUpperCase()}${field.key.slice(1)}`]?.slice(-4) || ""}` 
+                        : field.placeholder}
+                      value={sandboxFormValues[`sandbox_${field.key}`] || ""}
+                      onChange={(e) => setSandboxFormValues(prev => ({ ...prev, [`sandbox_${field.key}`]: e.target.value }))}
+                      data-testid={`input-${provider}-sandbox-${field.key}`}
+                    />
+                  </div>
+                ))}
+              </TabsContent>
+              
+              <TabsContent value="live" className="space-y-4 mt-4">
+                {fields.map(field => (
+                  <div key={field.key} className="space-y-2">
+                    <Label>{field.label} (Live)</Label>
+                    <Input
+                      type={field.secret ? "password" : "text"}
+                      placeholder={providerData?.[`has${field.key.charAt(0).toUpperCase()}${field.key.slice(1)}`] 
+                        ? `••••••••${providerData[field.key]?.slice(-4) || ""}` 
+                        : field.placeholder}
+                      value={formValues[field.key] || ""}
+                      onChange={(e) => setFormValues(prev => ({ ...prev, [field.key]: e.target.value }))}
+                      data-testid={`input-${provider}-${field.key}`}
+                    />
+                  </div>
+                ))}
+              </TabsContent>
+            </Tabs>
+
+            <Button onClick={handleSave} disabled={isSaving} data-testid={`button-save-${provider}`}>
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Save Settings
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "properties", label: "Properties", icon: Building2 },
   { id: "enquiries", label: "Enquiries", icon: MessageSquare },
   { id: "owners", label: "Property Owners", icon: Home },
   { id: "users", label: "Login Users", icon: UserCheck },
+  { id: "roles", label: "User Roles", icon: Shield },
   { id: "categories", label: "Categories", icon: Tag },
   { id: "boosts", label: "Listing Boosts", icon: TrendingUp },
   { id: "payments", label: "Payments", icon: CreditCard },
   { id: "gateway", label: "Payment Gateway", icon: KeyIcon },
+  { id: "sms", label: "SMS/WhatsApp", icon: Phone },
   { id: "employees", label: "Employees", icon: Users },
   { id: "cities", label: "Cities & Localities", icon: MapPin },
   { id: "blog", label: "Blog", icon: PenTool },
@@ -170,6 +313,8 @@ const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
 ];
 
 export default function AdminPage() {
+  const { user, isAuthenticated, isAdmin, isLoading: authLoading } = useAuth();
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -401,6 +546,13 @@ export default function AdminPage() {
       });
     }
   }, [editingPage, pageForm]);
+
+  // Auth guard - redirect to login if not authenticated or not admin
+  useEffect(() => {
+    if (!authLoading && (!isAuthenticated || !isAdmin)) {
+      navigate("/login");
+    }
+  }, [authLoading, isAuthenticated, isAdmin, navigate]);
 
   const createPropertyMutation = useMutation({
     mutationFn: async (data: PropertyFormData) => {
@@ -2799,6 +2951,290 @@ export default function AdminPage() {
     </div>
   );
 
+  // SMS/WhatsApp Providers state
+  const [smsMode, setSmsMode] = useState<"sandbox" | "live">("sandbox");
+  const [activeProvider, setActiveProvider] = useState<string>("twilio");
+  
+  const { data: smsProviders, isLoading: smsProvidersLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/notification-providers"],
+    enabled: activeSection === "sms",
+  });
+
+  const updateSmsMutation = useMutation({
+    mutationFn: async (data: { provider: string; settings: any }) => {
+      return apiRequest("PUT", `/api/admin/notification-providers/${data.provider}`, data.settings);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/notification-providers"] });
+      toast({ title: "Settings saved", description: "SMS provider settings have been updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update settings", variant: "destructive" });
+    },
+  });
+
+  const renderSmsProviders = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">SMS/WhatsApp Providers</h1>
+        <p className="text-muted-foreground">Configure notification providers for OTP and alerts</p>
+      </div>
+
+      <Tabs value={activeProvider} onValueChange={setActiveProvider}>
+        <TabsList>
+          <TabsTrigger value="twilio" data-testid="tab-twilio">
+            <Phone className="h-4 w-4 mr-2" />
+            Twilio
+          </TabsTrigger>
+          <TabsTrigger value="msg91" data-testid="tab-msg91">
+            <MessageCircle className="h-4 w-4 mr-2" />
+            MSG91
+          </TabsTrigger>
+          <TabsTrigger value="wati" data-testid="tab-wati">
+            <MessageCircle className="h-4 w-4 mr-2" />
+            WATI
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="twilio" className="mt-4">
+          <SmsProviderCard 
+            provider="twilio" 
+            displayName="Twilio" 
+            description="SMS and Voice API for OTP verification"
+            providerData={smsProviders?.find(p => p.providerName === "twilio")}
+            isLoading={smsProvidersLoading}
+            onSave={(settings) => updateSmsMutation.mutate({ provider: "twilio", settings })}
+            isSaving={updateSmsMutation.isPending}
+            fields={[
+              { key: "accountSid", label: "Account SID", placeholder: "Your Twilio Account SID" },
+              { key: "authToken", label: "Auth Token", placeholder: "Your Twilio Auth Token", secret: true },
+              { key: "fromNumber", label: "From Number", placeholder: "+1234567890" },
+            ]}
+          />
+        </TabsContent>
+
+        <TabsContent value="msg91" className="mt-4">
+          <SmsProviderCard 
+            provider="msg91" 
+            displayName="MSG91" 
+            description="Indian SMS gateway for domestic messaging"
+            providerData={smsProviders?.find(p => p.providerName === "msg91")}
+            isLoading={smsProvidersLoading}
+            onSave={(settings) => updateSmsMutation.mutate({ provider: "msg91", settings })}
+            isSaving={updateSmsMutation.isPending}
+            fields={[
+              { key: "apiKey", label: "API Key", placeholder: "Your MSG91 API Key", secret: true },
+              { key: "accountSid", label: "Sender ID", placeholder: "LEASEO" },
+              { key: "fromNumber", label: "Template ID", placeholder: "DLT Template ID" },
+            ]}
+          />
+        </TabsContent>
+
+        <TabsContent value="wati" className="mt-4">
+          <SmsProviderCard 
+            provider="wati" 
+            displayName="WATI" 
+            description="WhatsApp Business API for notifications"
+            providerData={smsProviders?.find(p => p.providerName === "wati")}
+            isLoading={smsProvidersLoading}
+            onSave={(settings) => updateSmsMutation.mutate({ provider: "wati", settings })}
+            isSaving={updateSmsMutation.isPending}
+            fields={[
+              { key: "apiKey", label: "API Key", placeholder: "Your WATI API Key", secret: true },
+              { key: "accountSid", label: "Phone Number ID", placeholder: "WhatsApp Phone Number ID" },
+              { key: "fromNumber", label: "Business Number", placeholder: "+91XXXXXXXXXX" },
+            ]}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+
+  // Roles management
+  const { data: allRoles, isLoading: rolesLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/roles"],
+    enabled: activeSection === "roles",
+  });
+
+  const { data: usersWithRoles, isLoading: usersRolesLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/users-with-roles"],
+    enabled: activeSection === "roles",
+  });
+
+  const assignRoleMutation = useMutation({
+    mutationFn: async ({ userId, roleId }: { userId: string; roleId: string }) => {
+      return apiRequest("POST", `/api/admin/users/${userId}/roles`, { roleId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users-with-roles"] });
+      toast({ title: "Role assigned", description: "User role has been updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to assign role", variant: "destructive" });
+    },
+  });
+
+  const removeRoleMutation = useMutation({
+    mutationFn: async ({ userId, roleId }: { userId: string; roleId: string }) => {
+      return apiRequest("DELETE", `/api/admin/users/${userId}/roles/${roleId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users-with-roles"] });
+      toast({ title: "Role removed", description: "User role has been removed" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to remove role", variant: "destructive" });
+    },
+  });
+
+  const toggleUserStatusMutation = useMutation({
+    mutationFn: async ({ userId, isActive }: { userId: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/admin/users/${userId}/status`, { isActive });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users-with-roles"] });
+      toast({ title: "Status updated", description: "User status has been changed" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update status", variant: "destructive" });
+    },
+  });
+
+  const [selectedRoleForUser, setSelectedRoleForUser] = useState<Record<string, string>>({});
+
+  const renderRoles = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">User Roles Management</h1>
+        <p className="text-muted-foreground">Assign and manage user roles and permissions</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            Available Roles
+          </CardTitle>
+          <CardDescription>System roles and their permissions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {rolesLoading ? (
+            <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : (
+            <div className="grid gap-3">
+              {allRoles?.map((role) => (
+                <div key={role.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium">{role.displayName || role.name}</p>
+                    <p className="text-sm text-muted-foreground">{role.description || `Role: ${role.name}`}</p>
+                  </div>
+                  <Badge variant={role.isActive !== false ? "default" : "secondary"}>
+                    {role.isActive !== false ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Users & Their Roles
+          </CardTitle>
+          <CardDescription>Manage role assignments for users</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {usersRolesLoading ? (
+            <div className="space-y-3">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+          ) : usersWithRoles?.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">No users found</p>
+          ) : (
+            <div className="space-y-4">
+              {usersWithRoles?.map((user) => (
+                <div key={user.id} className="p-4 border rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">
+                        {user.firstName} {user.lastName}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {user.email || user.phone}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={user.isActive ? "default" : "secondary"}>
+                        {user.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                      <Switch
+                        checked={user.isActive}
+                        onCheckedChange={(checked) => 
+                          toggleUserStatusMutation.mutate({ userId: user.id, isActive: checked })
+                        }
+                        data-testid={`switch-user-status-${user.id}`}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {user.roles?.map((role: any) => (
+                      <Badge key={role.roleId} variant="outline" className="gap-1">
+                        {role.roleDisplayName || role.roleName}
+                        <button
+                          onClick={() => removeRoleMutation.mutate({ userId: user.id, roleId: role.roleId })}
+                          className="ml-1 hover:text-destructive"
+                          data-testid={`button-remove-role-${user.id}-${role.roleId}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                  
+                  <div className="flex items-center gap-2 pt-2 border-t">
+                    <Select 
+                      value={selectedRoleForUser[user.id] || ""} 
+                      onValueChange={(val) => setSelectedRoleForUser(prev => ({ ...prev, [user.id]: val }))}
+                    >
+                      <SelectTrigger className="w-48" data-testid={`select-role-${user.id}`}>
+                        <SelectValue placeholder="Select role to add" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allRoles?.filter(r => 
+                          !user.roles?.some((ur: any) => ur.roleId === r.id)
+                        ).map((role) => (
+                          <SelectItem key={role.id} value={role.id}>
+                            {role.displayName || role.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (selectedRoleForUser[user.id]) {
+                          assignRoleMutation.mutate({ userId: user.id, roleId: selectedRoleForUser[user.id] });
+                          setSelectedRoleForUser(prev => ({ ...prev, [user.id]: "" }));
+                        }
+                      }}
+                      disabled={!selectedRoleForUser[user.id] || assignRoleMutation.isPending}
+                      data-testid={`button-add-role-${user.id}`}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Role
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
@@ -2893,10 +3329,12 @@ export default function AdminPage() {
       case "enquiries": return renderEnquiries();
       case "owners": return renderOwners();
       case "users": return renderUsers();
+      case "roles": return renderRoles();
       case "categories": return renderCategories();
       case "boosts": return renderBoosts();
       case "payments": return renderPayments();
       case "gateway": return renderGateway();
+      case "sms": return renderSmsProviders();
       case "employees": return renderEmployees();
       case "cities": return renderCities();
       case "blog": return renderBlog();
@@ -2906,6 +3344,20 @@ export default function AdminPage() {
       default: return renderDashboard();
     }
   };
+
+  // Show loading state while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Don't render admin content if not authorized
+  if (!isAuthenticated || !isAdmin) {
+    return null;
+  }
 
   return (
     <div className="flex h-screen bg-background">

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries, paymentProviders } from "@shared/schema";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries, paymentProviders, notificationProviders } from "@shared/schema";
 import { and, gt, eq, desc, asc, sql, isNotNull } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
@@ -2281,6 +2281,287 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error testing payment provider:", error);
       res.status(500).json({ error: "Failed to test payment provider" });
+    }
+  });
+
+  // ==================== ADMIN: NOTIFICATION PROVIDER SETTINGS (SMS/WhatsApp) ====================
+
+  // Get all notification providers
+  app.get("/api/admin/notification-providers", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const providers = await db.select().from(notificationProviders);
+      
+      // Mask sensitive credentials
+      const maskedProviders = providers.map(p => ({
+        ...p,
+        accountSid: p.accountSid ? "••••••••" + p.accountSid.slice(-4) : null,
+        authToken: p.authToken ? "••••••••" + p.authToken.slice(-4) : null,
+        apiKey: p.apiKey ? "••••••••" + p.apiKey.slice(-4) : null,
+        sandboxAccountSid: p.sandboxAccountSid ? "••••••••" + p.sandboxAccountSid.slice(-4) : null,
+        sandboxAuthToken: p.sandboxAuthToken ? "••••••••" + p.sandboxAuthToken.slice(-4) : null,
+        sandboxApiKey: p.sandboxApiKey ? "••••••••" + p.sandboxApiKey.slice(-4) : null,
+        hasAccountSid: !!p.accountSid,
+        hasAuthToken: !!p.authToken,
+        hasApiKey: !!p.apiKey,
+        hasSandboxAccountSid: !!p.sandboxAccountSid,
+        hasSandboxAuthToken: !!p.sandboxAuthToken,
+        hasSandboxApiKey: !!p.sandboxApiKey,
+      }));
+      
+      res.json(maskedProviders);
+    } catch (error) {
+      console.error("Error fetching notification providers:", error);
+      res.status(500).json({ error: "Failed to fetch notification providers" });
+    }
+  });
+
+  // Get single notification provider
+  app.get("/api/admin/notification-providers/:provider", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { provider } = req.params;
+      
+      const [providerSettings] = await db.select()
+        .from(notificationProviders)
+        .where(eq(notificationProviders.providerName, provider));
+      
+      if (!providerSettings) {
+        return res.status(404).json({ error: "Notification provider not found" });
+      }
+      
+      // Mask sensitive credentials
+      const maskedSettings = {
+        ...providerSettings,
+        accountSid: providerSettings.accountSid ? "••••••••" + providerSettings.accountSid.slice(-4) : null,
+        authToken: providerSettings.authToken ? "••••••••" + providerSettings.authToken.slice(-4) : null,
+        apiKey: providerSettings.apiKey ? "••••••••" + providerSettings.apiKey.slice(-4) : null,
+        sandboxAccountSid: providerSettings.sandboxAccountSid ? "••••••••" + providerSettings.sandboxAccountSid.slice(-4) : null,
+        sandboxAuthToken: providerSettings.sandboxAuthToken ? "••••••••" + providerSettings.sandboxAuthToken.slice(-4) : null,
+        sandboxApiKey: providerSettings.sandboxApiKey ? "••••••••" + providerSettings.sandboxApiKey.slice(-4) : null,
+        hasAccountSid: !!providerSettings.accountSid,
+        hasAuthToken: !!providerSettings.authToken,
+        hasApiKey: !!providerSettings.apiKey,
+        hasSandboxAccountSid: !!providerSettings.sandboxAccountSid,
+        hasSandboxAuthToken: !!providerSettings.sandboxAuthToken,
+        hasSandboxApiKey: !!providerSettings.sandboxApiKey,
+      };
+      
+      res.json(maskedSettings);
+    } catch (error) {
+      console.error("Error fetching notification provider:", error);
+      res.status(500).json({ error: "Failed to fetch notification provider settings" });
+    }
+  });
+
+  // Create or update notification provider
+  app.put("/api/admin/notification-providers/:provider", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { provider } = req.params;
+      const userId = req.user?.id;
+      const { 
+        displayName,
+        providerType,
+        isActive, 
+        mode, 
+        accountSid,
+        authToken, 
+        apiKey,
+        fromNumber,
+        sandboxAccountSid,
+        sandboxAuthToken,
+        sandboxApiKey,
+        sandboxFromNumber,
+      } = req.body;
+      
+      // Check if provider exists
+      const [existing] = await db.select()
+        .from(notificationProviders)
+        .where(eq(notificationProviders.providerName, provider));
+      
+      const updateData: any = {
+        updatedBy: userId,
+        updatedAt: new Date(),
+      };
+      
+      if (displayName) updateData.displayName = displayName;
+      if (providerType) updateData.providerType = providerType;
+      if (typeof isActive === "boolean") updateData.isActive = isActive;
+      if (mode && ["sandbox", "live"].includes(mode)) updateData.mode = mode;
+      if (accountSid !== undefined && accountSid !== "") updateData.accountSid = accountSid;
+      if (authToken !== undefined && authToken !== "") updateData.authToken = authToken;
+      if (apiKey !== undefined && apiKey !== "") updateData.apiKey = apiKey;
+      if (fromNumber !== undefined) updateData.fromNumber = fromNumber;
+      if (sandboxAccountSid !== undefined && sandboxAccountSid !== "") updateData.sandboxAccountSid = sandboxAccountSid;
+      if (sandboxAuthToken !== undefined && sandboxAuthToken !== "") updateData.sandboxAuthToken = sandboxAuthToken;
+      if (sandboxApiKey !== undefined && sandboxApiKey !== "") updateData.sandboxApiKey = sandboxApiKey;
+      if (sandboxFromNumber !== undefined) updateData.sandboxFromNumber = sandboxFromNumber;
+      
+      let result;
+      if (existing) {
+        [result] = await db.update(notificationProviders)
+          .set(updateData)
+          .where(eq(notificationProviders.providerName, provider))
+          .returning();
+      } else {
+        [result] = await db.insert(notificationProviders)
+          .values({
+            providerName: provider,
+            displayName: displayName || provider.charAt(0).toUpperCase() + provider.slice(1),
+            providerType: providerType || "sms",
+            ...updateData,
+          })
+          .returning();
+      }
+      
+      res.json({ success: true, provider: result });
+    } catch (error) {
+      console.error("Error updating notification provider:", error);
+      res.status(500).json({ error: "Failed to update notification provider settings" });
+    }
+  });
+
+  // ==================== ADMIN: ROLES MANAGEMENT ====================
+
+  // Get all roles
+  app.get("/api/admin/roles", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const allRoles = await db.select().from(roles);
+      res.json(allRoles);
+    } catch (error) {
+      console.error("Error fetching roles:", error);
+      res.status(500).json({ error: "Failed to fetch roles" });
+    }
+  });
+
+  // Update role
+  app.patch("/api/admin/roles/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { displayName, description, permissions, isActive } = req.body;
+      
+      const updateData: any = {};
+      if (displayName) updateData.displayName = displayName;
+      if (description !== undefined) updateData.description = description;
+      if (permissions) updateData.permissions = permissions;
+      if (typeof isActive === "boolean") updateData.isActive = isActive;
+      
+      const [updated] = await db.update(roles)
+        .set(updateData)
+        .where(eq(roles.id, id))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Role not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating role:", error);
+      res.status(500).json({ error: "Failed to update role" });
+    }
+  });
+
+  // Get users with their roles
+  app.get("/api/admin/users-with-roles", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const usersWithRoles = await db.select({
+        id: users.id,
+        email: users.email,
+        phone: users.phone,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        isActive: users.isActive,
+        activeRoleId: users.activeRoleId,
+        createdAt: users.createdAt,
+      }).from(users);
+      
+      // Get user roles for each user
+      const usersWithRoleDetails = await Promise.all(usersWithRoles.map(async (user) => {
+        const userRoleAssignments = await db.select({
+          roleId: userRoles.roleId,
+          roleName: roles.name,
+          roleDisplayName: roles.displayName,
+        })
+        .from(userRoles)
+        .leftJoin(roles, eq(userRoles.roleId, roles.id))
+        .where(eq(userRoles.userId, user.id));
+        
+        return {
+          ...user,
+          roles: userRoleAssignments,
+        };
+      }));
+      
+      res.json(usersWithRoleDetails);
+    } catch (error) {
+      console.error("Error fetching users with roles:", error);
+      res.status(500).json({ error: "Failed to fetch users with roles" });
+    }
+  });
+
+  // Assign role to user
+  app.post("/api/admin/users/:userId/roles", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { roleId } = req.body;
+      
+      if (!roleId) {
+        return res.status(400).json({ error: "Role ID is required" });
+      }
+      
+      // Check if assignment already exists
+      const [existing] = await db.select()
+        .from(userRoles)
+        .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)));
+      
+      if (existing) {
+        return res.status(400).json({ error: "User already has this role" });
+      }
+      
+      const [assignment] = await db.insert(userRoles)
+        .values({ userId, roleId })
+        .returning();
+      
+      res.json(assignment);
+    } catch (error) {
+      console.error("Error assigning role:", error);
+      res.status(500).json({ error: "Failed to assign role" });
+    }
+  });
+
+  // Remove role from user
+  app.delete("/api/admin/users/:userId/roles/:roleId", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { userId, roleId } = req.params;
+      
+      await db.delete(userRoles)
+        .where(and(eq(userRoles.userId, userId), eq(userRoles.roleId, roleId)));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing role:", error);
+      res.status(500).json({ error: "Failed to remove role" });
+    }
+  });
+
+  // Toggle user active status
+  app.patch("/api/admin/users/:userId/status", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { isActive } = req.body;
+      
+      const [updated] = await db.update(users)
+        .set({ isActive })
+        .where(eq(users.id, userId))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating user status:", error);
+      res.status(500).json({ error: "Failed to update user status" });
     }
   });
 
