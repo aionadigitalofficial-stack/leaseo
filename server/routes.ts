@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries, paymentProviders, notificationProviders } from "@shared/schema";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries, paymentProviders, notificationProviders, siteSettings } from "@shared/schema";
 import { and, gt, eq, desc, asc, sql, isNotNull } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
@@ -1376,11 +1376,20 @@ export async function registerRoutes(
   // Get SEO settings (admin only)
   app.get("/api/admin/seo-settings", authMiddleware, adminMiddleware, async (req, res) => {
     try {
-      // For now, return default settings
+      const result = await db.select().from(siteSettings).where(
+        sql`${siteSettings.key} IN ('metaTitle', 'metaDescription', 'robotsTxt', 'googleAnalyticsCode', 'googleWebmasterCode')`
+      );
+      const settings: Record<string, string> = {};
+      result.forEach(row => {
+        if (row.key && row.value) settings[row.key] = row.value;
+      });
+      
       res.json({
-        metaTitle: "Leaseo - Zero Brokerage Property Rentals in India",
-        metaDescription: "Find rental properties directly from owners. Zero brokerage, verified listings across Mumbai, Pune, Delhi, Bangalore and more.",
-        robotsTxt: `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api\n\nSitemap: https://leaseo.in/sitemap.xml`,
+        metaTitle: settings.metaTitle || "Leaseo - Zero Brokerage Property Rentals in India",
+        metaDescription: settings.metaDescription || "Find rental properties directly from owners. Zero brokerage, verified listings across Mumbai, Pune, Delhi, Bangalore and more.",
+        robotsTxt: settings.robotsTxt || `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api\n\nSitemap: https://leaseo.in/sitemap.xml`,
+        googleAnalyticsCode: settings.googleAnalyticsCode || "",
+        googleWebmasterCode: settings.googleWebmasterCode || "",
       });
     } catch (error) {
       console.error("Error fetching SEO settings:", error);
@@ -1391,13 +1400,48 @@ export async function registerRoutes(
   // Save SEO settings (admin only)
   app.post("/api/admin/seo-settings", authMiddleware, adminMiddleware, async (req, res) => {
     try {
-      const { metaTitle, metaDescription, robotsTxt } = req.body;
-      // In a real app, save to database or file
-      console.log("Saving SEO settings:", { metaTitle, metaDescription, robotsTxt });
+      const { metaTitle, metaDescription, robotsTxt, googleAnalyticsCode, googleWebmasterCode } = req.body;
+      
+      const settingsToSave = [
+        { key: 'metaTitle', value: metaTitle || '' },
+        { key: 'metaDescription', value: metaDescription || '' },
+        { key: 'robotsTxt', value: robotsTxt || '' },
+        { key: 'googleAnalyticsCode', value: googleAnalyticsCode || '' },
+        { key: 'googleWebmasterCode', value: googleWebmasterCode || '' },
+      ];
+      
+      for (const setting of settingsToSave) {
+        await db.insert(siteSettings)
+          .values({ key: setting.key, value: setting.value, updatedAt: new Date() })
+          .onConflictDoUpdate({
+            target: siteSettings.key,
+            set: { value: setting.value, updatedAt: new Date() }
+          });
+      }
+      
       res.json({ success: true });
     } catch (error) {
       console.error("Error saving SEO settings:", error);
       res.status(500).json({ error: "Failed to save SEO settings" });
+    }
+  });
+  
+  // Public endpoint to get tracking codes (for frontend)
+  app.get("/api/tracking-codes", async (req, res) => {
+    try {
+      const result = await db.select().from(siteSettings).where(
+        sql`${siteSettings.key} IN ('googleAnalyticsCode', 'googleWebmasterCode')`
+      );
+      const settings: Record<string, string> = {};
+      result.forEach(row => {
+        if (row.key && row.value) settings[row.key] = row.value;
+      });
+      res.json({
+        googleAnalyticsCode: settings.googleAnalyticsCode || "",
+        googleWebmasterCode: settings.googleWebmasterCode || "",
+      });
+    } catch (error) {
+      res.json({ googleAnalyticsCode: "", googleWebmasterCode: "" });
     }
   });
 

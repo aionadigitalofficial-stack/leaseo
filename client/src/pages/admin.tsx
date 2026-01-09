@@ -862,6 +862,8 @@ export default function AdminPage() {
   const [robotsTxt, setRobotsTxt] = useState(seoSettings?.robotsTxt || `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api\n\nSitemap: https://leaseo.in/sitemap.xml`);
   const [metaTitle, setMetaTitle] = useState(seoSettings?.metaTitle || "Leaseo - Zero Brokerage Property Rentals in India");
   const [metaDescription, setMetaDescription] = useState(seoSettings?.metaDescription || "Find rental properties directly from owners. Zero brokerage, verified listings across Mumbai, Pune, Delhi, Bangalore and more.");
+  const [googleAnalyticsCode, setGoogleAnalyticsCode] = useState(seoSettings?.googleAnalyticsCode || "");
+  const [googleWebmasterCode, setGoogleWebmasterCode] = useState(seoSettings?.googleWebmasterCode || "");
 
   const saveSeoMutation = useMutation({
     mutationFn: async (data: any) => apiRequest("POST", "/api/admin/seo-settings", data),
@@ -974,43 +976,59 @@ export default function AdminPage() {
       </div>
       
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card 
+          className="cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={() => setActiveSection("properties")}
+          data-testid="card-dashboard-properties"
+        >
           <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
             <CardTitle className="text-sm font-medium">Total Properties</CardTitle>
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalProperties}</div>
+            <div className="text-2xl font-bold text-primary">{stats.totalProperties}</div>
             <p className="text-xs text-muted-foreground">{stats.activeListings} active listings</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className="cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={() => setActiveSection("enquiries")}
+          data-testid="card-dashboard-enquiries"
+        >
           <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
             <CardTitle className="text-sm font-medium">Enquiries</CardTitle>
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalEnquiries}</div>
+            <div className="text-2xl font-bold text-primary">{stats.totalEnquiries}</div>
             <p className="text-xs text-muted-foreground">{stats.pendingEnquiries} pending</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className="cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={() => setActiveSection("cities")}
+          data-testid="card-dashboard-cities"
+        >
           <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
             <CardTitle className="text-sm font-medium">Cities</CardTitle>
             <MapPin className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{cities.length}</div>
+            <div className="text-2xl font-bold text-primary">{cities.length}</div>
             <p className="text-xs text-muted-foreground">{localities.length} localities</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className="cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={() => setActiveSection("blog")}
+          data-testid="card-dashboard-blog"
+        >
           <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
             <CardTitle className="text-sm font-medium">Blog Posts</CardTitle>
             <PenTool className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{blogPosts.length}</div>
+            <div className="text-2xl font-bold text-primary">{blogPosts.length}</div>
             <p className="text-xs text-muted-foreground">{blogPosts.filter(b => b.status === "published").length} published</p>
           </CardContent>
         </Card>
@@ -2454,6 +2472,37 @@ export default function AdminPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Tracking Codes</CardTitle>
+            <CardDescription>Google Analytics and Search Console verification</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="ga-code">Google Analytics Code</Label>
+              <Input
+                id="ga-code"
+                value={googleAnalyticsCode}
+                onChange={(e) => setGoogleAnalyticsCode(e.target.value)}
+                placeholder="G-XXXXXXXXXX or UA-XXXXXXXXX-X"
+                data-testid="input-google-analytics"
+              />
+              <p className="text-xs text-muted-foreground">Enter your Google Analytics tracking ID (e.g., G-XXXXXXXXXX for GA4 or UA-XXXXXXXXX-X for Universal Analytics)</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="webmaster-code">Google Search Console Verification</Label>
+              <Input
+                id="webmaster-code"
+                value={googleWebmasterCode}
+                onChange={(e) => setGoogleWebmasterCode(e.target.value)}
+                placeholder="Verification meta tag content"
+                data-testid="input-google-webmaster"
+              />
+              <p className="text-xs text-muted-foreground">Enter the content value from your Google Search Console verification meta tag</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Robots.txt</CardTitle>
             <CardDescription>Control how search engines crawl your site</CardDescription>
           </CardHeader>
@@ -2493,7 +2542,7 @@ export default function AdminPage() {
 
         <div className="flex justify-end">
           <Button
-            onClick={() => saveSeoMutation.mutate({ robotsTxt, metaTitle, metaDescription })}
+            onClick={() => saveSeoMutation.mutate({ robotsTxt, metaTitle, metaDescription, googleAnalyticsCode, googleWebmasterCode })}
             disabled={saveSeoMutation.isPending}
             data-testid="button-save-seo"
           >
@@ -2722,6 +2771,16 @@ export default function AdminPage() {
       setGatewayActive(gatewaySettings.isActive || false);
     }
   }, [gatewaySettings]);
+
+  useEffect(() => {
+    if (seoSettings) {
+      setRobotsTxt(seoSettings.robotsTxt || "");
+      setMetaTitle(seoSettings.metaTitle || "");
+      setMetaDescription(seoSettings.metaDescription || "");
+      setGoogleAnalyticsCode(seoSettings.googleAnalyticsCode || "");
+      setGoogleWebmasterCode(seoSettings.googleWebmasterCode || "");
+    }
+  }, [seoSettings]);
 
   const updateGatewayMutation = useMutation({
     mutationFn: async (data: any) => {

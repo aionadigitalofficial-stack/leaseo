@@ -333,6 +333,17 @@ export const newsletterSubscribers = pgTable("newsletter_subscribers", {
   index("newsletter_active_idx").on(table.isActive),
 ]);
 
+// ==================== SITE SETTINGS TABLE ====================
+
+export const siteSettings = pgTable("site_settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type SiteSetting = typeof siteSettings.$inferSelect;
+export type InsertSiteSetting = typeof siteSettings.$inferInsert;
+
 // ==================== REPORTS TABLE ====================
 
 export const reports = pgTable("reports", {
