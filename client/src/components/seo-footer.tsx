@@ -73,15 +73,15 @@ export function SeoFooter() {
             <ul className="space-y-2">
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <MapPin className="h-4 w-4 flex-shrink-0" />
-                <span>Mumbai, Maharashtra, India</span>
+                <span>Pune, Maharashtra, India</span>
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Phone className="h-4 w-4 flex-shrink-0" />
-                <span>+91 98765 43210</span>
+                <span>+91 1234567890</span>
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4 flex-shrink-0" />
-                <span>support@directrentals.in</span>
+                <span>support@leaseo.in</span>
               </li>
             </ul>
           </div>
