@@ -1190,6 +1190,39 @@ export async function registerRoutes(
     }
   });
 
+  // Reset user password (admin only)
+  app.post("/api/admin/users/:id/reset-password", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { newPassword } = req.body;
+      
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+      
+      // Find the user
+      const [user] = await db.select().from(users).where(eq(users.id, req.params.id));
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Hash the new password
+      const hashedPassword = await hashPassword(newPassword);
+      
+      // Update the password
+      const [updated] = await db.update(users)
+        .set({ passwordHash: hashedPassword, updatedAt: new Date() })
+        .where(eq(users.id, req.params.id))
+        .returning();
+      
+      console.log(`Admin ${req.user!.email} reset password for user ${user.email}`);
+      
+      res.json({ success: true, message: `Password reset for ${user.email}` });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ error: "Failed to reset password" });
+    }
+  });
+
   // ==================== SEO SETTINGS ====================
 
   // Get SEO settings (admin only)

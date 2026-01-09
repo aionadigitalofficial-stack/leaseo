@@ -79,6 +79,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon } from "lucide-react";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
 type AdminSection = "dashboard" | "properties" | "enquiries" | "employees" | "cities" | "categories" | "boosts" | "payments" | "blog" | "pages" | "seo" | "settings";
@@ -179,6 +181,17 @@ export default function AdminPage() {
   const [replyMessage, setReplyMessage] = useState("");
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<PropertyCategory | null>(null);
+  
+  // Property filter states
+  const [propertySegment, setPropertySegment] = useState<"all" | "rent" | "buy" | "commercial">("all");
+  const [propertySearch, setPropertySearch] = useState("");
+  const [propertyFilterCity, setPropertyFilterCity] = useState<string>("");
+  const [propertyFilterStatus, setPropertyFilterStatus] = useState<string>("all");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [propertyFilterPriceMin, setPropertyFilterPriceMin] = useState("");
+  const [propertyFilterPriceMax, setPropertyFilterPriceMax] = useState("");
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
 
   const { data: properties = [], isLoading: propertiesLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -822,107 +835,363 @@ export default function AdminPage() {
     </div>
   );
 
-  const renderProperties = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold">Properties</h1>
-          <p className="text-muted-foreground">Manage property listings</p>
-        </div>
-        <Button onClick={() => setIsAddPropertyOpen(true)} data-testid="button-add-property">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Property
-        </Button>
-      </div>
+  // Filter properties based on current filters
+  const filteredProperties = properties.filter((property) => {
+    // Segment filter
+    if (propertySegment === "rent" && property.listingType !== "rent") return false;
+    if (propertySegment === "buy" && property.listingType !== "sale") return false;
+    if (propertySegment === "commercial" && !property.isCommercial) return false;
+    
+    // Search filter
+    if (propertySearch) {
+      const searchLower = propertySearch.toLowerCase();
+      const matchesTitle = property.title.toLowerCase().includes(searchLower);
+      const matchesCity = property.city?.toLowerCase().includes(searchLower);
+      const matchesAddress = property.address?.toLowerCase().includes(searchLower);
+      if (!matchesTitle && !matchesCity && !matchesAddress) return false;
+    }
+    
+    // City filter
+    if (propertyFilterCity && property.city !== propertyFilterCity) return false;
+    
+    // Status filter
+    if (propertyFilterStatus !== "all" && property.status !== propertyFilterStatus) return false;
+    
+    // Price range filter
+    const price = Number(property.rent || property.price || 0);
+    if (propertyFilterPriceMin && price < Number(propertyFilterPriceMin)) return false;
+    if (propertyFilterPriceMax && price > Number(propertyFilterPriceMax)) return false;
+    
+    return true;
+  });
 
-      <Card>
-        <CardContent className="pt-6">
-          {propertiesLoading ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
-            </div>
-          ) : properties.length === 0 ? (
-            <div className="text-center py-12">
-              <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No properties yet</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>City</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {properties.map((property) => (
-                  <TableRow key={property.id} data-testid={`row-property-${property.id}`}>
-                    <TableCell className="font-medium max-w-[200px] truncate">{property.title}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {property.isCommercial ? "Commercial" : "Residential"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{property.city}</TableCell>
-                    <TableCell>₹{Number(property.rent || property.price).toLocaleString()}/mo</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={property.status === "active"}
-                          onCheckedChange={(checked) => {
-                            updatePropertyMutation.mutate({
-                              id: property.id,
-                              data: { status: checked ? "active" : "inactive" } as any,
-                            });
-                          }}
-                          data-testid={`switch-property-status-${property.id}`}
-                        />
-                        <Badge variant={property.status === "active" ? "default" : "secondary"}>
-                          {property.status}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button 
-                          size="icon" 
-                          variant="ghost"
-                          onClick={() => window.open(`/properties/${property.id}`, '_blank')}
-                          data-testid={`button-view-property-${property.id}`}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          size="icon" 
-                          variant="ghost"
-                          onClick={() => setEditingProperty(property)}
-                          data-testid={`button-edit-property-${property.id}`}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => deletePropertyMutation.mutate(property.id)}
-                          data-testid={`button-delete-property-${property.id}`}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+  // Export properties to CSV (with proper escaping)
+  const exportPropertiesToCSV = () => {
+    const escapeCSV = (val: any) => {
+      const str = String(val ?? "-");
+      // Escape quotes by doubling them and wrap in quotes
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+    
+    const headers = ["Title", "Type", "Listing", "City", "Address", "Price", "Status", "Owner Email", "Owner Phone", "Upload Date"];
+    const rows = filteredProperties.map(p => [
+      p.title,
+      p.isCommercial ? "Commercial" : "Residential",
+      p.listingType,
+      p.city,
+      p.address,
+      p.rent || p.price,
+      p.status,
+      (p as any).ownerEmail || "-",
+      (p as any).ownerPhone || "-",
+      p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "-"
+    ]);
+    
+    const csvContent = [headers, ...rows].map(row => row.map(escapeCSV).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `properties_${propertySegment}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "Export complete", description: `Exported ${filteredProperties.length} properties` });
+  };
+
+  const renderPropertyTable = (propertiesToShow: Property[]) => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Title</TableHead>
+          <TableHead>Type</TableHead>
+          <TableHead>City</TableHead>
+          <TableHead>Price</TableHead>
+          <TableHead>Owner Contact</TableHead>
+          <TableHead>Upload Date</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {propertiesToShow.map((property) => (
+          <TableRow key={property.id} data-testid={`row-property-${property.id}`}>
+            <TableCell className="font-medium max-w-[180px] truncate">{property.title}</TableCell>
+            <TableCell>
+              <Badge variant="outline" className="capitalize text-xs">
+                {property.isCommercial ? "Commercial" : property.listingType === "sale" ? "Buy" : "Rent"}
+              </Badge>
+            </TableCell>
+            <TableCell className="text-sm">{property.city}</TableCell>
+            <TableCell className="text-sm">₹{Number(property.rent || property.price).toLocaleString()}{property.listingType === "rent" ? "/mo" : ""}</TableCell>
+            <TableCell>
+              <div className="text-xs space-y-1">
+                {(property as any).ownerEmail && (
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <Mail className="h-3 w-3" />
+                    <span className="truncate max-w-[120px]">{(property as any).ownerEmail}</span>
+                  </div>
+                )}
+                {(property as any).ownerPhone && (
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <Phone className="h-3 w-3" />
+                    <span>{(property as any).ownerPhone}</span>
+                  </div>
+                )}
+                {!(property as any).ownerEmail && !(property as any).ownerPhone && (
+                  <span className="text-muted-foreground">-</span>
+                )}
+              </div>
+            </TableCell>
+            <TableCell>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Calendar className="h-3 w-3" />
+                {property.createdAt ? new Date(property.createdAt).toLocaleDateString() : "-"}
+              </div>
+            </TableCell>
+            <TableCell>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={property.status === "active"}
+                  onCheckedChange={(checked) => {
+                    updatePropertyMutation.mutate({
+                      id: property.id,
+                      data: { status: checked ? "active" : "inactive" } as any,
+                    });
+                  }}
+                  data-testid={`switch-property-status-${property.id}`}
+                />
+                <Badge variant={property.status === "active" ? "default" : "secondary"} className="text-xs">
+                  {property.status}
+                </Badge>
+              </div>
+            </TableCell>
+            <TableCell className="text-right">
+              <div className="flex justify-end gap-1">
+                <Button 
+                  size="icon" 
+                  variant="ghost"
+                  onClick={() => window.open(`/properties/${property.id}`, '_blank')}
+                  data-testid={`button-view-property-${property.id}`}
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+                <Button 
+                  size="icon" 
+                  variant="ghost"
+                  onClick={() => setEditingProperty(property)}
+                  data-testid={`button-edit-property-${property.id}`}
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => deletePropertyMutation.mutate(property.id)}
+                  data-testid={`button-delete-property-${property.id}`}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
+
+  const renderProperties = () => {
+    const rentProperties = filteredProperties.filter(p => p.listingType === "rent" && !p.isCommercial);
+    const buyProperties = filteredProperties.filter(p => p.listingType === "sale" && !p.isCommercial);
+    const commercialProperties = filteredProperties.filter(p => p.isCommercial);
+    
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold">Properties</h1>
+            <p className="text-muted-foreground">Manage property listings ({filteredProperties.length} total)</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={exportPropertiesToCSV} data-testid="button-export-properties">
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
+            <Button onClick={() => setIsAddPropertyOpen(true)} data-testid="button-add-property">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Property
+            </Button>
+          </div>
+        </div>
+
+        {/* Search and Filters */}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex flex-wrap gap-4 items-end">
+              <div className="flex-1 min-w-[200px]">
+                <Label className="text-xs text-muted-foreground">Search</Label>
+                <Input
+                  placeholder="Search by title, city, address..."
+                  value={propertySearch}
+                  onChange={(e) => setPropertySearch(e.target.value)}
+                  data-testid="input-property-search"
+                />
+              </div>
+              <div className="w-[150px]">
+                <Label className="text-xs text-muted-foreground">City</Label>
+                <Select value={propertyFilterCity} onValueChange={setPropertyFilterCity}>
+                  <SelectTrigger data-testid="select-property-city">
+                    <SelectValue placeholder="All Cities" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Cities</SelectItem>
+                    {cities.map(city => (
+                      <SelectItem key={city.id} value={city.name}>{city.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-[120px]">
+                <Label className="text-xs text-muted-foreground">Status</Label>
+                <Select value={propertyFilterStatus} onValueChange={setPropertyFilterStatus}>
+                  <SelectTrigger data-testid="select-property-status-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                data-testid="button-toggle-advanced-filters"
+              >
+                <FilterIcon className="h-4 w-4 mr-2" />
+                {showAdvancedFilters ? "Hide Filters" : "More Filters"}
+              </Button>
+            </div>
+            
+            {showAdvancedFilters && (
+              <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
+                <div className="w-[130px]">
+                  <Label className="text-xs text-muted-foreground">Min Price (₹)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={propertyFilterPriceMin}
+                    onChange={(e) => setPropertyFilterPriceMin(e.target.value)}
+                    data-testid="input-price-min"
+                  />
+                </div>
+                <div className="w-[130px]">
+                  <Label className="text-xs text-muted-foreground">Max Price (₹)</Label>
+                  <Input
+                    type="number"
+                    placeholder="Any"
+                    value={propertyFilterPriceMax}
+                    onChange={(e) => setPropertyFilterPriceMax(e.target.value)}
+                    data-testid="input-price-max"
+                  />
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => {
+                    setPropertySearch("");
+                    setPropertyFilterCity("");
+                    setPropertyFilterStatus("all");
+                    setPropertyFilterPriceMin("");
+                    setPropertyFilterPriceMax("");
+                  }}
+                  data-testid="button-clear-filters"
+                >
+                  Clear All
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Property Tabs by Segment */}
+        <Tabs value={propertySegment} onValueChange={(v) => setPropertySegment(v as any)} className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="all" data-testid="tab-all-properties">
+              All ({filteredProperties.length})
+            </TabsTrigger>
+            <TabsTrigger value="rent" data-testid="tab-rent-properties">
+              Rent ({rentProperties.length})
+            </TabsTrigger>
+            <TabsTrigger value="buy" data-testid="tab-buy-properties">
+              Buy ({buyProperties.length})
+            </TabsTrigger>
+            <TabsTrigger value="commercial" data-testid="tab-commercial-properties">
+              Commercial ({commercialProperties.length})
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="all" className="mt-4">
+            <Card>
+              <CardContent className="pt-6">
+                {propertiesLoading ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+                  </div>
+                ) : filteredProperties.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No properties found</p>
+                  </div>
+                ) : renderPropertyTable(filteredProperties)}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="rent" className="mt-4">
+            <Card>
+              <CardContent className="pt-6">
+                {rentProperties.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Home className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No rental properties found</p>
+                  </div>
+                ) : renderPropertyTable(rentProperties)}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="buy" className="mt-4">
+            <Card>
+              <CardContent className="pt-6">
+                {buyProperties.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Home className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No sale properties found</p>
+                  </div>
+                ) : renderPropertyTable(buyProperties)}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="commercial" className="mt-4">
+            <Card>
+              <CardContent className="pt-6">
+                {commercialProperties.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No commercial properties found</p>
+                  </div>
+                ) : renderPropertyTable(commercialProperties)}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    );
+  };
 
   const renderEnquiries = () => (
     <div className="space-y-6">
@@ -1012,12 +1281,33 @@ export default function AdminPage() {
     </div>
   );
 
+  // Password reset mutation
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ userId, newPassword }: { userId: string; newPassword: string }) =>
+      apiRequest("POST", `/api/admin/users/${userId}/reset-password`, { newPassword }),
+    onSuccess: (_, { userId }) => {
+      const employee = employees.find(e => e.id === userId);
+      toast({ title: "Password reset", description: `Password has been reset for ${employee?.email || "user"}` });
+      setResetPasswordUserId(null);
+      setNewPassword("");
+    },
+    onError: () => {
+      toast({ title: "Failed to reset password", variant: "destructive" });
+    },
+  });
+
+  const handleResetPassword = () => {
+    if (resetPasswordUserId && newPassword.length >= 6) {
+      resetPasswordMutation.mutate({ userId: resetPasswordUserId, newPassword });
+    }
+  };
+
   const renderEmployees = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Employees</h1>
-          <p className="text-muted-foreground">Manage internal team access</p>
+          <h1 className="text-2xl font-bold">Employees & Users</h1>
+          <p className="text-muted-foreground">Manage team access and user passwords</p>
         </div>
         <Button onClick={() => setIsAddEmployeeOpen(true)} data-testid="button-add-employee">
           <Plus className="h-4 w-4 mr-2" />
@@ -1050,15 +1340,31 @@ export default function AdminPage() {
               </TableHeader>
               <TableBody>
                 {employees.map((employee) => (
-                  <TableRow key={employee.id}>
+                  <TableRow key={employee.id} data-testid={`row-employee-${employee.id}`}>
                     <TableCell className="font-medium">{employee.firstName} {employee.lastName}</TableCell>
                     <TableCell>{employee.email}</TableCell>
                     <TableCell><Badge variant="outline">{employee.role}</Badge></TableCell>
                     <TableCell><Badge variant="default">Active</Badge></TableCell>
                     <TableCell className="text-right">
-                      <Button size="icon" variant="ghost" onClick={() => deleteEmployeeMutation.mutate(employee.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          onClick={() => setResetPasswordUserId(employee.id)}
+                          title="Reset Password"
+                          data-testid={`button-reset-password-${employee.id}`}
+                        >
+                          <KeyIcon className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          onClick={() => deleteEmployeeMutation.mutate(employee.id)}
+                          data-testid={`button-delete-employee-${employee.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1067,6 +1373,53 @@ export default function AdminPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Password Reset Dialog */}
+      <Dialog open={!!resetPasswordUserId} onOpenChange={(open) => {
+        if (!open) {
+          setResetPasswordUserId(null);
+          setNewPassword("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset User Password</DialogTitle>
+            <DialogDescription>
+              Set a new password for {employees.find(e => e.id === resetPasswordUserId)?.email || "this user"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                placeholder="Enter new password (min 6 characters)"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                data-testid="input-new-password"
+              />
+              {newPassword && newPassword.length < 6 && (
+                <p className="text-sm text-destructive">Password must be at least 6 characters</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setResetPasswordUserId(null);
+              setNewPassword("");
+            }}>Cancel</Button>
+            <Button 
+              onClick={handleResetPassword}
+              disabled={!newPassword || newPassword.length < 6 || resetPasswordMutation.isPending}
+              data-testid="button-confirm-reset-password"
+            >
+              {resetPasswordMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Reset Password
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
