@@ -130,7 +130,24 @@ For OTP functionality, the following secrets are required:
 - `/profile` - User profile (pending)
 - `/dashboard` - User dashboard with role switching (pending)
 
+## Page Live Editor (Admin Feature)
+The platform includes a live content editing system for administrators:
+- **EditModeProvider**: Context provider managing edit state and pending changes
+- **EditableText**: Component for inline text editing with rich text support (bold, italic, links)
+- **FloatingEditToggle**: Floating button for admins to toggle edit mode and save changes
+- **Pages table**: Stores page content as JSON, keyed by pageKey (e.g., "homepage", "about")
+- **API**: `GET/PATCH /api/pages/:pageKey` for fetching and saving page content
+- **Cache invalidation**: Automatic query invalidation after save for immediate updates
+
+### How it works:
+1. Admin enables edit mode via the floating toggle button
+2. EditableText components become editable with rich text toolbar
+3. Changes are tracked in EditModeProvider's pendingChanges map
+4. On save, changes are batched by page and sent to API
+5. Query cache is invalidated for immediate UI updates
+
 ## Recent Changes (January 2026)
+- Added Page Live Editor for admin content management
 - Extended database schema with roles, cities, localities, property images
 - Added user roles system (Residential/Commercial Owner/Tenant, Admin)
 - Created tables for enquiries, shortlists, reports, payments, listing boosts
