@@ -1936,5 +1936,255 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== INSTAMOJO PAYMENT INTEGRATION ====================
+
+  const BOOST_PRICES: Record<string, number> = {
+    featured: 499,
+    premium: 999,
+    spotlight: 1499,
+    urgent: 299,
+  };
+
+  // Create boost and initiate payment
+  app.post("/api/boosts/create", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const { propertyId, boostType } = req.body;
+
+      if (!propertyId || !boostType) {
+        return res.status(400).json({ error: "Property ID and boost type are required" });
+      }
+
+      // Verify property belongs to user
+      const [property] = await db.select().from(properties).where(eq(properties.id, propertyId));
+      if (!property || property.ownerId !== userId) {
+        return res.status(403).json({ error: "Property not found or not owned by user" });
+      }
+
+      const amount = BOOST_PRICES[boostType];
+      if (!amount) {
+        return res.status(400).json({ error: "Invalid boost type" });
+      }
+
+      // Get user details
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Check for Instamojo credentials
+      const apiKey = process.env.INSTAMOJO_API_KEY;
+      const authToken = process.env.INSTAMOJO_AUTH_TOKEN;
+      const endpoint = process.env.INSTAMOJO_ENDPOINT || "https://test.instamojo.com";
+
+      if (!apiKey || !authToken) {
+        // For demo/dev: Create boost without payment gateway
+        const [boost] = await db.insert(listingBoosts).values({
+          propertyId,
+          userId,
+          boostType: boostType as any,
+          amount: amount.toString(),
+          status: "pending_approval" as any,
+        }).returning();
+
+        const [payment] = await db.insert(payments).values({
+          userId,
+          propertyId,
+          boostId: boost.id,
+          amount: amount.toString(),
+          status: "completed",
+          paymentMethod: "demo",
+          description: `${boostType} boost for property`,
+          paidAt: new Date(),
+        }).returning();
+
+        await db.update(listingBoosts)
+          .set({ paymentId: payment.id })
+          .where(eq(listingBoosts.id, boost.id));
+
+        return res.json({
+          success: true,
+          boostId: boost.id,
+          message: "Boost created (demo mode - payment gateway not configured)",
+          demoMode: true,
+        });
+      }
+
+      // Create boost record with pending_payment status
+      const [boost] = await db.insert(listingBoosts).values({
+        propertyId,
+        userId,
+        boostType: boostType as any,
+        amount: amount.toString(),
+        status: "pending_payment" as any,
+      }).returning();
+
+      // Create payment record
+      const [payment] = await db.insert(payments).values({
+        userId,
+        propertyId,
+        boostId: boost.id,
+        amount: amount.toString(),
+        status: "pending",
+        paymentMethod: "instamojo",
+        description: `${boostType} boost for property: ${property.title}`,
+      }).returning();
+
+      // Update boost with payment ID
+      await db.update(listingBoosts)
+        .set({ paymentId: payment.id })
+        .where(eq(listingBoosts.id, boost.id));
+
+      // Get redirect URL
+      const host = req.get("host");
+      const protocol = req.protocol;
+      const redirectUrl = `${protocol}://${host}/api/boosts/payment-callback`;
+      const webhookUrl = `${protocol}://${host}/api/boosts/webhook`;
+
+      // Create Instamojo payment request
+      const response = await fetch(`${endpoint}/api/1.1/payment-requests/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Api-Key": apiKey,
+          "X-Auth-Token": authToken,
+        },
+        body: new URLSearchParams({
+          purpose: `Listing Boost: ${boostType}`,
+          amount: amount.toString(),
+          buyer_name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || "User",
+          email: user.email || "",
+          phone: user.phone || "",
+          redirect_url: redirectUrl,
+          webhook: webhookUrl,
+          allow_repeated_payments: "false",
+          send_email: "true",
+          send_sms: "true",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        console.error("Instamojo error:", data);
+        return res.status(500).json({ error: "Failed to create payment request" });
+      }
+
+      // Update payment with Instamojo request ID
+      await db.update(payments)
+        .set({ paymentRequestId: data.payment_request.id })
+        .where(eq(payments.id, payment.id));
+
+      res.json({
+        success: true,
+        boostId: boost.id,
+        paymentId: payment.id,
+        paymentUrl: data.payment_request.longurl,
+      });
+    } catch (error) {
+      console.error("Error creating boost:", error);
+      res.status(500).json({ error: "Failed to create boost" });
+    }
+  });
+
+  // Payment callback (redirect after payment)
+  app.get("/api/boosts/payment-callback", async (req, res) => {
+    try {
+      const { payment_id, payment_status, payment_request_id } = req.query;
+
+      if (payment_status === "Credit") {
+        // Payment successful - update records
+        const [payment] = await db.select().from(payments)
+          .where(eq(payments.paymentRequestId, payment_request_id as string));
+
+        if (payment) {
+          await db.update(payments).set({
+            status: "completed",
+            transactionId: payment_id as string,
+            paidAt: new Date(),
+          }).where(eq(payments.id, payment.id));
+
+          if (payment.boostId) {
+            await db.update(listingBoosts).set({
+              status: "pending_approval" as any,
+            }).where(eq(listingBoosts.id, payment.boostId));
+          }
+        }
+
+        // Redirect to success page
+        res.redirect("/dashboard?boost=success");
+      } else {
+        // Payment failed
+        res.redirect("/dashboard?boost=failed");
+      }
+    } catch (error) {
+      console.error("Payment callback error:", error);
+      res.redirect("/dashboard?boost=error");
+    }
+  });
+
+  // Instamojo webhook
+  app.post("/api/boosts/webhook", async (req, res) => {
+    try {
+      const { payment_id, payment_request_id, status, amount } = req.body;
+
+      if (status === "Credit") {
+        const [payment] = await db.select().from(payments)
+          .where(eq(payments.paymentRequestId, payment_request_id));
+
+        if (payment) {
+          await db.update(payments).set({
+            status: "completed",
+            transactionId: payment_id,
+            paidAt: new Date(),
+            gatewayResponse: req.body,
+          }).where(eq(payments.id, payment.id));
+
+          if (payment.boostId) {
+            await db.update(listingBoosts).set({
+              status: "pending_approval" as any,
+            }).where(eq(listingBoosts.id, payment.boostId));
+          }
+        }
+      }
+
+      res.status(200).send("OK");
+    } catch (error) {
+      console.error("Webhook error:", error);
+      res.status(500).send("Error processing webhook");
+    }
+  });
+
+  // Get user's boosts
+  app.get("/api/my-boosts", authMiddleware, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+
+      const boostsList = await db.select({
+        id: listingBoosts.id,
+        propertyId: listingBoosts.propertyId,
+        boostType: listingBoosts.boostType,
+        status: listingBoosts.status,
+        amount: listingBoosts.amount,
+        startDate: listingBoosts.startDate,
+        endDate: listingBoosts.endDate,
+        isActive: listingBoosts.isActive,
+        impressions: listingBoosts.impressions,
+        clicks: listingBoosts.clicks,
+        createdAt: listingBoosts.createdAt,
+        propertyTitle: properties.title,
+      })
+      .from(listingBoosts)
+      .leftJoin(properties, eq(listingBoosts.propertyId, properties.id))
+      .where(eq(listingBoosts.userId, userId))
+      .orderBy(desc(listingBoosts.createdAt));
+
+      res.json(boostsList);
+    } catch (error) {
+      console.error("Error fetching user boosts:", error);
+      res.status(500).json({ error: "Failed to fetch boosts" });
+    }
+  });
+
   return httpServer;
 }

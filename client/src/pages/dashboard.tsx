@@ -138,9 +138,9 @@ const AVAILABLE_ROLES: { id: UserRoleType; label: string; icon: typeof Home; cat
 
 const BOOST_OPTIONS = [
   { type: "featured", label: "Featured", description: "Top of search results", price: 499, duration: "7 days" },
-  { type: "premium", label: "Premium", description: "Highlighted with badge", price: 299, duration: "7 days" },
-  { type: "spotlight", label: "Spotlight", description: "Homepage showcase", price: 999, duration: "14 days" },
-  { type: "urgent", label: "Urgent", description: "Urgent tag for quick rent", price: 199, duration: "3 days" },
+  { type: "premium", label: "Premium", description: "Highlighted with badge", price: 999, duration: "14 days" },
+  { type: "spotlight", label: "Spotlight", description: "Homepage showcase", price: 1499, duration: "30 days" },
+  { type: "urgent", label: "Urgent", description: "Urgent tag for quick rent", price: 299, duration: "3 days" },
 ];
 
 const REPORT_REASONS = [
@@ -350,13 +350,38 @@ export default function DashboardPage() {
     setBoostDialogOpen(true);
   };
 
+  const createBoostMutation = useMutation({
+    mutationFn: async ({ propertyId, boostType }: { propertyId: string; boostType: string }) =>
+      apiRequest("POST", "/api/boosts/create", { propertyId, boostType }),
+    onSuccess: (data: any) => {
+      if (data.paymentUrl) {
+        window.location.href = data.paymentUrl;
+      } else if (data.demoMode) {
+        toast({
+          title: "Boost Request Submitted",
+          description: data.message || "Your boost request is pending admin approval",
+        });
+        setBoostDialogOpen(false);
+        queryClient.invalidateQueries({ queryKey: ["/api/my-boosts"] });
+      } else {
+        toast({
+          title: "Boost Created",
+          description: "Redirecting to payment...",
+        });
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to create boost. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleBoostPurchase = (boostType: string) => {
-    const boost = BOOST_OPTIONS.find(b => b.type === boostType);
-    toast({
-      title: "Boost Selected",
-      description: `${boost?.label} boost for ${boost?.duration} at Rs. ${boost?.price}. Payment gateway coming soon!`,
-    });
-    setBoostDialogOpen(false);
+    if (!selectedProperty) return;
+    createBoostMutation.mutate({ propertyId: selectedProperty, boostType });
   };
 
   const handleRemoveShortlist = (shortlistId: string) => {
@@ -495,7 +520,9 @@ export default function DashboardPage() {
             {BOOST_OPTIONS.map((boost) => (
               <div
                 key={boost.type}
-                className="flex items-center justify-between p-4 border rounded-lg hover-elevate cursor-pointer"
+                className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer ${
+                  createBoostMutation.isPending ? "opacity-50 pointer-events-none" : "hover-elevate"
+                }`}
                 onClick={() => handleBoostPurchase(boost.type)}
                 data-testid={`boost-option-${boost.type}`}
               >
@@ -509,6 +536,13 @@ export default function DashboardPage() {
                     <IndianRupee className="w-4 h-4" />
                     {boost.price}
                   </p>
+                  <Button 
+                    size="sm" 
+                    className="mt-2"
+                    disabled={createBoostMutation.isPending}
+                  >
+                    {createBoostMutation.isPending ? "Processing..." : "Select"}
+                  </Button>
                 </div>
               </div>
             ))}
