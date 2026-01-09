@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
+import { EditModeProvider } from "@/contexts/EditModeContext";
+import { FloatingEditToggle } from "@/components/floating-edit-toggle";
 import HomePage from "@/pages/home";
 import PropertiesPage from "@/pages/properties";
 import PropertyDetailPage from "@/pages/property-detail";
@@ -47,8 +49,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light" storageKey="direct-rentals-theme">
         <TooltipProvider>
-          <Toaster />
-          <Router />
+          <EditModeProvider>
+            <Toaster />
+            <Router />
+            <FloatingEditToggle />
+          </EditModeProvider>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
