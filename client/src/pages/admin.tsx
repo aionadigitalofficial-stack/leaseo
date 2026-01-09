@@ -87,7 +87,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon, Shield, MessageCircle } from "lucide-react";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "blog" | "pages" | "seo" | "settings";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -305,6 +305,7 @@ const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "payments", label: "Payments", icon: CreditCard },
   { id: "gateway", label: "Payment Gateway", icon: KeyIcon },
   { id: "sms", label: "SMS/WhatsApp", icon: Phone },
+  { id: "newsletter", label: "Newsletter", icon: Mail },
   { id: "employees", label: "Employees", icon: Users },
   { id: "cities", label: "Cities & Localities", icon: MapPin },
   { id: "blog", label: "Blog", icon: PenTool },
@@ -3277,6 +3278,155 @@ export default function AdminPage() {
     </div>
   );
 
+  // Newsletter management
+  const { data: newsletterSubscribers = [], isLoading: newsletterLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/newsletter"],
+    enabled: activeSection === "newsletter",
+  });
+
+  const { data: newsletterStats } = useQuery<{ total: number; active: number; inactive: number }>({
+    queryKey: ["/api/admin/newsletter/stats"],
+    enabled: activeSection === "newsletter",
+  });
+
+  const deleteSubscriberMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/admin/newsletter/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/newsletter"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/newsletter/stats"] });
+      toast({ title: "Subscriber deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete subscriber", variant: "destructive" });
+    },
+  });
+
+  const toggleSubscriberMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("PATCH", `/api/admin/newsletter/${id}/toggle`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/newsletter"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/newsletter/stats"] });
+      toast({ title: "Subscriber status updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update status", variant: "destructive" });
+    },
+  });
+
+  const renderNewsletter = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Newsletter Subscribers</h1>
+          <p className="text-muted-foreground">Manage email subscribers for your newsletter</p>
+        </div>
+        <Button asChild variant="outline" data-testid="button-export-newsletter">
+          <a href="/api/admin/newsletter/export" download>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </a>
+        </Button>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Subscribers</CardTitle>
+            <Mail className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{newsletterStats?.total || 0}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Subscribers</CardTitle>
+            <CheckCircle className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{newsletterStats?.active || 0}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Unsubscribed</CardTitle>
+            <XCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-muted-foreground">{newsletterStats?.inactive || 0}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>All Subscribers</CardTitle>
+          <CardDescription>People who have subscribed to your newsletter</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {newsletterLoading ? (
+            <div className="space-y-2">{[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : newsletterSubscribers.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Mail className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No subscribers yet</p>
+              <p className="text-sm">Subscribers will appear here when they sign up</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Subscribed</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {newsletterSubscribers.map((subscriber) => (
+                  <TableRow key={subscriber.id}>
+                    <TableCell className="font-medium">{subscriber.email}</TableCell>
+                    <TableCell>{subscriber.name || "-"}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{subscriber.source}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {subscriber.subscribedAt ? new Date(subscriber.subscribedAt).toLocaleDateString() : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={subscriber.isActive ? "default" : "secondary"}>
+                        {subscriber.isActive ? "Active" : "Unsubscribed"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Switch
+                          checked={subscriber.isActive}
+                          onCheckedChange={() => toggleSubscriberMutation.mutate(subscriber.id)}
+                          data-testid={`switch-subscriber-${subscriber.id}`}
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteSubscriberMutation.mutate(subscriber.id)}
+                          data-testid={`button-delete-subscriber-${subscriber.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
@@ -3377,6 +3527,7 @@ export default function AdminPage() {
       case "payments": return renderPayments();
       case "gateway": return renderGateway();
       case "sms": return renderSmsProviders();
+      case "newsletter": return renderNewsletter();
       case "employees": return renderEmployees();
       case "cities": return renderCities();
       case "blog": return renderBlog();
