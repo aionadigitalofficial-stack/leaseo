@@ -3,6 +3,7 @@ import { Footer } from "@/components/footer";
 import { ContactForm } from "@/components/contact-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MapPin, Phone, Mail, Clock, MessageSquare } from "lucide-react";
+import { SEOHead } from "@/components/seo-head";
 
 const contactInfo = [
   {
@@ -49,6 +50,11 @@ const faqs = [
 export default function ContactPage() {
   return (
     <div className="min-h-screen flex flex-col">
+      <SEOHead
+        title="Contact Us - Leaseo Property Rentals"
+        description="Get in touch with Leaseo for any questions about property rentals. We're here to help you find your perfect rental home."
+        keywords={["contact leaseo", "property support", "rental help", "pune property", "mumbai rentals"]}
+      />
       <Header />
 
       <main className="flex-1">

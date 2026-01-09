@@ -5,6 +5,7 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { PropertyGrid } from "@/components/property-grid";
 import { SearchFilters } from "@/components/search-filters";
+import { SEOHead } from "@/components/seo-head";
 import {
   Select,
   SelectContent,
@@ -86,8 +87,21 @@ export default function PropertiesPage() {
     (flag) => flag.name === "sell_property" && flag.enabled
   );
 
+  const getPageTitle = () => {
+    const filtersWithSegment = filters as PropertyFilters & { segment?: string };
+    if (filtersWithSegment.segment === "buy") return "Properties for Sale";
+    if (filtersWithSegment.segment === "commercial") return "Commercial Properties";
+    if (filters.listingType === "sale") return "Properties for Sale";
+    return "Rental Properties";
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
+      <SEOHead
+        title={`${getPageTitle()} in ${filters.city || "India"} | Leaseo`}
+        description={`Browse ${getPageTitle().toLowerCase()} ${filters.city ? `in ${filters.city}` : "across India"}. Zero brokerage, verified owners, direct contact with landlords.`}
+        keywords={[filters.city, filters.propertyType, "zero brokerage", "property rental", "verified listings", "no broker"].filter(Boolean) as string[]}
+      />
       <Header />
       
       <main className="flex-1">

@@ -3,6 +3,7 @@ import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { SEOHead } from "@/components/seo-head";
 import { PropertyCard, PropertyCardSkeleton, type PropertyWithDetails } from "@/components/property-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -211,6 +212,11 @@ export default function PropertyDetailPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <SEOHead
+        title={`${property.title} - ${bhkLabel} for ${property.listingType === "sale" ? "Sale" : "Rent"} in ${city} | Leaseo`}
+        description={property.description?.substring(0, 160) || `${bhkLabel} available for ${property.listingType} in ${locality}, ${city}. Zero brokerage, verified owner.`}
+        keywords={[property.propertyType, bhkLabel, city, locality, property.listingType || "rent", "zero brokerage", "property rental"].filter(Boolean) as string[]}
+      />
       <Header />
 
       <main className="flex-1">

@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Link } from "wouter";
 import { ArrowRight, Target, Eye, Heart } from "lucide-react";
 import { EditableText } from "@/components/editable-text";
+import { SEOHead } from "@/components/seo-head";
 import type { PageContent } from "@shared/schema";
 
 const teamMembers = [
@@ -89,6 +90,11 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <SEOHead
+        title={pageData?.metaTitle || "About Leaseo - Zero Brokerage Property Platform"}
+        description={pageData?.metaDescription || "Learn about Leaseo, India's leading zero brokerage property rental platform. Connect directly with property owners."}
+        keywords={(pageData as any)?.metaKeywords || ["about leaseo", "zero brokerage", "property platform", "rental platform india"]}
+      />
       <Header />
 
       <main className="flex-1">

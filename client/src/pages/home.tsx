@@ -7,6 +7,7 @@ import { OwnerToTenant } from "@/components/owner-to-tenant";
 import { TrustBadges } from "@/components/trust-badges";
 import { SeoFooter } from "@/components/seo-footer";
 import { EditableText } from "@/components/editable-text";
+import { SEOHead } from "@/components/seo-head";
 import type { PageContent } from "@shared/schema";
 
 const DEFAULT_CONTENT = {
@@ -48,6 +49,11 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <SEOHead
+        title={pageData?.metaTitle || "Leaseo - Zero Brokerage Property Rentals in India"}
+        description={pageData?.metaDescription || "Find rental properties directly from owners. Zero brokerage, verified listings across Mumbai, Pune, Delhi, Bangalore and more."}
+        keywords={(pageData as any)?.metaKeywords || ["property rental", "zero brokerage", "rent apartment", "house for rent", "pune", "mumbai", "delhi", "bangalore"]}
+      />
       <Header />
       
       <main className="flex-1">

@@ -126,6 +126,7 @@ const blogFormSchema = z.object({
   status: z.enum(["draft", "published"]),
   metaTitle: z.string().optional(),
   metaDescription: z.string().optional(),
+  metaKeywords: z.string().optional(),
 });
 
 const employeeFormSchema = z.object({
@@ -140,6 +141,7 @@ const pageFormSchema = z.object({
   content: z.string().min(10, "Content is required"),
   metaTitle: z.string().optional(),
   metaDescription: z.string().optional(),
+  metaKeywords: z.string().optional(),
 });
 
 const categoryFormSchema = z.object({
@@ -443,9 +445,9 @@ export default function AdminPage() {
     defaultValues: { name: "", cityId: "", pincode: "" },
   });
 
-  const blogForm = useForm<{ title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; metaTitle?: string; metaDescription?: string }>({
+  const blogForm = useForm<{ title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; metaTitle?: string; metaDescription?: string; metaKeywords?: string }>({
     resolver: zodResolver(blogFormSchema),
-    defaultValues: { title: "", slug: "", excerpt: "", content: "", status: "draft", metaTitle: "", metaDescription: "" },
+    defaultValues: { title: "", slug: "", excerpt: "", content: "", status: "draft", metaTitle: "", metaDescription: "", metaKeywords: "" },
   });
 
   const employeeForm = useForm({
@@ -455,7 +457,7 @@ export default function AdminPage() {
 
   const pageForm = useForm({
     resolver: zodResolver(pageFormSchema),
-    defaultValues: { title: "", content: "", metaTitle: "", metaDescription: "" },
+    defaultValues: { title: "", content: "", metaTitle: "", metaDescription: "", metaKeywords: "" },
   });
 
   const categoryForm = useForm({
@@ -531,6 +533,7 @@ export default function AdminPage() {
         status: (editingBlog.status === "published" ? "published" : "draft") as "draft" | "published",
         metaTitle: (editingBlog as any).metaTitle || "",
         metaDescription: (editingBlog as any).metaDescription || "",
+        metaKeywords: ((editingBlog as any).metaKeywords || []).join(", "),
       });
     }
   }, [editingBlog, blogForm]);
@@ -545,6 +548,7 @@ export default function AdminPage() {
         content: contentString,
         metaTitle: (editingPage as any).metaTitle || "",
         metaDescription: (editingPage as any).metaDescription || "",
+        metaKeywords: ((editingPage as any).metaKeywords || []).join(", "),
       });
     }
   }, [editingPage, pageForm]);
@@ -740,7 +744,7 @@ export default function AdminPage() {
   });
 
   const updatePageMutation = useMutation({
-    mutationFn: async ({ key, data }: { key: string; data: { title: string; content: any; metaTitle?: string | null; metaDescription?: string | null } }) =>
+    mutationFn: async ({ key, data }: { key: string; data: { title: string; content: any; metaTitle?: string | null; metaDescription?: string | null; metaKeywords?: string[] } }) =>
       apiRequest("PATCH", `/api/pages/${key}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
@@ -897,7 +901,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleBlogSubmit = (data: { title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; metaTitle?: string; metaDescription?: string }) => {
+  const handleBlogSubmit = (data: { title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; metaTitle?: string; metaDescription?: string; metaKeywords?: string }) => {
     const blogData = {
       title: data.title,
       slug: data.slug,
@@ -906,6 +910,7 @@ export default function AdminPage() {
       status: data.status,
       metaTitle: data.metaTitle || null,
       metaDescription: data.metaDescription || null,
+      metaKeywords: data.metaKeywords ? data.metaKeywords.split(",").map(k => k.trim()).filter(Boolean) : [],
     };
     if (editingBlog) {
       updateBlogMutation.mutate({ id: editingBlog.id, data: blogData });
@@ -914,7 +919,7 @@ export default function AdminPage() {
     }
   };
 
-  const handlePageSubmit = (data: { title: string; content: string; metaTitle?: string; metaDescription?: string }) => {
+  const handlePageSubmit = (data: { title: string; content: string; metaTitle?: string; metaDescription?: string; metaKeywords?: string }) => {
     if (editingPage) {
       let contentToSave: any;
       try {
@@ -929,6 +934,7 @@ export default function AdminPage() {
           content: contentToSave,
           metaTitle: data.metaTitle || null,
           metaDescription: data.metaDescription || null,
+          metaKeywords: data.metaKeywords ? data.metaKeywords.split(",").map(k => k.trim()).filter(Boolean) : [],
         } 
       });
     }
@@ -3996,6 +4002,20 @@ export default function AdminPage() {
                   <FormMessage />
                 </FormItem>
               )} />
+              <FormField control={blogForm.control} name="metaKeywords" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Meta Keywords</FormLabel>
+                  <FormControl>
+                    <Input 
+                      {...field} 
+                      placeholder="property, rental, apartment, pune (comma separated)" 
+                      data-testid="input-blog-meta-keywords" 
+                    />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">Enter keywords separated by commas for SEO</p>
+                  <FormMessage />
+                </FormItem>
+              )} />
               
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => {
@@ -4194,6 +4214,20 @@ export default function AdminPage() {
                       data-testid="input-page-meta-description" 
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={pageForm.control} name="metaKeywords" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Meta Keywords</FormLabel>
+                  <FormControl>
+                    <Input 
+                      {...field} 
+                      placeholder="rental, property, pune, apartments (comma separated)" 
+                      data-testid="input-page-meta-keywords" 
+                    />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">Enter keywords separated by commas for SEO</p>
                   <FormMessage />
                 </FormItem>
               )} />
