@@ -916,7 +916,107 @@ function TenantDashboard({
   onRemoveShortlist,
   onReportListing,
 }: TenantDashboardProps) {
+  const [selectedEnquiry, setSelectedEnquiry] = useState<DashboardEnquiry | null>(null);
+
   return (
+    <>
+      <Dialog open={!!selectedEnquiry} onOpenChange={(open) => !open && setSelectedEnquiry(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enquiry Details</DialogTitle>
+            <DialogDescription>
+              Your enquiry for {selectedEnquiry?.propertyTitle}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedEnquiry && (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-xs text-muted-foreground">Property</Label>
+                <Link href={`/property/${selectedEnquiry.propertyId}`}>
+                  <p className="font-medium text-primary hover:underline cursor-pointer">
+                    {selectedEnquiry.propertyTitle}
+                  </p>
+                </Link>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Your Message</Label>
+                <div className="bg-muted/50 p-3 rounded-lg mt-1">
+                  <p className="text-sm">{selectedEnquiry.message}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Status</Label>
+                  <div className="mt-1">
+                    <Badge variant={selectedEnquiry.status === "responded" ? "default" : "secondary"}>
+                      {selectedEnquiry.status === "responded" ? "Responded" : "Awaiting Response"}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Sent On</Label>
+                  <p className="text-sm mt-1">
+                    {new Date(selectedEnquiry.createdAt).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+              </div>
+              <Separator />
+              <div>
+                <Label className="text-xs text-muted-foreground">Owner Details</Label>
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">{selectedEnquiry.ownerName}</span>
+                  </div>
+                  {selectedEnquiry.status === "responded" ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm">{selectedEnquiry.ownerPhone}</span>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="flex-1 gap-2"
+                          onClick={() => window.open(`tel:${selectedEnquiry.ownerPhone}`)}
+                          data-testid="button-call-owner"
+                        >
+                          <Phone className="w-4 h-4" />
+                          Call
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="flex-1 gap-2 text-green-600"
+                          onClick={() => window.open(`https://wa.me/${selectedEnquiry.ownerPhone.replace(/\D/g, '')}`)}
+                          data-testid="button-whatsapp-owner"
+                        >
+                          <SiWhatsapp className="w-4 h-4" />
+                          WhatsApp
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">
+                      Contact details will be available once the owner responds
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedEnquiry(null)} data-testid="button-close-enquiry">
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     <div className="grid md:grid-cols-3 gap-6">
       <div className="md:col-span-2 space-y-6">
         <div>
@@ -1023,16 +1123,19 @@ function TenantDashboard({
               </Card>
             ) : (
               enquiries.map((enquiry) => (
-                <Card key={enquiry.id} data-testid={`enquiry-card-${enquiry.id}`}>
+                <Card 
+                  key={enquiry.id} 
+                  data-testid={`enquiry-card-${enquiry.id}`}
+                  className="cursor-pointer hover-elevate transition-all"
+                  onClick={() => setSelectedEnquiry(enquiry)}
+                >
                   <CardContent className="p-4">
                     <div className="flex flex-col gap-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <Link href={`/property/${enquiry.propertyId}`}>
-                            <h3 className="font-semibold hover:text-primary transition-colors cursor-pointer">
-                              {enquiry.propertyTitle}
-                            </h3>
-                          </Link>
+                          <h3 className="font-semibold hover:text-primary transition-colors">
+                            {enquiry.propertyTitle}
+                          </h3>
                           <p className="text-sm text-muted-foreground mt-1">
                             Owner: {enquiry.ownerName}
                           </p>
@@ -1042,7 +1145,7 @@ function TenantDashboard({
                         </Badge>
                       </div>
                       <div className="bg-muted/50 p-3 rounded-lg">
-                        <p className="text-sm">{enquiry.message}</p>
+                        <p className="text-sm line-clamp-2">{enquiry.message}</p>
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
                         <span>
@@ -1052,18 +1155,10 @@ function TenantDashboard({
                             year: "numeric",
                           })}
                         </span>
-                        {enquiry.status === "responded" && (
-                          <div className="flex gap-2">
-                            <Button variant="outline" size="sm" className="gap-1">
-                              <Phone className="w-4 h-4" />
-                              Call
-                            </Button>
-                            <Button variant="outline" size="sm" className="gap-1 text-green-600">
-                              <SiWhatsapp className="w-4 h-4" />
-                              WhatsApp
-                            </Button>
-                          </div>
-                        )}
+                        <Button variant="ghost" size="sm" className="gap-1">
+                          <Eye className="w-4 h-4" />
+                          View Details
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -1164,5 +1259,6 @@ function TenantDashboard({
         </Card>
       </div>
     </div>
+    </>
   );
 }
