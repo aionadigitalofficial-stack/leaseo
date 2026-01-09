@@ -3209,137 +3209,527 @@ export default function AdminPage() {
   });
 
   const [selectedRoleForUser, setSelectedRoleForUser] = useState<Record<string, string>>({});
+  const [isAddRoleOpen, setIsAddRoleOpen] = useState(false);
+  const [isAddPermissionOpen, setIsAddPermissionOpen] = useState(false);
+  const [editingRole, setEditingRole] = useState<any | null>(null);
+  const [selectedRoleForPermissions, setSelectedRoleForPermissions] = useState<string>("");
+  const [newRoleName, setNewRoleName] = useState("");
+  const [newRoleDisplayName, setNewRoleDisplayName] = useState("");
+  const [newRoleDescription, setNewRoleDescription] = useState("");
+  const [newPermissionName, setNewPermissionName] = useState("");
+  const [newPermissionDisplayName, setNewPermissionDisplayName] = useState("");
+  const [newPermissionDescription, setNewPermissionDescription] = useState("");
+  const [newPermissionCategory, setNewPermissionCategory] = useState("general");
+
+  const { data: allPermissions = [], isLoading: permissionsLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/permissions"],
+    enabled: activeSection === "roles",
+  });
+
+  const { data: rolePermissionsData = [], isLoading: rolePermsLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/roles", selectedRoleForPermissions, "permissions"],
+    enabled: !!selectedRoleForPermissions,
+  });
+
+  const createRoleMutation = useMutation({
+    mutationFn: async (data: { name: string; displayName: string; description: string }) => {
+      return apiRequest("POST", "/api/admin/roles", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/roles"] });
+      setIsAddRoleOpen(false);
+      setNewRoleName("");
+      setNewRoleDisplayName("");
+      setNewRoleDescription("");
+      toast({ title: "Role created successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to create role", variant: "destructive" });
+    },
+  });
+
+  const deleteRoleMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/admin/roles/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/roles"] });
+      toast({ title: "Role deleted" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete role", variant: "destructive" });
+    },
+  });
+
+  const createPermissionMutation = useMutation({
+    mutationFn: async (data: { name: string; displayName: string; description: string; category: string }) => {
+      return apiRequest("POST", "/api/admin/permissions", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/permissions"] });
+      setIsAddPermissionOpen(false);
+      setNewPermissionName("");
+      setNewPermissionDisplayName("");
+      setNewPermissionDescription("");
+      setNewPermissionCategory("general");
+      toast({ title: "Permission created successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to create permission", variant: "destructive" });
+    },
+  });
+
+  const deletePermissionMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/admin/permissions/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/permissions"] });
+      toast({ title: "Permission deleted" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete permission", variant: "destructive" });
+    },
+  });
+
+  const assignPermissionToRoleMutation = useMutation({
+    mutationFn: async ({ roleId, permissionId }: { roleId: string; permissionId: string }) => {
+      return apiRequest("POST", `/api/admin/roles/${roleId}/permissions`, { permissionId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/roles", selectedRoleForPermissions, "permissions"] });
+      toast({ title: "Permission assigned to role" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to assign permission", variant: "destructive" });
+    },
+  });
+
+  const removePermissionFromRoleMutation = useMutation({
+    mutationFn: async ({ roleId, permissionId }: { roleId: string; permissionId: string }) => {
+      return apiRequest("DELETE", `/api/admin/roles/${roleId}/permissions/${permissionId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/roles", selectedRoleForPermissions, "permissions"] });
+      toast({ title: "Permission removed from role" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to remove permission", variant: "destructive" });
+    },
+  });
 
   const renderRoles = () => (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">User Roles Management</h1>
-        <p className="text-muted-foreground">Assign and manage user roles and permissions</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Roles & Permissions</h1>
+          <p className="text-muted-foreground">Manage user roles and their permissions</p>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => setIsAddPermissionOpen(true)} variant="outline" data-testid="button-add-permission">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Permission
+          </Button>
+          <Button onClick={() => setIsAddRoleOpen(true)} data-testid="button-add-role">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Role
+          </Button>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            Available Roles
-          </CardTitle>
-          <CardDescription>System roles and their permissions</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {rolesLoading ? (
-            <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
-          ) : (
-            <div className="grid gap-3">
-              {allRoles?.map((role) => (
-                <div key={role.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div>
-                    <p className="font-medium">{role.displayName || role.name}</p>
-                    <p className="text-sm text-muted-foreground">{role.description || `Role: ${role.name}`}</p>
-                  </div>
-                  <Badge variant={role.isActive !== false ? "default" : "secondary"}>
-                    {role.isActive !== false ? "Active" : "Inactive"}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="roles" className="w-full">
+        <TabsList>
+          <TabsTrigger value="roles">Roles</TabsTrigger>
+          <TabsTrigger value="permissions">Permissions</TabsTrigger>
+          <TabsTrigger value="users">User Assignments</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Users & Their Roles
-          </CardTitle>
-          <CardDescription>Manage role assignments for users</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {usersRolesLoading ? (
-            <div className="space-y-3">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
-          ) : usersWithRoles?.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No users found</p>
-          ) : (
-            <div className="space-y-4">
-              {usersWithRoles?.map((user) => (
-                <div key={user.id} className="p-4 border rounded-lg space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">
-                        {user.firstName} {user.lastName}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {user.email || user.phone}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={user.isActive ? "default" : "secondary"}>
-                        {user.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                      <Switch
-                        checked={user.isActive}
-                        onCheckedChange={(checked) => 
-                          toggleUserStatusMutation.mutate({ userId: user.id, isActive: checked })
-                        }
-                        data-testid={`switch-user-status-${user.id}`}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    {user.roles?.map((role: any) => (
-                      <Badge key={role.roleId} variant="outline" className="gap-1">
-                        {role.roleDisplayName || role.roleName}
-                        <button
-                          onClick={() => removeRoleMutation.mutate({ userId: user.id, roleId: role.roleId })}
-                          className="ml-1 hover:text-destructive"
-                          data-testid={`button-remove-role-${user.id}-${role.roleId}`}
+        <TabsContent value="roles" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                Available Roles
+              </CardTitle>
+              <CardDescription>Click on a role to manage its permissions</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {rolesLoading ? (
+                <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+              ) : (
+                <div className="grid gap-3">
+                  {allRoles?.map((role) => (
+                    <div 
+                      key={role.id} 
+                      className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
+                        selectedRoleForPermissions === role.id ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                      }`}
+                      onClick={() => setSelectedRoleForPermissions(role.id)}
+                      data-testid={`role-item-${role.id}`}
+                    >
+                      <div>
+                        <p className="font-medium">{role.displayName || role.name}</p>
+                        <p className="text-sm text-muted-foreground">{role.description || `Role: ${role.name}`}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={role.isActive !== false ? "default" : "secondary"}>
+                          {role.isActive !== false ? "Active" : "Inactive"}
+                        </Badge>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm("Are you sure you want to delete this role?")) {
+                              deleteRoleMutation.mutate(role.id);
+                            }
+                          }}
+                          data-testid={`button-delete-role-${role.id}`}
                         >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {selectedRoleForPermissions && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Permissions for: {allRoles?.find(r => r.id === selectedRoleForPermissions)?.displayName}</CardTitle>
+                <CardDescription>Assign or remove permissions for this role</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2 p-4 bg-muted/50 rounded-lg">
+                    <Label className="w-full mb-2">Current Permissions:</Label>
+                    {rolePermsLoading ? (
+                      <Skeleton className="h-8 w-32" />
+                    ) : rolePermissionsData.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">No permissions assigned</p>
+                    ) : (
+                      rolePermissionsData.map((perm: any) => (
+                        <Badge key={perm.permissionId} variant="outline" className="gap-1">
+                          {perm.permissionDisplayName}
+                          <button
+                            onClick={() => removePermissionFromRoleMutation.mutate({ 
+                              roleId: selectedRoleForPermissions, 
+                              permissionId: perm.permissionId 
+                            })}
+                            className="ml-1 hover:text-destructive"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))
+                    )}
                   </div>
                   
-                  <div className="flex items-center gap-2 pt-2 border-t">
-                    <Select 
-                      value={selectedRoleForUser[user.id] || ""} 
-                      onValueChange={(val) => setSelectedRoleForUser(prev => ({ ...prev, [user.id]: val }))}
-                    >
-                      <SelectTrigger className="w-48" data-testid={`select-role-${user.id}`}>
-                        <SelectValue placeholder="Select role to add" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allRoles?.filter(r => 
-                          !user.roles?.some((ur: any) => ur.roleId === r.id)
-                        ).map((role) => (
-                          <SelectItem key={role.id} value={role.id}>
-                            {role.displayName || role.name}
-                          </SelectItem>
+                  <div className="space-y-2">
+                    <Label>Add Permission:</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {allPermissions
+                        .filter(p => !rolePermissionsData.some((rp: any) => rp.permissionId === p.id))
+                        .map((perm: any) => (
+                          <Button
+                            key={perm.id}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => assignPermissionToRoleMutation.mutate({
+                              roleId: selectedRoleForPermissions,
+                              permissionId: perm.id
+                            })}
+                            data-testid={`button-assign-perm-${perm.id}`}
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            {perm.displayName}
+                          </Button>
                         ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        if (selectedRoleForUser[user.id]) {
-                          assignRoleMutation.mutate({ userId: user.id, roleId: selectedRoleForUser[user.id] });
-                          setSelectedRoleForUser(prev => ({ ...prev, [user.id]: "" }));
-                        }
-                      }}
-                      disabled={!selectedRoleForUser[user.id] || assignRoleMutation.isPending}
-                      data-testid={`button-add-role-${user.id}`}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Role
-                    </Button>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
+
+        <TabsContent value="permissions" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyIcon className="h-5 w-5 text-primary" />
+                All Permissions
+              </CardTitle>
+              <CardDescription>System permissions that can be assigned to roles</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {permissionsLoading ? (
+                <div className="space-y-2">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+              ) : (
+                <div className="space-y-2">
+                  {Object.entries(
+                    allPermissions.reduce((acc: any, perm: any) => {
+                      const cat = perm.category || 'general';
+                      if (!acc[cat]) acc[cat] = [];
+                      acc[cat].push(perm);
+                      return acc;
+                    }, {})
+                  ).map(([category, perms]: [string, any]) => (
+                    <div key={category} className="space-y-2">
+                      <h4 className="font-medium capitalize text-muted-foreground text-sm">{category}</h4>
+                      <div className="grid gap-2">
+                        {perms.map((perm: any) => (
+                          <div key={perm.id} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div>
+                              <p className="font-medium">{perm.displayName}</p>
+                              <p className="text-sm text-muted-foreground">{perm.description || perm.name}</p>
+                            </div>
+                            <Button 
+                              size="icon" 
+                              variant="ghost"
+                              onClick={() => {
+                                if (confirm("Are you sure you want to delete this permission?")) {
+                                  deletePermissionMutation.mutate(perm.id);
+                                }
+                              }}
+                              data-testid={`button-delete-perm-${perm.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="users" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                User Role Assignments
+              </CardTitle>
+              <CardDescription>Manage which roles are assigned to each user</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {usersRolesLoading ? (
+                <div className="space-y-3">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+              ) : usersWithRoles?.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No users found</p>
+              ) : (
+                <div className="space-y-4">
+                  {usersWithRoles?.map((user) => (
+                    <div key={user.id} className="p-4 border rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">
+                            {user.firstName || user.lastName ? `${user.firstName} ${user.lastName}`.trim() : "Unnamed User"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {user.email || user.phone || "No contact info"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={user.isActive ? "default" : "secondary"}>
+                            {user.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                          <Switch
+                            checked={user.isActive}
+                            onCheckedChange={(checked) => 
+                              toggleUserStatusMutation.mutate({ userId: user.id, isActive: checked })
+                            }
+                            data-testid={`switch-user-status-${user.id}`}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        {user.roles?.length > 0 ? user.roles.map((role: any) => (
+                          <Badge key={role.roleId} variant="outline" className="gap-1">
+                            {role.roleDisplayName || role.roleName}
+                            <button
+                              onClick={() => removeRoleMutation.mutate({ userId: user.id, roleId: role.roleId })}
+                              className="ml-1 hover:text-destructive"
+                              data-testid={`button-remove-role-${user.id}-${role.roleId}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        )) : <span className="text-sm text-muted-foreground">No roles assigned</span>}
+                      </div>
+                      
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <Select 
+                          value={selectedRoleForUser[user.id] || ""} 
+                          onValueChange={(val) => setSelectedRoleForUser(prev => ({ ...prev, [user.id]: val }))}
+                        >
+                          <SelectTrigger className="w-48" data-testid={`select-role-${user.id}`}>
+                            <SelectValue placeholder="Select role to add" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allRoles?.filter(r => 
+                              !user.roles?.some((ur: any) => ur.roleId === r.id)
+                            ).map((role) => (
+                              <SelectItem key={role.id} value={role.id}>
+                                {role.displayName || role.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (selectedRoleForUser[user.id]) {
+                              assignRoleMutation.mutate({ userId: user.id, roleId: selectedRoleForUser[user.id] });
+                              setSelectedRoleForUser(prev => ({ ...prev, [user.id]: "" }));
+                            }
+                          }}
+                          disabled={!selectedRoleForUser[user.id] || assignRoleMutation.isPending}
+                          data-testid={`button-add-role-${user.id}`}
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add Role
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={isAddRoleOpen} onOpenChange={setIsAddRoleOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Role</DialogTitle>
+            <DialogDescription>Add a new role to the system</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Role Name (slug)</Label>
+              <Input 
+                value={newRoleName} 
+                onChange={(e) => setNewRoleName(e.target.value)}
+                placeholder="e.g., marketing_manager"
+                data-testid="input-role-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Display Name</Label>
+              <Input 
+                value={newRoleDisplayName} 
+                onChange={(e) => setNewRoleDisplayName(e.target.value)}
+                placeholder="e.g., Marketing Manager"
+                data-testid="input-role-display-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea 
+                value={newRoleDescription} 
+                onChange={(e) => setNewRoleDescription(e.target.value)}
+                placeholder="Brief description of this role"
+                data-testid="input-role-description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddRoleOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={() => createRoleMutation.mutate({ 
+                name: newRoleName, 
+                displayName: newRoleDisplayName, 
+                description: newRoleDescription 
+              })}
+              disabled={!newRoleName || !newRoleDisplayName || createRoleMutation.isPending}
+              data-testid="button-save-role"
+            >
+              {createRoleMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Create Role
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAddPermissionOpen} onOpenChange={setIsAddPermissionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Permission</DialogTitle>
+            <DialogDescription>Add a new permission to the system</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Permission Name (slug)</Label>
+              <Input 
+                value={newPermissionName} 
+                onChange={(e) => setNewPermissionName(e.target.value)}
+                placeholder="e.g., edit_blog"
+                data-testid="input-permission-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Display Name</Label>
+              <Input 
+                value={newPermissionDisplayName} 
+                onChange={(e) => setNewPermissionDisplayName(e.target.value)}
+                placeholder="e.g., Edit Blog Posts"
+                data-testid="input-permission-display-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select value={newPermissionCategory} onValueChange={setNewPermissionCategory}>
+                <SelectTrigger data-testid="select-permission-category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">General</SelectItem>
+                  <SelectItem value="properties">Properties</SelectItem>
+                  <SelectItem value="users">Users</SelectItem>
+                  <SelectItem value="roles">Roles</SelectItem>
+                  <SelectItem value="content">Content</SelectItem>
+                  <SelectItem value="settings">Settings</SelectItem>
+                  <SelectItem value="payments">Payments</SelectItem>
+                  <SelectItem value="enquiries">Enquiries</SelectItem>
+                  <SelectItem value="locations">Locations</SelectItem>
+                  <SelectItem value="boosts">Boosts</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea 
+                value={newPermissionDescription} 
+                onChange={(e) => setNewPermissionDescription(e.target.value)}
+                placeholder="Brief description of this permission"
+                data-testid="input-permission-description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddPermissionOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={() => createPermissionMutation.mutate({ 
+                name: newPermissionName, 
+                displayName: newPermissionDisplayName, 
+                description: newPermissionDescription,
+                category: newPermissionCategory
+              })}
+              disabled={!newPermissionName || !newPermissionDisplayName || createPermissionMutation.isPending}
+              data-testid="button-save-permission"
+            >
+              {createPermissionMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Create Permission
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
@@ -3619,40 +4009,45 @@ export default function AdminPage() {
 
   return (
     <div className="flex h-screen bg-background">
-      <aside className={`bg-sidebar border-r flex flex-col transition-all duration-300 ${sidebarCollapsed ? "w-16" : "w-64"}`}>
-        <div className="p-4 border-b flex items-center justify-between gap-2">
-          {!sidebarCollapsed && <h2 className="font-bold text-lg">Leaseo Admin</h2>}
-          <Button size="icon" variant="ghost" onClick={() => setSidebarCollapsed(!sidebarCollapsed)}>
+      <aside className={`bg-background border-r flex flex-col transition-all duration-300 ${sidebarCollapsed ? "w-16" : "w-64"} flex-shrink-0`}>
+        <div className="p-4 border-b flex items-center justify-between gap-2 bg-primary/5">
+          {!sidebarCollapsed && <h2 className="font-bold text-lg text-primary">Leaseo Admin</h2>}
+          <Button size="icon" variant="ghost" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="hover:bg-primary/10">
             {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </Button>
         </div>
-        <nav className="flex-1 p-2 space-y-1">
+        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
           {sidebarItems.map((item) => {
             const Icon = item.icon;
+            const isActive = activeSection === item.id;
             return (
               <Button
                 key={item.id}
-                variant={activeSection === item.id ? "secondary" : "ghost"}
-                className={`w-full justify-start gap-3 ${sidebarCollapsed ? "px-3" : ""}`}
+                variant="ghost"
+                className={`w-full justify-start gap-3 ${sidebarCollapsed ? "px-3" : ""} ${
+                  isActive 
+                    ? "bg-primary/10 text-primary border-l-2 border-primary rounded-l-none" 
+                    : "hover:bg-muted"
+                }`}
                 onClick={() => setActiveSection(item.id)}
                 data-testid={`nav-${item.id}`}
               >
-                <Icon className="h-4 w-4 flex-shrink-0" />
-                {!sidebarCollapsed && <span>{item.label}</span>}
+                <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? "text-primary" : ""}`} />
+                {!sidebarCollapsed && <span className={isActive ? "font-medium" : ""}>{item.label}</span>}
               </Button>
             );
           })}
         </nav>
         <div className="p-4 border-t">
-          <Button variant="outline" className="w-full" onClick={() => window.location.href = "/"}>
+          <Button variant="outline" className="w-full hover:bg-primary/10 hover:border-primary" onClick={() => window.location.href = "/"}>
             {!sidebarCollapsed && <span>Back to Site</span>}
             {sidebarCollapsed && <Home className="h-4 w-4" />}
           </Button>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
-        <div className="p-6">{renderContent()}</div>
+      <main className="flex-1 overflow-auto bg-muted/20">
+        <div className="p-6 max-w-7xl">{renderContent()}</div>
       </main>
 
       <Dialog open={isAddPropertyOpen || !!editingProperty} onOpenChange={(open) => {

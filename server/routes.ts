@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries, paymentProviders, notificationProviders, siteSettings } from "@shared/schema";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, permissions, rolePermissions, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries, paymentProviders, notificationProviders, siteSettings } from "@shared/schema";
 import { and, gt, eq, desc, asc, sql, isNotNull } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
@@ -2610,6 +2610,213 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating user status:", error);
       res.status(500).json({ error: "Failed to update user status" });
+    }
+  });
+
+  // Create new role
+  app.post("/api/admin/roles", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { name, displayName, description, permissions: perms } = req.body;
+      
+      if (!name || !displayName) {
+        return res.status(400).json({ error: "Name and display name are required" });
+      }
+      
+      const slug = name.toLowerCase().replace(/\s+/g, '_');
+      
+      const [newRole] = await db.insert(roles)
+        .values({
+          name: slug,
+          displayName,
+          description: description || null,
+          permissions: perms || [],
+        })
+        .returning();
+      
+      res.json(newRole);
+    } catch (error: any) {
+      console.error("Error creating role:", error);
+      if (error.code === '23505') {
+        return res.status(400).json({ error: "A role with this name already exists" });
+      }
+      res.status(500).json({ error: "Failed to create role" });
+    }
+  });
+
+  // Delete role
+  app.delete("/api/admin/roles/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if role is assigned to any users
+      const assignments = await db.select().from(userRoles).where(eq(userRoles.roleId, id));
+      if (assignments.length > 0) {
+        return res.status(400).json({ error: "Cannot delete role that is assigned to users" });
+      }
+      
+      await db.delete(roles).where(eq(roles.id, id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting role:", error);
+      res.status(500).json({ error: "Failed to delete role" });
+    }
+  });
+
+  // ==================== ADMIN: PERMISSIONS MANAGEMENT ====================
+
+  // Get all permissions
+  app.get("/api/admin/permissions", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const allPermissions = await db.select().from(permissions);
+      res.json(allPermissions);
+    } catch (error) {
+      console.error("Error fetching permissions:", error);
+      res.status(500).json({ error: "Failed to fetch permissions" });
+    }
+  });
+
+  // Create new permission
+  app.post("/api/admin/permissions", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { name, displayName, description, category } = req.body;
+      
+      if (!name || !displayName) {
+        return res.status(400).json({ error: "Name and display name are required" });
+      }
+      
+      const slug = name.toLowerCase().replace(/\s+/g, '_');
+      
+      const [newPermission] = await db.insert(permissions)
+        .values({
+          name: slug,
+          displayName,
+          description: description || null,
+          category: category || 'general',
+        })
+        .returning();
+      
+      res.json(newPermission);
+    } catch (error: any) {
+      console.error("Error creating permission:", error);
+      if (error.code === '23505') {
+        return res.status(400).json({ error: "A permission with this name already exists" });
+      }
+      res.status(500).json({ error: "Failed to create permission" });
+    }
+  });
+
+  // Update permission
+  app.patch("/api/admin/permissions/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { displayName, description, category, isActive } = req.body;
+      
+      const updateData: any = {};
+      if (displayName) updateData.displayName = displayName;
+      if (description !== undefined) updateData.description = description;
+      if (category) updateData.category = category;
+      if (typeof isActive === "boolean") updateData.isActive = isActive;
+      
+      const [updated] = await db.update(permissions)
+        .set(updateData)
+        .where(eq(permissions.id, id))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Permission not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating permission:", error);
+      res.status(500).json({ error: "Failed to update permission" });
+    }
+  });
+
+  // Delete permission
+  app.delete("/api/admin/permissions/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if permission is assigned to any roles
+      const assignments = await db.select().from(rolePermissions).where(eq(rolePermissions.permissionId, id));
+      if (assignments.length > 0) {
+        return res.status(400).json({ error: "Cannot delete permission that is assigned to roles" });
+      }
+      
+      await db.delete(permissions).where(eq(permissions.id, id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting permission:", error);
+      res.status(500).json({ error: "Failed to delete permission" });
+    }
+  });
+
+  // Get role permissions
+  app.get("/api/admin/roles/:roleId/permissions", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { roleId } = req.params;
+      
+      const rolePerms = await db.select({
+        id: rolePermissions.id,
+        permissionId: rolePermissions.permissionId,
+        permissionName: permissions.name,
+        permissionDisplayName: permissions.displayName,
+        category: permissions.category,
+      })
+      .from(rolePermissions)
+      .leftJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+      .where(eq(rolePermissions.roleId, roleId));
+      
+      res.json(rolePerms);
+    } catch (error) {
+      console.error("Error fetching role permissions:", error);
+      res.status(500).json({ error: "Failed to fetch role permissions" });
+    }
+  });
+
+  // Assign permission to role
+  app.post("/api/admin/roles/:roleId/permissions", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { roleId } = req.params;
+      const { permissionId } = req.body;
+      
+      if (!permissionId) {
+        return res.status(400).json({ error: "Permission ID is required" });
+      }
+      
+      // Check if assignment already exists
+      const [existing] = await db.select()
+        .from(rolePermissions)
+        .where(and(eq(rolePermissions.roleId, roleId), eq(rolePermissions.permissionId, permissionId)));
+      
+      if (existing) {
+        return res.status(400).json({ error: "Role already has this permission" });
+      }
+      
+      const [assignment] = await db.insert(rolePermissions)
+        .values({ roleId, permissionId })
+        .returning();
+      
+      res.json(assignment);
+    } catch (error) {
+      console.error("Error assigning permission:", error);
+      res.status(500).json({ error: "Failed to assign permission" });
+    }
+  });
+
+  // Remove permission from role
+  app.delete("/api/admin/roles/:roleId/permissions/:permissionId", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { roleId, permissionId } = req.params;
+      
+      await db.delete(rolePermissions)
+        .where(and(eq(rolePermissions.roleId, roleId), eq(rolePermissions.permissionId, permissionId)));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing permission:", error);
+      res.status(500).json({ error: "Failed to remove permission" });
     }
   });
 

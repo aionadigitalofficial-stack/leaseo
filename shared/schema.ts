@@ -86,6 +86,21 @@ export const boostStatusEnum = pgEnum("boost_status", [
   "cancelled"
 ]);
 
+// ==================== PERMISSIONS TABLE ====================
+
+export const permissions = pgTable("permissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  description: text("description"),
+  category: text("category").default("general"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("permissions_name_idx").on(table.name),
+  index("permissions_category_idx").on(table.category),
+]);
+
 // ==================== ROLES TABLE ====================
 
 export const roles = pgTable("roles", {
@@ -97,6 +112,17 @@ export const roles = pgTable("roles", {
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ==================== ROLE PERMISSIONS (JOIN TABLE) ====================
+
+export const rolePermissions = pgTable("role_permissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  roleId: varchar("role_id").references(() => roles.id).notNull(),
+  permissionId: varchar("permission_id").references(() => permissions.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("role_permission_unique").on(table.roleId, table.permissionId),
+]);
 
 // ==================== USERS TABLE ====================
 
@@ -738,7 +764,17 @@ export const otpRequestsRelations = relations(otpRequests, ({ one }) => ({
 
 // ==================== INSERT SCHEMAS ====================
 
+export const insertPermissionSchema = createInsertSchema(permissions).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertRoleSchema = createInsertSchema(roles).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertRolePermissionSchema = createInsertSchema(rolePermissions).omit({
   id: true,
   createdAt: true,
 });
@@ -832,8 +868,14 @@ export const insertLoginAttemptSchema = createInsertSchema(loginAttempts).omit({
 
 // ==================== TYPES ====================
 
+export type InsertPermission = z.infer<typeof insertPermissionSchema>;
+export type Permission = typeof permissions.$inferSelect;
+
 export type InsertRole = z.infer<typeof insertRoleSchema>;
 export type Role = typeof roles.$inferSelect;
+
+export type InsertRolePermission = z.infer<typeof insertRolePermissionSchema>;
+export type RolePermission = typeof rolePermissions.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;

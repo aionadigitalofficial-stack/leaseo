@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Link } from "wouter";
 import { ArrowRight, Target, Eye, Heart } from "lucide-react";
 import { EditableText } from "@/components/editable-text";
+import { EditableImage } from "@/components/editable-image";
 import { SEOHead } from "@/components/seo-head";
 import type { PageContent } from "@shared/schema";
 
@@ -56,10 +57,12 @@ const values = [
 const DEFAULT_ABOUT_CONTENT = {
   heroTitle: "About Leaseo",
   heroSubtitle: "We're on a mission to transform the rental experience by connecting renters directly with property owners. No middlemen, no hidden fees, just simple and transparent renting.",
+  heroImage: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1920&auto=format&fit=crop",
   storyTitle: "Our Story",
   storyParagraph1: "Leaseo was born from a simple frustration: why does renting have to be so complicated and expensive? As renters ourselves, we experienced firsthand the hidden fees, poor communication, and lack of transparency that plagues the rental industry.",
   storyParagraph2: "Founded in 2020, we set out to build something different. A platform where landlords and tenants could connect directly, where every listing is verified, and where trust is earned through transparency.",
   storyParagraph3: "Today, we've helped thousands of people find their perfect rental home, and we're just getting started. Our goal is to make renting as simple and stress-free as it should be.",
+  storyImage: "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&auto=format&fit=crop",
 };
 
 export default function AboutPage() {
@@ -76,10 +79,12 @@ export default function AboutPage() {
       setLocalContent({
         heroTitle: content.heroTitle || DEFAULT_ABOUT_CONTENT.heroTitle,
         heroSubtitle: content.heroSubtitle || DEFAULT_ABOUT_CONTENT.heroSubtitle,
+        heroImage: content.heroImage || DEFAULT_ABOUT_CONTENT.heroImage,
         storyTitle: content.storyTitle || DEFAULT_ABOUT_CONTENT.storyTitle,
         storyParagraph1: content.storyParagraph1 || DEFAULT_ABOUT_CONTENT.storyParagraph1,
         storyParagraph2: content.storyParagraph2 || DEFAULT_ABOUT_CONTENT.storyParagraph2,
         storyParagraph3: content.storyParagraph3 || DEFAULT_ABOUT_CONTENT.storyParagraph3,
+        storyImage: content.storyImage || DEFAULT_ABOUT_CONTENT.storyImage,
       });
     }
   }, [content]);
@@ -103,7 +108,7 @@ export default function AboutPage() {
           <div 
             className="absolute inset-0 bg-cover bg-center"
             style={{
-              backgroundImage: `url('https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1920&auto=format&fit=crop')`,
+              backgroundImage: `url('${localContent.heroImage}')`,
             }}
           >
             <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-black/60" />
@@ -111,6 +116,13 @@ export default function AboutPage() {
           
           <div className="relative container mx-auto px-4">
             <div className="max-w-2xl">
+              <EditableImage
+                src={localContent.heroImage}
+                alt="Hero Background Preview"
+                onChange={updateContent("heroImage")}
+                className="rounded-md w-32 h-20 object-cover opacity-75 mb-4"
+                contentKey="about.heroImage"
+              />
               <EditableText
                 value={localContent.heroTitle}
                 onChange={updateContent("heroTitle")}
@@ -169,10 +181,12 @@ export default function AboutPage() {
                 </div>
               </div>
               <div className="relative">
-                <img
-                  src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&auto=format&fit=crop"
+                <EditableImage
+                  src={localContent.storyImage}
                   alt="Our team working together"
-                  className="rounded-lg shadow-lg"
+                  onChange={updateContent("storyImage")}
+                  className="rounded-lg shadow-lg w-full h-auto"
+                  contentKey="about.storyImage"
                 />
               </div>
             </div>
