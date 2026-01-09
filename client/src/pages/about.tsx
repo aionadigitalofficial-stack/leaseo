@@ -1,3 +1,5 @@
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { TrustSection } from "@/components/trust-section";
@@ -6,6 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Link } from "wouter";
 import { ArrowRight, Target, Eye, Heart } from "lucide-react";
+import { EditableText } from "@/components/editable-text";
+import type { PageContent } from "@shared/schema";
 
 const teamMembers = [
   {
@@ -48,7 +52,41 @@ const values = [
   },
 ];
 
+const DEFAULT_ABOUT_CONTENT = {
+  heroTitle: "About Leaseo",
+  heroSubtitle: "We're on a mission to transform the rental experience by connecting renters directly with property owners. No middlemen, no hidden fees, just simple and transparent renting.",
+  storyTitle: "Our Story",
+  storyParagraph1: "Leaseo was born from a simple frustration: why does renting have to be so complicated and expensive? As renters ourselves, we experienced firsthand the hidden fees, poor communication, and lack of transparency that plagues the rental industry.",
+  storyParagraph2: "Founded in 2020, we set out to build something different. A platform where landlords and tenants could connect directly, where every listing is verified, and where trust is earned through transparency.",
+  storyParagraph3: "Today, we've helped thousands of people find their perfect rental home, and we're just getting started. Our goal is to make renting as simple and stress-free as it should be.",
+};
+
 export default function AboutPage() {
+  const { data: pageData } = useQuery<PageContent>({
+    queryKey: ["/api/pages/about"],
+  });
+
+  const content = pageData?.content as Record<string, string> | undefined;
+  
+  const [localContent, setLocalContent] = useState(DEFAULT_ABOUT_CONTENT);
+
+  useEffect(() => {
+    if (content) {
+      setLocalContent({
+        heroTitle: content.heroTitle || DEFAULT_ABOUT_CONTENT.heroTitle,
+        heroSubtitle: content.heroSubtitle || DEFAULT_ABOUT_CONTENT.heroSubtitle,
+        storyTitle: content.storyTitle || DEFAULT_ABOUT_CONTENT.storyTitle,
+        storyParagraph1: content.storyParagraph1 || DEFAULT_ABOUT_CONTENT.storyParagraph1,
+        storyParagraph2: content.storyParagraph2 || DEFAULT_ABOUT_CONTENT.storyParagraph2,
+        storyParagraph3: content.storyParagraph3 || DEFAULT_ABOUT_CONTENT.storyParagraph3,
+      });
+    }
+  }, [content]);
+
+  const updateContent = (key: keyof typeof localContent) => (value: string) => {
+    setLocalContent((prev) => ({ ...prev, [key]: value }));
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -67,14 +105,20 @@ export default function AboutPage() {
           
           <div className="relative container mx-auto px-4">
             <div className="max-w-2xl">
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-                About Leaseo
-              </h1>
-              <p className="text-lg md:text-xl text-white/90 mb-8">
-                We're on a mission to transform the rental experience by connecting 
-                renters directly with property owners. No middlemen, no hidden fees, 
-                just simple and transparent renting.
-              </p>
+              <EditableText
+                value={localContent.heroTitle}
+                onChange={updateContent("heroTitle")}
+                as="h1"
+                className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6"
+                contentKey="about.heroTitle"
+              />
+              <EditableText
+                value={localContent.heroSubtitle}
+                onChange={updateContent("heroSubtitle")}
+                as="p"
+                className="text-lg md:text-xl text-white/90 mb-8"
+                contentKey="about.heroSubtitle"
+              />
               <Link href="/properties">
                 <Button size="lg" className="gap-2" data-testid="button-explore-properties">
                   Explore Properties
@@ -90,24 +134,32 @@ export default function AboutPage() {
           <div className="container mx-auto px-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
               <div>
-                <h2 className="text-3xl md:text-4xl font-bold mb-6">Our Story</h2>
+                <EditableText
+                  value={localContent.storyTitle}
+                  onChange={updateContent("storyTitle")}
+                  as="h2"
+                  className="text-3xl md:text-4xl font-bold mb-6"
+                  contentKey="about.storyTitle"
+                />
                 <div className="space-y-4 text-muted-foreground">
-                  <p>
-                    Leaseo was born from a simple frustration: why does renting 
-                    have to be so complicated and expensive? As renters ourselves, we 
-                    experienced firsthand the hidden fees, poor communication, and lack 
-                    of transparency that plagues the rental industry.
-                  </p>
-                  <p>
-                    Founded in 2020, we set out to build something different. A platform 
-                    where landlords and tenants could connect directly, where every listing 
-                    is verified, and where trust is earned through transparency.
-                  </p>
-                  <p>
-                    Today, we've helped thousands of people find their perfect rental home, 
-                    and we're just getting started. Our goal is to make renting as simple 
-                    and stress-free as it should be.
-                  </p>
+                  <EditableText
+                    value={localContent.storyParagraph1}
+                    onChange={updateContent("storyParagraph1")}
+                    as="p"
+                    contentKey="about.storyParagraph1"
+                  />
+                  <EditableText
+                    value={localContent.storyParagraph2}
+                    onChange={updateContent("storyParagraph2")}
+                    as="p"
+                    contentKey="about.storyParagraph2"
+                  />
+                  <EditableText
+                    value={localContent.storyParagraph3}
+                    onChange={updateContent("storyParagraph3")}
+                    as="p"
+                    contentKey="about.storyParagraph3"
+                  />
                 </div>
               </div>
               <div className="relative">

@@ -1,11 +1,12 @@
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { queryClient, apiRequest } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { EditModeProvider } from "@/contexts/EditModeContext";
 import { FloatingEditToggle } from "@/components/floating-edit-toggle";
+import { useToast } from "@/hooks/use-toast";
 import HomePage from "@/pages/home";
 import PropertiesPage from "@/pages/properties";
 import PropertyDetailPage from "@/pages/property-detail";
@@ -44,16 +45,83 @@ function Router() {
   );
 }
 
+function AppContent() {
+  const { toast } = useToast();
+
+  const handleSaveChanges = async (changes: Map<string, unknown>) => {
+    const changesArray = Array.from(changes.entries());
+    
+    const changesByPage = new Map<string, Record<string, unknown>>();
+    
+    for (const [key, value] of changesArray) {
+      const [pageKey, contentKey] = key.split(".");
+      if (!changesByPage.has(pageKey)) {
+        changesByPage.set(pageKey, {});
+      }
+      changesByPage.get(pageKey)![contentKey] = value;
+    }
+    
+    const savedPageKeys: string[] = [];
+    
+    for (const [pageKey, contentChanges] of changesByPage) {
+      try {
+        const response = await fetch(`/api/pages/${pageKey}`);
+        let currentContent = {};
+        
+        if (response.ok) {
+          const pageData = await response.json();
+          currentContent = pageData.content || {};
+        }
+        
+        const updatedContent = {
+          ...currentContent,
+          ...contentChanges,
+        };
+        
+        await apiRequest("PATCH", `/api/pages/${pageKey}`, {
+          title: pageKey.charAt(0).toUpperCase() + pageKey.slice(1),
+          content: updatedContent,
+        });
+        
+        savedPageKeys.push(pageKey);
+      } catch (error) {
+        console.error(`Failed to save ${pageKey}:`, error);
+        toast({
+          title: "Failed to save changes",
+          description: `Could not update ${pageKey}`,
+          variant: "destructive",
+        });
+        throw error;
+      }
+    }
+    
+    queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+    for (const pageKey of savedPageKeys) {
+      queryClient.invalidateQueries({ queryKey: [`/api/pages/${pageKey}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pages", pageKey] });
+    }
+    
+    toast({
+      title: "Changes saved",
+      description: "Your edits have been saved successfully.",
+    });
+  };
+
+  return (
+    <EditModeProvider onSave={handleSaveChanges}>
+      <Toaster />
+      <Router />
+      <FloatingEditToggle />
+    </EditModeProvider>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light" storageKey="direct-rentals-theme">
         <TooltipProvider>
-          <EditModeProvider>
-            <Toaster />
-            <Router />
-            <FloatingEditToggle />
-          </EditModeProvider>
+          <AppContent />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
