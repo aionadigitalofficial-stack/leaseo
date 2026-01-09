@@ -113,10 +113,22 @@ npm run db:studio  # Open Drizzle Studio
 ```
 
 ## Required Secrets
-For OTP functionality, the following secrets are required:
+
+### Email (SMTP) Configuration - Required for OTP
+For email OTP to work, set these environment variables on your VPS:
+- `SMTP_HOST` - SMTP server hostname (e.g., smtp.gmail.com, smtp.zoho.in)
+- `SMTP_PORT` - SMTP port (587 for TLS, 465 for SSL)
+- `SMTP_USER` - SMTP username/email
+- `SMTP_PASS` - SMTP password or app password
+- `SMTP_FROM_EMAIL` - From email address (default: noreply@leaseo.in)
+- `SMTP_FROM_NAME` - From name (default: Leaseo)
+
+### SMS OTP (Optional - Not yet implemented)
 - `TWILIO_ACCOUNT_SID` - Twilio Account SID
 - `TWILIO_AUTH_TOKEN` - Twilio Auth Token
 - `TWILIO_PHONE_NUMBER` - Twilio phone number
+
+### Other Secrets
 - `JWT_SECRET` - Secret for signing JWT tokens
 
 ## Pages

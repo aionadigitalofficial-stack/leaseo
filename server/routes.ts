@@ -617,15 +617,21 @@ export async function registerRoutes(
         maxAttempts: 3,
       });
 
-      // In development, log OTP. In production, send via email/SMS
+      // Send OTP via email or SMS
       console.log(`[OTP] Code for ${email || phone}: ${code}`);
 
-      // TODO: Integrate with email/SMS service for production
-      // For now, we'll return success and log the OTP
+      let emailSent = false;
+      if (email) {
+        const { sendOTPEmail } = await import("./email");
+        emailSent = await sendOTPEmail(email, code);
+      }
 
+      // TODO: Add SMS service for phone OTP (e.g., Twilio, MSG91)
+      
       res.json({ 
         success: true, 
         message: `Verification code sent to ${email || phone}`,
+        emailSent,
         // In development mode, include code for testing
         ...(process.env.NODE_ENV === "development" && { devCode: code })
       });
