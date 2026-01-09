@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useUpload } from "@/hooks/use-upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -811,6 +812,47 @@ export default function AdminPage() {
       toast({ title: "Failed to delete image", variant: "destructive" });
     },
   });
+
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+
+  const { uploadFile, isUploading: isUploadingFile } = useUpload();
+
+  const uploadImageMutation = useMutation({
+    mutationFn: async ({ propertyId, url, caption }: { propertyId: string; url: string; caption?: string }) =>
+      apiRequest("POST", `/api/properties/${propertyId}/images`, { url, caption }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", editingProperty?.id, "images"] });
+      toast({ title: "Image added successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to add image", variant: "destructive" });
+    },
+  });
+
+  const handleImageUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !editingProperty) return;
+    
+    setUploadingImages(true);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const uploadResponse = await uploadFile(file);
+        if (uploadResponse) {
+          await uploadImageMutation.mutateAsync({
+            propertyId: editingProperty.id,
+            url: uploadResponse.objectPath,
+            caption: file.name,
+          });
+        }
+      }
+      toast({ title: `${files.length} image(s) uploaded successfully` });
+    } catch (error) {
+      toast({ title: "Failed to upload some images", variant: "destructive" });
+    } finally {
+      setUploadingImages(false);
+    }
+  };
 
   const [robotsTxt, setRobotsTxt] = useState(seoSettings?.robotsTxt || `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api\n\nSitemap: https://leaseo.in/sitemap.xml`);
   const [metaTitle, setMetaTitle] = useState(seoSettings?.metaTitle || "Leaseo - Zero Brokerage Property Rentals in India");
@@ -3520,74 +3562,100 @@ export default function AdminPage() {
                 </FormItem>
               )} />
 
-              {editingProperty && (
-                <div className="space-y-3 pt-4 border-t">
+              <div className="space-y-3 pt-4 border-t">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Image className="h-4 w-4" />
                     <Label className="font-semibold">Property Images</Label>
                   </div>
-                  {imagesLoading ? (
-                    <div className="grid grid-cols-3 gap-3">
-                      {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full rounded-md" />)}
-                    </div>
-                  ) : propertyImages.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No images uploaded yet.</p>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-3">
-                      {propertyImages.map((image) => (
-                        <div key={image.id} className="relative group border rounded-md overflow-hidden" data-testid={`image-${image.id}`}>
-                          <img 
-                            src={image.url} 
-                            alt={image.caption || "Property image"} 
-                            className="w-full h-24 object-cover"
-                          />
-                          <div className="absolute top-1 left-1">
-                            <Badge variant={image.isApproved ? "default" : "secondary"} className="text-xs">
-                              {image.isApproved ? "Approved" : "Pending"}
-                            </Badge>
-                          </div>
-                          <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {!image.isApproved && (
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="secondary"
-                                className="h-6 w-6"
-                                onClick={() => approveImageMutation.mutate({ id: image.id, isApproved: true })}
-                                data-testid={`button-approve-image-${image.id}`}
-                              >
-                                <Check className="h-3 w-3" />
-                              </Button>
-                            )}
-                            {image.isApproved && (
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="secondary"
-                                className="h-6 w-6"
-                                onClick={() => approveImageMutation.mutate({ id: image.id, isApproved: false })}
-                                data-testid={`button-reject-image-${image.id}`}
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            )}
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="destructive"
-                              className="h-6 w-6"
-                              onClick={() => deleteImageMutation.mutate(image.id)}
-                              data-testid={`button-delete-image-${image.id}`}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                  {editingProperty && (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => handleImageUpload(e.target.files)}
+                        className="max-w-[200px] text-sm"
+                        disabled={uploadingImages}
+                        data-testid="input-upload-images"
+                      />
+                      {uploadingImages && <Loader2 className="h-4 w-4 animate-spin" />}
                     </div>
                   )}
                 </div>
-              )}
+                
+                {!editingProperty ? (
+                  <div className="bg-muted/50 border rounded-lg p-4 text-center">
+                    <Image className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm text-muted-foreground">
+                      Save the property first, then you can add images by editing it.
+                    </p>
+                  </div>
+                ) : imagesLoading ? (
+                  <div className="grid grid-cols-3 gap-3">
+                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full rounded-md" />)}
+                  </div>
+                ) : propertyImages.length === 0 ? (
+                  <div className="bg-muted/50 border border-dashed rounded-lg p-6 text-center">
+                    <Image className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm text-muted-foreground mb-2">No images uploaded yet.</p>
+                    <p className="text-xs text-muted-foreground">Use the file picker above to add images</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3">
+                    {propertyImages.map((image) => (
+                      <div key={image.id} className="relative group border rounded-md overflow-hidden" data-testid={`image-${image.id}`}>
+                        <img 
+                          src={image.url} 
+                          alt={image.caption || "Property image"} 
+                          className="w-full h-24 object-cover"
+                        />
+                        <div className="absolute top-1 left-1">
+                          <Badge variant={image.isApproved ? "default" : "secondary"} className="text-xs">
+                            {image.isApproved ? "Approved" : "Pending"}
+                          </Badge>
+                        </div>
+                        <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!image.isApproved && (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="secondary"
+                              className="h-6 w-6"
+                              onClick={() => approveImageMutation.mutate({ id: image.id, isApproved: true })}
+                              data-testid={`button-approve-image-${image.id}`}
+                            >
+                              <Check className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {image.isApproved && (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="secondary"
+                              className="h-6 w-6"
+                              onClick={() => approveImageMutation.mutate({ id: image.id, isApproved: false })}
+                              data-testid={`button-reject-image-${image.id}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="destructive"
+                            className="h-6 w-6"
+                            onClick={() => deleteImageMutation.mutate(image.id)}
+                            data-testid={`button-delete-image-${image.id}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => {

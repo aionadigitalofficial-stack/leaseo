@@ -7,6 +7,7 @@ import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser } from "./auth";
 import { db } from "./db";
 import DOMPurify from "isomorphic-dompurify";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
@@ -38,6 +39,9 @@ export async function registerRoutes(
 ): Promise<Server> {
   // Initialize feature flags on startup
   await (storage as any).initializeFeatureFlags?.();
+
+  // Register object storage routes for file uploads
+  registerObjectStorageRoutes(app);
 
   // ==================== PROPERTIES ====================
 
@@ -1598,7 +1602,7 @@ export async function registerRoutes(
   });
 
   // Upload image for property (returns URL - actual file handling would be done by Replit Object Storage)
-  app.post("/api/properties/:id/images", authMiddleware, async (req, res) => {
+  app.post("/api/properties/:id/images", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const { url, caption, isPrimary, isVideo, fileSize } = req.body;
       if (!url) {
