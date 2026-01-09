@@ -739,7 +739,7 @@ export async function registerRoutes(
   // Create blog post (admin only)
   app.post("/api/admin/blog", authMiddleware, adminMiddleware, async (req, res) => {
     try {
-      const { title, slug, excerpt, content, featuredImage, status, tags } = req.body;
+      const { title, slug, excerpt, content, featuredImage, status, tags, metaTitle, metaDescription } = req.body;
       
       if (!title || !content) {
         return res.status(400).json({ error: "Title and content are required" });
@@ -756,6 +756,8 @@ export async function registerRoutes(
         authorId: req.user!.id,
         status: status || "draft",
         tags: tags || [],
+        metaTitle: metaTitle || null,
+        metaDescription: metaDescription || null,
         publishedAt: status === "published" ? new Date() : null,
       }).returning();
 
@@ -769,7 +771,7 @@ export async function registerRoutes(
   // Update blog post (admin only)
   app.patch("/api/admin/blog/:id", authMiddleware, adminMiddleware, async (req, res) => {
     try {
-      const { title, slug, excerpt, content, featuredImage, status, tags } = req.body;
+      const { title, slug, excerpt, content, featuredImage, status, tags, metaTitle, metaDescription } = req.body;
       
       const updateData: any = { updatedAt: new Date() };
       if (title !== undefined) updateData.title = title;
@@ -782,6 +784,8 @@ export async function registerRoutes(
         if (status === "published") updateData.publishedAt = new Date();
       }
       if (tags !== undefined) updateData.tags = tags;
+      if (metaTitle !== undefined) updateData.metaTitle = metaTitle;
+      if (metaDescription !== undefined) updateData.metaDescription = metaDescription;
 
       const [post] = await db.update(blogPosts).set(updateData).where(eq(blogPosts.id, req.params.id)).returning();
       if (!post) {
@@ -990,7 +994,7 @@ export async function registerRoutes(
   // Create blog post (admin only)
   app.post("/api/blog", authMiddleware, adminMiddleware, async (req, res) => {
     try {
-      const { title, slug, excerpt, content, category, status } = req.body;
+      const { title, slug, excerpt, content, category, status, metaTitle, metaDescription } = req.body;
       if (!title || !slug || !content) {
         return res.status(400).json({ error: "Title, slug, and content are required" });
       }
@@ -1000,6 +1004,8 @@ export async function registerRoutes(
         excerpt,
         content,
         status: status || "draft",
+        metaTitle: metaTitle || null,
+        metaDescription: metaDescription || null,
         publishedAt: status === "published" ? new Date() : null,
       }).returning();
       res.status(201).json(post);
@@ -1012,7 +1018,7 @@ export async function registerRoutes(
   // Update blog post
   app.patch("/api/blog/:id", async (req, res) => {
     try {
-      const { title, slug, excerpt, content, status } = req.body;
+      const { title, slug, excerpt, content, status, metaTitle, metaDescription } = req.body;
       
       const updateData: any = { updatedAt: new Date() };
       if (title !== undefined) updateData.title = title;
@@ -1023,6 +1029,8 @@ export async function registerRoutes(
         updateData.status = status;
         if (status === "published") updateData.publishedAt = new Date();
       }
+      if (metaTitle !== undefined) updateData.metaTitle = metaTitle;
+      if (metaDescription !== undefined) updateData.metaDescription = metaDescription;
 
       const [post] = await db.update(blogPosts).set(updateData).where(eq(blogPosts.id, req.params.id)).returning();
       if (!post) {

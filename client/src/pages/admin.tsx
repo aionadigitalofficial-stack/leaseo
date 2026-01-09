@@ -76,7 +76,9 @@ import {
   IndianRupee,
   CheckCircle,
   XCircle,
+  ExternalLink,
 } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
 type AdminSection = "dashboard" | "properties" | "enquiries" | "employees" | "cities" | "categories" | "boosts" | "payments" | "blog" | "pages" | "seo" | "settings";
@@ -116,6 +118,8 @@ const blogFormSchema = z.object({
   excerpt: z.string().min(10, "Excerpt is required"),
   content: z.string().min(50, "Content must be at least 50 characters"),
   status: z.enum(["draft", "published"]),
+  metaTitle: z.string().optional(),
+  metaDescription: z.string().optional(),
 });
 
 const employeeFormSchema = z.object({
@@ -128,6 +132,8 @@ const employeeFormSchema = z.object({
 const pageFormSchema = z.object({
   title: z.string().min(3, "Title is required"),
   content: z.string().min(10, "Content is required"),
+  metaTitle: z.string().optional(),
+  metaDescription: z.string().optional(),
 });
 
 const categoryFormSchema = z.object({
@@ -258,9 +264,9 @@ export default function AdminPage() {
     defaultValues: { name: "", cityId: "", pincode: "" },
   });
 
-  const blogForm = useForm<{ title: string; slug: string; excerpt: string; content: string; status: "draft" | "published" }>({
+  const blogForm = useForm<{ title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; metaTitle?: string; metaDescription?: string }>({
     resolver: zodResolver(blogFormSchema),
-    defaultValues: { title: "", slug: "", excerpt: "", content: "", status: "draft" },
+    defaultValues: { title: "", slug: "", excerpt: "", content: "", status: "draft", metaTitle: "", metaDescription: "" },
   });
 
   const employeeForm = useForm({
@@ -270,7 +276,7 @@ export default function AdminPage() {
 
   const pageForm = useForm({
     resolver: zodResolver(pageFormSchema),
-    defaultValues: { title: "", content: "" },
+    defaultValues: { title: "", content: "", metaTitle: "", metaDescription: "" },
   });
 
   const categoryForm = useForm({
@@ -344,6 +350,8 @@ export default function AdminPage() {
         excerpt: editingBlog.excerpt || "",
         content: editingBlog.content,
         status: (editingBlog.status === "published" ? "published" : "draft") as "draft" | "published",
+        metaTitle: (editingBlog as any).metaTitle || "",
+        metaDescription: (editingBlog as any).metaDescription || "",
       });
     }
   }, [editingBlog, blogForm]);
@@ -356,6 +364,8 @@ export default function AdminPage() {
       pageForm.reset({
         title: editingPage.title,
         content: contentString,
+        metaTitle: (editingPage as any).metaTitle || "",
+        metaDescription: (editingPage as any).metaDescription || "",
       });
     }
   }, [editingPage, pageForm]);
@@ -660,15 +670,24 @@ export default function AdminPage() {
     }
   };
 
-  const handleBlogSubmit = (data: any) => {
+  const handleBlogSubmit = (data: { title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; metaTitle?: string; metaDescription?: string }) => {
+    const blogData = {
+      title: data.title,
+      slug: data.slug,
+      excerpt: data.excerpt,
+      content: data.content,
+      status: data.status,
+      metaTitle: data.metaTitle || null,
+      metaDescription: data.metaDescription || null,
+    };
     if (editingBlog) {
-      updateBlogMutation.mutate({ id: editingBlog.id, data });
+      updateBlogMutation.mutate({ id: editingBlog.id, data: blogData });
     } else {
-      createBlogMutation.mutate(data);
+      createBlogMutation.mutate(blogData);
     }
   };
 
-  const handlePageSubmit = (data: { title: string; content: string }) => {
+  const handlePageSubmit = (data: { title: string; content: string; metaTitle?: string; metaDescription?: string }) => {
     if (editingPage) {
       let contentToSave: any;
       try {
@@ -678,7 +697,12 @@ export default function AdminPage() {
       }
       updatePageMutation.mutate({ 
         key: editingPage.pageKey, 
-        data: { title: data.title, content: contentToSave } 
+        data: { 
+          title: data.title, 
+          content: contentToSave,
+          metaTitle: data.metaTitle || null,
+          metaDescription: data.metaDescription || null,
+        } 
       });
     }
   };
@@ -1443,20 +1467,54 @@ export default function AdminPage() {
                           : "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          size="icon" 
-                          variant="ghost"
-                          onClick={() => setEditingPage(page as PageContent)}
-                          data-testid={`button-edit-page-${page.pageKey}`}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => {
+                              const pageUrl = page.pageKey === "homepage" ? "/" : `/${page.pageKey}`;
+                              window.open(pageUrl, "_blank");
+                            }}
+                            data-testid={`button-live-edit-page-${page.pageKey}`}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                            Live Edit
+                          </Button>
+                          <Button 
+                            size="icon" 
+                            variant="ghost"
+                            onClick={() => setEditingPage(page as PageContent)}
+                            data-testid={`button-edit-page-${page.pageKey}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Live Page Editing</CardTitle>
+            <CardDescription>Edit pages directly on the website</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-muted/50 border rounded-lg p-4 space-y-3">
+              <p className="text-sm">
+                To edit pages live on the website:
+              </p>
+              <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+                <li>Click the "Live Edit" button next to any page above</li>
+                <li>On the page, look for the floating edit toggle button (bottom-right corner)</li>
+                <li>Click to enable edit mode - text elements will become editable</li>
+                <li>Make your changes and click "Save" to publish</li>
+              </ol>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1794,6 +1852,40 @@ export default function AdminPage() {
               ))}
             </>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Instamojo Payment Settings
+          </CardTitle>
+          <CardDescription>Configure payment gateway for listing boosts</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3">
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+              Payment credentials must be configured as secure secrets:
+            </p>
+            <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1 list-disc list-inside">
+              <li><code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">INSTAMOJO_API_KEY</code> - Your Instamojo API key</li>
+              <li><code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">INSTAMOJO_AUTH_TOKEN</code> - Your Instamojo auth token</li>
+              <li><code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">INSTAMOJO_ENDPOINT</code> - Use <code>https://test.instamojo.com</code> for testing or <code>https://www.instamojo.com</code> for production</li>
+            </ul>
+            <p className="text-xs text-blue-600 dark:text-blue-400">
+              Go to the Secrets tab in your Replit project to add these values securely.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 p-4 border rounded-lg">
+            <div className="flex-1">
+              <p className="font-medium">Payment Gateway Status</p>
+              <p className="text-sm text-muted-foreground">
+                Boost payments are currently in demo mode. Configure secrets to enable live payments.
+              </p>
+            </div>
+            <Badge variant="secondary">Demo Mode</Badge>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -2198,6 +2290,44 @@ export default function AdminPage() {
                   <FormMessage />
                 </FormItem>
               )} />
+              
+              <Separator className="my-4" />
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  SEO Settings
+                </h4>
+                <p className="text-xs text-muted-foreground">Optimize this blog post for search engines</p>
+              </div>
+              
+              <FormField control={blogForm.control} name="metaTitle" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Meta Title</FormLabel>
+                  <FormControl>
+                    <Input 
+                      {...field} 
+                      placeholder="Blog title for search results" 
+                      data-testid="input-blog-meta-title" 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={blogForm.control} name="metaDescription" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Meta Description</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      {...field} 
+                      placeholder="Brief description for search results (150-160 characters)" 
+                      rows={3}
+                      data-testid="input-blog-meta-description" 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => {
                   setIsAddBlogOpen(false);
@@ -2361,6 +2491,44 @@ export default function AdminPage() {
                   <FormMessage />
                 </FormItem>
               )} />
+              
+              <Separator className="my-4" />
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  SEO Settings
+                </h4>
+                <p className="text-xs text-muted-foreground">Optimize this page for search engines</p>
+              </div>
+              
+              <FormField control={pageForm.control} name="metaTitle" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Meta Title</FormLabel>
+                  <FormControl>
+                    <Input 
+                      {...field} 
+                      placeholder="Page title for search results" 
+                      data-testid="input-page-meta-title" 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={pageForm.control} name="metaDescription" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Meta Description</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      {...field} 
+                      placeholder="Brief description for search results (150-160 characters)" 
+                      rows={3}
+                      data-testid="input-page-meta-description" 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => {
                   setEditingPage(null);

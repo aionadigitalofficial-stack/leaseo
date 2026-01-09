@@ -465,6 +465,8 @@ export const blogPosts = pgTable("blog_posts", {
   authorId: varchar("author_id").references(() => users.id),
   status: blogPostStatusEnum("status").default("draft"),
   tags: text("tags").array().default(sql`ARRAY[]::text[]`),
+  metaTitle: text("meta_title"),
+  metaDescription: text("meta_description"),
   publishedAt: timestamp("published_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
