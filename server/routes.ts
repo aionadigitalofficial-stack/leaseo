@@ -121,7 +121,13 @@ export async function registerRoutes(
   // Create new property
   app.post("/api/properties", async (req, res) => {
     try {
-      const validationResult = insertPropertySchema.safeParse(req.body);
+      // Preprocess: convert date strings to Date objects
+      const body = { ...req.body };
+      if (body.availableFrom && typeof body.availableFrom === "string") {
+        body.availableFrom = new Date(body.availableFrom);
+      }
+      
+      const validationResult = insertPropertySchema.safeParse(body);
       if (!validationResult.success) {
         return res.status(400).json({ 
           error: "Validation failed", 

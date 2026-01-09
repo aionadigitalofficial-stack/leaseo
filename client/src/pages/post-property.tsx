@@ -151,7 +151,7 @@ export default function PostPropertyPage() {
         facing: data.facing,
         furnishing: data.furnishing,
         amenities: data.amenities,
-        availableFrom: data.availableFrom || null,
+        availableFrom: data.availableFrom ? new Date(data.availableFrom) : null,
       };
       return apiRequest("POST", "/api/properties", propertyData);
     },
