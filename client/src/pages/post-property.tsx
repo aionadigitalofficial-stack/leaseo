@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Building2,
   Home,
@@ -116,6 +117,7 @@ const initialFormData: PropertyFormData = {
 export default function PostPropertyPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user, isAuthenticated } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<PropertyFormData>(initialFormData);
   const [showVerifyDialog, setShowVerifyDialog] = useState(false);
@@ -129,6 +131,19 @@ export default function PostPropertyPage() {
   const [devCode, setDevCode] = useState<string | null>(null);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
 
+  const isOwnerRole = user?.activeRoleId?.includes("owner") || false;
+
+  useEffect(() => {
+    if (isAuthenticated && isOwnerRole) {
+      setIsVerified(true);
+    }
+  }, [isAuthenticated, isOwnerRole]);
+
+  const getPropertyTypeLabel = (value: string) => {
+    const allTypes = [...PROPERTY_TYPES_RESIDENTIAL, ...PROPERTY_TYPES_COMMERCIAL];
+    return allTypes.find(t => t.value === value)?.label || value;
+  };
+
   const progress = (currentStep / STEPS.length) * 100;
 
   const createPropertyMutation = useMutation({
@@ -140,7 +155,7 @@ export default function PostPropertyPage() {
           ? `${data.propertyType} for ${titleType} in ${data.locality}`
           : `${data.bedrooms} BHK ${data.propertyType} for ${titleType} in ${data.locality}`,
         description: data.description,
-        propertyType: data.propertyType.toLowerCase().replace(/\s+/g, "_"),
+        propertyType: data.propertyType,
         listingType: data.listingType,
         isCommercial: data.segment === "commercial",
         price: isForSale ? data.price.toString() : data.rent.toString(),
@@ -456,14 +471,14 @@ export default function PostPropertyPage() {
                   : PROPERTY_TYPES_RESIDENTIAL
                 ).map((type) => (
                   <Button
-                    key={type}
+                    key={type.value}
                     type="button"
-                    variant={formData.propertyType === type ? "default" : "outline"}
+                    variant={formData.propertyType === type.value ? "default" : "outline"}
                     className="h-auto py-3"
-                    onClick={() => updateFormData("propertyType", type)}
-                    data-testid={`button-type-${type.toLowerCase().replace(/\s+/g, "-")}`}
+                    onClick={() => updateFormData("propertyType", type.value)}
+                    data-testid={`button-type-${type.value}`}
                   >
-                    {type}
+                    {type.label}
                   </Button>
                 ))}
               </div>
@@ -948,7 +963,7 @@ export default function PostPropertyPage() {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Property Type</p>
-                    <p className="font-medium capitalize">{formData.propertyType}</p>
+                    <p className="font-medium capitalize">{getPropertyTypeLabel(formData.propertyType)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Category</p>
@@ -1009,25 +1024,34 @@ export default function PostPropertyPage() {
 
                 <Separator />
 
-                <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-                  <Phone className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">Phone Verification Required</p>
-                    <p className="text-xs text-muted-foreground">
-                      Verify your phone to publish the listing
-                    </p>
-                  </div>
-                  {isVerified ? (
+                {isVerified ? (
+                  <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                    <Check className="h-5 w-5 text-green-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-700 dark:text-green-400">Ready to Publish</p>
+                      <p className="text-xs text-green-600 dark:text-green-500">
+                        {isAuthenticated && isOwnerRole ? "You're logged in as a property owner" : "Your identity has been verified"}
+                      </p>
+                    </div>
                     <Badge variant="secondary" className="bg-green-100 text-green-700 gap-1">
                       <Check className="h-3 w-3" />
                       Verified
                     </Badge>
-                  ) : (
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+                    <Phone className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Verification Required</p>
+                      <p className="text-xs text-muted-foreground">
+                        Verify your email or phone to publish the listing
+                      </p>
+                    </div>
                     <Button size="sm" onClick={() => setShowVerifyDialog(true)}>
                       Verify Now
                     </Button>
-                  )}
-                </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

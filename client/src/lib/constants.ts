@@ -19,9 +19,21 @@ export const PARKING_OPTIONS = ["Car", "Bike", "Both", "None"];
 
 export const FLOOR_OPTIONS = ["Ground", "1-3", "4-7", "8-12", "13+"];
 
-export const PROPERTY_TYPES_RESIDENTIAL = ["Apartment", "Independent House", "Villa", "Builder Floor", "Penthouse", "Studio"];
+export const PROPERTY_TYPES_RESIDENTIAL = [
+  { label: "Apartment", value: "apartment" },
+  { label: "House", value: "house" },
+  { label: "Villa", value: "villa" },
+  { label: "Townhouse", value: "townhouse" },
+  { label: "Condo", value: "condo" },
+  { label: "Studio", value: "studio" },
+];
 
-export const PROPERTY_TYPES_COMMERCIAL = ["Office Space", "Shop", "Showroom", "Warehouse", "Industrial Building", "Co-Working"];
+export const PROPERTY_TYPES_COMMERCIAL = [
+  { label: "Office Space", value: "office" },
+  { label: "Shop/Showroom", value: "shop" },
+  { label: "Warehouse", value: "warehouse" },
+  { label: "Land", value: "land" },
+];
 
 export const CARPET_AREA_OPTIONS = ["Under 500 sqft", "500-1000 sqft", "1000-2000 sqft", "2000-5000 sqft", "5000+ sqft"];
 
