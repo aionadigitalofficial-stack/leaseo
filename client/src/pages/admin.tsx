@@ -2192,14 +2192,14 @@ export default function AdminPage() {
                 <FormField control={categoryForm.control} name="parentId" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Parent Category (Optional)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                    <Select onValueChange={(val) => field.onChange(val === "none" ? "" : val)} value={field.value || "none"}>
                       <FormControl>
                         <SelectTrigger data-testid="select-category-parent">
                           <SelectValue placeholder="None (Main Category)" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">None (Main Category)</SelectItem>
+                        <SelectItem value="none">None (Main Category)</SelectItem>
                         {categories.filter(c => !c.parentId).map(cat => (
                           <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                         ))}
