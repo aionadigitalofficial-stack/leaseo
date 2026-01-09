@@ -1,5 +1,75 @@
 import { db } from "./db";
-import { properties, featureFlags } from "@shared/schema";
+import { properties, featureFlags, propertyCategories } from "@shared/schema";
+
+// Main categories (parent categories)
+const mainCategories = [
+  {
+    id: "cat-rent",
+    name: "Rent",
+    slug: "rent",
+    segment: "rent",
+    description: "Residential properties available for rent",
+    icon: "Home",
+    displayOrder: 1,
+    supportsRent: true,
+    supportsSale: false,
+    isCommercial: false,
+  },
+  {
+    id: "cat-buy",
+    name: "Buy",
+    slug: "buy",
+    segment: "buy",
+    description: "Residential properties available for sale",
+    icon: "Key",
+    displayOrder: 2,
+    supportsRent: false,
+    supportsSale: true,
+    isCommercial: false,
+  },
+  {
+    id: "cat-commercial",
+    name: "Commercial",
+    slug: "commercial",
+    segment: "commercial",
+    description: "Commercial properties for rent or sale",
+    icon: "Building2",
+    displayOrder: 3,
+    supportsRent: true,
+    supportsSale: true,
+    isCommercial: true,
+  },
+];
+
+// Subcategories for Rent
+const rentSubcategories = [
+  { name: "Apartment", slug: "rent-apartment", icon: "Building", displayOrder: 1, description: "Flats and apartments for rent" },
+  { name: "House", slug: "rent-house", icon: "Home", displayOrder: 2, description: "Independent houses for rent" },
+  { name: "Villa", slug: "rent-villa", icon: "Castle", displayOrder: 3, description: "Luxury villas for rent" },
+  { name: "PG/Hostel", slug: "rent-pg", icon: "Users", displayOrder: 4, description: "Paying guest and hostel accommodations" },
+  { name: "Studio", slug: "rent-studio", icon: "Square", displayOrder: 5, description: "Studio apartments for rent" },
+  { name: "Penthouse", slug: "rent-penthouse", icon: "Crown", displayOrder: 6, description: "Luxury penthouses for rent" },
+];
+
+// Subcategories for Buy
+const buySubcategories = [
+  { name: "Apartment", slug: "buy-apartment", icon: "Building", displayOrder: 1, description: "Flats and apartments for sale" },
+  { name: "House", slug: "buy-house", icon: "Home", displayOrder: 2, description: "Independent houses for sale" },
+  { name: "Villa", slug: "buy-villa", icon: "Castle", displayOrder: 3, description: "Luxury villas for sale" },
+  { name: "Plot/Land", slug: "buy-plot", icon: "Map", displayOrder: 4, description: "Residential plots and land for sale" },
+  { name: "Studio", slug: "buy-studio", icon: "Square", displayOrder: 5, description: "Studio apartments for sale" },
+  { name: "Penthouse", slug: "buy-penthouse", icon: "Crown", displayOrder: 6, description: "Luxury penthouses for sale" },
+];
+
+// Subcategories for Commercial
+const commercialSubcategories = [
+  { name: "Office Space", slug: "commercial-office", icon: "Briefcase", displayOrder: 1, description: "Office spaces for rent or sale" },
+  { name: "Shop/Showroom", slug: "commercial-shop", icon: "Store", displayOrder: 2, description: "Retail shops and showrooms" },
+  { name: "Warehouse", slug: "commercial-warehouse", icon: "Warehouse", displayOrder: 3, description: "Warehouses and storage spaces" },
+  { name: "Co-working", slug: "commercial-coworking", icon: "Users", displayOrder: 4, description: "Co-working spaces" },
+  { name: "Industrial", slug: "commercial-industrial", icon: "Factory", displayOrder: 5, description: "Industrial buildings and factories" },
+  { name: "Commercial Land", slug: "commercial-land", icon: "Map", displayOrder: 6, description: "Commercial plots for sale" },
+];
 
 const sampleProperties = [
   {
@@ -202,6 +272,58 @@ async function seed() {
   console.log("🌱 Starting database seed...");
 
   try {
+    // Seed property categories with hierarchy
+    const existingCategories = await db.select().from(propertyCategories).limit(1);
+    
+    if (existingCategories.length === 0) {
+      console.log("📁 Inserting property categories...");
+      
+      // Insert main categories first
+      await db.insert(propertyCategories).values(mainCategories);
+      console.log("✅ Inserted main categories (Rent, Buy, Commercial)");
+      
+      // Insert rent subcategories
+      for (const sub of rentSubcategories) {
+        await db.insert(propertyCategories).values({
+          parentId: "cat-rent",
+          segment: "rent",
+          supportsRent: true,
+          supportsSale: false,
+          isCommercial: false,
+          ...sub,
+        });
+      }
+      console.log(`✅ Inserted ${rentSubcategories.length} rent subcategories`);
+      
+      // Insert buy subcategories
+      for (const sub of buySubcategories) {
+        await db.insert(propertyCategories).values({
+          parentId: "cat-buy",
+          segment: "buy",
+          supportsRent: false,
+          supportsSale: true,
+          isCommercial: false,
+          ...sub,
+        });
+      }
+      console.log(`✅ Inserted ${buySubcategories.length} buy subcategories`);
+      
+      // Insert commercial subcategories
+      for (const sub of commercialSubcategories) {
+        await db.insert(propertyCategories).values({
+          parentId: "cat-commercial",
+          segment: "commercial",
+          supportsRent: true,
+          supportsSale: true,
+          isCommercial: true,
+          ...sub,
+        });
+      }
+      console.log(`✅ Inserted ${commercialSubcategories.length} commercial subcategories`);
+    } else {
+      console.log("⏭️ Property categories already exist, skipping...");
+    }
+
     // Check if properties already exist
     const existingProperties = await db.select().from(properties).limit(1);
     

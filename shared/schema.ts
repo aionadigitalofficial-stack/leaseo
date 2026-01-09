@@ -258,15 +258,22 @@ export const propertyImages = pgTable("property_images", {
 
 export const propertyCategories = pgTable("property_categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull().unique(),
-  slug: text("slug").notNull().unique(),
+  parentId: varchar("parent_id"),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  segment: text("segment").notNull().default("rent"),
   description: text("description"),
   icon: text("icon"),
   displayOrder: integer("display_order").default(0),
   isActive: boolean("is_active").default(true),
+  supportsRent: boolean("supports_rent").default(true),
+  supportsSale: boolean("supports_sale").default(false),
+  isCommercial: boolean("is_commercial").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("property_categories_slug_idx").on(table.slug),
+  index("property_categories_parent_idx").on(table.parentId),
+  index("property_categories_segment_idx").on(table.segment),
 ]);
 
 // ==================== ENQUIRIES TABLE ====================
