@@ -167,6 +167,11 @@ export async function registerRoutes(
         body.availableFrom = new Date(body.availableFrom);
       }
       
+      // Link property to logged-in user if authenticated
+      if (req.user?.id && !body.ownerId) {
+        body.ownerId = req.user.id;
+      }
+      
       const validationResult = insertPropertySchema.safeParse(body);
       if (!validationResult.success) {
         return res.status(400).json({ 
