@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -54,7 +54,6 @@ import {
   Eye,
   Home,
   Users,
-  TrendingUp,
   Loader2,
   Save,
   MapPin,
@@ -65,11 +64,12 @@ import {
   ChevronLeft,
   ChevronRight,
   LayoutDashboard,
-  Menu,
+  Mail,
+  Reply,
 } from "lucide-react";
-import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost } from "@shared/schema";
+import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "employees" | "cities" | "blog" | "seo" | "settings";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "employees" | "cities" | "blog" | "pages" | "seo" | "settings";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -115,6 +115,11 @@ const employeeFormSchema = z.object({
   role: z.string().min(1, "Role is required"),
 });
 
+const pageFormSchema = z.object({
+  title: z.string().min(3, "Title is required"),
+  content: z.string().min(10, "Content is required"),
+});
+
 const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "properties", label: "Properties", icon: Building2 },
@@ -122,6 +127,7 @@ const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "employees", label: "Employees", icon: Users },
   { id: "cities", label: "Cities & Localities", icon: MapPin },
   { id: "blog", label: "Blog", icon: PenTool },
+  { id: "pages", label: "Pages", icon: FileText },
   { id: "seo", label: "SEO Settings", icon: Search },
   { id: "settings", label: "Settings", icon: Settings },
 ];
@@ -136,6 +142,10 @@ export default function AdminPage() {
   const [isAddBlogOpen, setIsAddBlogOpen] = useState(false);
   const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState(false);
   const [editingBlog, setEditingBlog] = useState<BlogPost | null>(null);
+  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
+  const [viewingEnquiry, setViewingEnquiry] = useState<Enquiry | null>(null);
+  const [editingPage, setEditingPage] = useState<PageContent | null>(null);
+  const [replyMessage, setReplyMessage] = useState("");
 
   const { data: properties = [], isLoading: propertiesLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -169,6 +179,10 @@ export default function AdminPage() {
     queryKey: ["/api/admin/seo-settings"],
   });
 
+  const { data: pages = [], isLoading: pagesLoading } = useQuery<PageContent[]>({
+    queryKey: ["/api/pages"],
+  });
+
   const sellPropertyFlag = featureFlags.find((f) => f.name === "sell_property");
 
   const propertyForm = useForm<PropertyFormData>({
@@ -200,15 +214,64 @@ export default function AdminPage() {
     defaultValues: { name: "", cityId: "", pincode: "" },
   });
 
-  const blogForm = useForm({
+  const blogForm = useForm<{ title: string; slug: string; excerpt: string; content: string; status: "draft" | "published" }>({
     resolver: zodResolver(blogFormSchema),
-    defaultValues: { title: "", slug: "", excerpt: "", content: "", status: "draft" as const },
+    defaultValues: { title: "", slug: "", excerpt: "", content: "", status: "draft" },
   });
 
   const employeeForm = useForm({
     resolver: zodResolver(employeeFormSchema),
     defaultValues: { email: "", firstName: "", lastName: "", role: "admin" },
   });
+
+  const pageForm = useForm({
+    resolver: zodResolver(pageFormSchema),
+    defaultValues: { title: "", content: "" },
+  });
+
+  useEffect(() => {
+    if (editingProperty) {
+      propertyForm.reset({
+        title: editingProperty.title,
+        description: editingProperty.description,
+        propertyType: editingProperty.propertyType as any,
+        listingType: editingProperty.listingType as any,
+        isCommercial: editingProperty.isCommercial || false,
+        price: String(editingProperty.price || editingProperty.rent || ""),
+        address: editingProperty.address,
+        city: editingProperty.city,
+        state: editingProperty.state,
+        bedrooms: String(editingProperty.bedrooms || "0"),
+        bathrooms: String(editingProperty.bathrooms || "0"),
+        squareFeet: editingProperty.squareFeet ? String(editingProperty.squareFeet) : "",
+        isFeatured: editingProperty.isFeatured || false,
+      });
+    }
+  }, [editingProperty, propertyForm]);
+
+  useEffect(() => {
+    if (editingBlog) {
+      blogForm.reset({
+        title: editingBlog.title,
+        slug: editingBlog.slug,
+        excerpt: editingBlog.excerpt || "",
+        content: editingBlog.content,
+        status: (editingBlog.status === "published" ? "published" : "draft") as "draft" | "published",
+      });
+    }
+  }, [editingBlog, blogForm]);
+
+  useEffect(() => {
+    if (editingPage) {
+      const contentString = typeof editingPage.content === 'string' 
+        ? editingPage.content 
+        : JSON.stringify(editingPage.content, null, 2);
+      pageForm.reset({
+        title: editingPage.title,
+        content: contentString,
+      });
+    }
+  }, [editingPage, pageForm]);
 
   const createPropertyMutation = useMutation({
     mutationFn: async (data: PropertyFormData) => {
@@ -228,6 +291,21 @@ export default function AdminPage() {
     },
     onError: () => {
       toast({ title: "Failed to create property", variant: "destructive" });
+    },
+  });
+
+  const updatePropertyMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Property> }) => {
+      return apiRequest("PATCH", `/api/properties/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      setEditingProperty(null);
+      propertyForm.reset();
+      toast({ title: "Property updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update property", variant: "destructive" });
     },
   });
 
@@ -294,6 +372,28 @@ export default function AdminPage() {
     },
   });
 
+  const updateBlogMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => apiRequest("PATCH", `/api/blog/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/blog"] });
+      setEditingBlog(null);
+      blogForm.reset();
+      toast({ title: "Blog post updated" });
+    },
+  });
+
+  const updateBlogStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => 
+      apiRequest("PATCH", `/api/blog/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/blog"] });
+      toast({ title: "Blog status updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update blog status", variant: "destructive" });
+    },
+  });
+
   const deleteBlogMutation = useMutation({
     mutationFn: async (id: string) => apiRequest("DELETE", `/api/blog/${id}`),
     onSuccess: () => {
@@ -320,6 +420,32 @@ export default function AdminPage() {
     },
   });
 
+  const updateEnquiryStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/enquiries/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+      toast({ title: "Enquiry status updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update enquiry status", variant: "destructive" });
+    },
+  });
+
+  const updatePageMutation = useMutation({
+    mutationFn: async ({ key, data }: { key: string; data: { title: string; content: any } }) =>
+      apiRequest("PATCH", `/api/pages/${key}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+      setEditingPage(null);
+      pageForm.reset();
+      toast({ title: "Page updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update page", variant: "destructive" });
+    },
+  });
+
   const [robotsTxt, setRobotsTxt] = useState(seoSettings?.robotsTxt || `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api\n\nSitemap: https://leaseo.in/sitemap.xml`);
   const [metaTitle, setMetaTitle] = useState(seoSettings?.metaTitle || "Leaseo - Zero Brokerage Property Rentals in India");
   const [metaDescription, setMetaDescription] = useState(seoSettings?.metaDescription || "Find rental properties directly from owners. Zero brokerage, verified listings across Mumbai, Pune, Delhi, Bangalore and more.");
@@ -343,6 +469,55 @@ export default function AdminPage() {
     activeListings: properties.filter(p => p.status === "active").length,
     totalEnquiries: enquiries.length,
     pendingEnquiries: enquiries.filter(e => e.status === "new" || e.status === "pending").length,
+  };
+
+  const handlePropertySubmit = (data: PropertyFormData) => {
+    if (editingProperty) {
+      updatePropertyMutation.mutate({
+        id: editingProperty.id,
+        data: {
+          ...data,
+          price: data.price,
+          bedrooms: parseInt(data.bedrooms),
+          bathrooms: data.bathrooms,
+          squareFeet: data.squareFeet ? parseInt(data.squareFeet) : undefined,
+        } as any,
+      });
+    } else {
+      createPropertyMutation.mutate(data);
+    }
+  };
+
+  const handleBlogSubmit = (data: any) => {
+    if (editingBlog) {
+      updateBlogMutation.mutate({ id: editingBlog.id, data });
+    } else {
+      createBlogMutation.mutate(data);
+    }
+  };
+
+  const handlePageSubmit = (data: { title: string; content: string }) => {
+    if (editingPage) {
+      let contentToSave: any;
+      try {
+        contentToSave = JSON.parse(data.content);
+      } catch {
+        contentToSave = { text: data.content };
+      }
+      updatePageMutation.mutate({ 
+        key: editingPage.pageKey, 
+        data: { title: data.title, content: contentToSave } 
+      });
+    }
+  };
+
+  const handleReply = () => {
+    if (viewingEnquiry && replyMessage) {
+      window.location.href = `mailto:${viewingEnquiry.email}?subject=Re: Property Enquiry&body=${encodeURIComponent(replyMessage)}`;
+      updateEnquiryStatusMutation.mutate({ id: viewingEnquiry.id, status: "contacted" });
+      setViewingEnquiry(null);
+      setReplyMessage("");
+    }
   };
 
   const renderDashboard = () => (
@@ -482,20 +657,45 @@ export default function AdminPage() {
                     <TableCell>{property.city}</TableCell>
                     <TableCell>₹{Number(property.rent || property.price).toLocaleString()}/mo</TableCell>
                     <TableCell>
-                      <Badge variant={property.status === "active" ? "default" : "secondary"}>{property.status}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={property.status === "active"}
+                          onCheckedChange={(checked) => {
+                            updatePropertyMutation.mutate({
+                              id: property.id,
+                              data: { status: checked ? "active" : "inactive" } as any,
+                            });
+                          }}
+                          data-testid={`switch-property-status-${property.id}`}
+                        />
+                        <Badge variant={property.status === "active" ? "default" : "secondary"}>
+                          {property.status}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button size="icon" variant="ghost">
+                        <Button 
+                          size="icon" 
+                          variant="ghost"
+                          onClick={() => window.open(`/properties/${property.id}`, '_blank')}
+                          data-testid={`button-view-property-${property.id}`}
+                        >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost">
+                        <Button 
+                          size="icon" 
+                          variant="ghost"
+                          onClick={() => setEditingProperty(property)}
+                          data-testid={`button-edit-property-${property.id}`}
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button
                           size="icon"
                           variant="ghost"
                           onClick={() => deletePropertyMutation.mutate(property.id)}
+                          data-testid={`button-delete-property-${property.id}`}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -539,19 +739,56 @@ export default function AdminPage() {
                   <TableHead>Message</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {enquiries.map((enquiry) => (
-                  <TableRow key={enquiry.id}>
+                  <TableRow key={enquiry.id} data-testid={`row-enquiry-${enquiry.id}`}>
                     <TableCell className="font-medium">{enquiry.name}</TableCell>
                     <TableCell>{enquiry.email}</TableCell>
                     <TableCell>{enquiry.phone || "-"}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{enquiry.message}</TableCell>
                     <TableCell>
-                      <Badge variant={enquiry.status === "new" ? "default" : "secondary"}>{enquiry.status}</Badge>
+                      <Select
+                        value={enquiry.status || "new"}
+                        onValueChange={(value) => updateEnquiryStatusMutation.mutate({ id: enquiry.id, status: value })}
+                      >
+                        <SelectTrigger className="w-[120px]" data-testid={`select-enquiry-status-${enquiry.id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="new">New</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="contacted">Contacted</SelectItem>
+                          <SelectItem value="closed">Closed</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>{enquiry.createdAt ? new Date(enquiry.createdAt).toLocaleDateString() : "-"}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button 
+                          size="icon" 
+                          variant="ghost"
+                          onClick={() => setViewingEnquiry(enquiry)}
+                          data-testid={`button-view-enquiry-${enquiry.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="icon" 
+                          variant="ghost"
+                          onClick={() => {
+                            setViewingEnquiry(enquiry);
+                            setReplyMessage("");
+                          }}
+                          data-testid={`button-reply-enquiry-${enquiry.id}`}
+                        >
+                          <Reply className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -726,24 +963,50 @@ export default function AdminPage() {
                 <TableRow>
                   <TableHead>Title</TableHead>
                   <TableHead>Slug</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Published</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {blogPosts.map((post) => (
-                  <TableRow key={post.id}>
+                  <TableRow key={post.id} data-testid={`row-blog-${post.id}`}>
                     <TableCell className="font-medium max-w-[200px] truncate">{post.title}</TableCell>
                     <TableCell><Badge variant="outline">{post.slug}</Badge></TableCell>
                     <TableCell>
-                      <Badge variant={post.status === "published" ? "default" : "secondary"}>{post.status}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={post.status === "published"}
+                          onCheckedChange={(checked) => {
+                            updateBlogStatusMutation.mutate({
+                              id: post.id,
+                              status: checked ? "published" : "draft",
+                            });
+                          }}
+                          data-testid={`switch-blog-status-${post.id}`}
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          {post.status === "published" ? "Published" : "Draft"}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>{post.createdAt ? new Date(post.createdAt).toLocaleDateString() : "-"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button size="icon" variant="ghost"><Edit className="h-4 w-4" /></Button>
-                        <Button size="icon" variant="ghost" onClick={() => deleteBlogMutation.mutate(post.id)}>
+                        <Button 
+                          size="icon" 
+                          variant="ghost"
+                          onClick={() => setEditingBlog(post)}
+                          data-testid={`button-edit-blog-${post.id}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          onClick={() => deleteBlogMutation.mutate(post.id)}
+                          data-testid={`button-delete-blog-${post.id}`}
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -757,6 +1020,68 @@ export default function AdminPage() {
       </Card>
     </div>
   );
+
+  const renderPages = () => {
+    const defaultPages = [
+      { pageKey: "about", title: "About Us", content: {} },
+      { pageKey: "contact", title: "Contact Us", content: {} },
+    ];
+    
+    const displayPages = pages.length > 0 ? pages : defaultPages;
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold">Pages</h1>
+          <p className="text-muted-foreground">Manage static page content</p>
+        </div>
+
+        <Card>
+          <CardContent className="pt-6">
+            {pagesLoading ? (
+              <div className="space-y-4">
+                {[1, 2].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Page</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Last Updated</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {displayPages.map((page) => (
+                    <TableRow key={page.pageKey} data-testid={`row-page-${page.pageKey}`}>
+                      <TableCell className="font-medium capitalize">{page.pageKey}</TableCell>
+                      <TableCell>{page.title}</TableCell>
+                      <TableCell>
+                        {(page as PageContent).updatedAt 
+                          ? new Date((page as PageContent).updatedAt!).toLocaleDateString() 
+                          : "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          size="icon" 
+                          variant="ghost"
+                          onClick={() => setEditingPage(page as PageContent)}
+                          data-testid={`button-edit-page-${page.pageKey}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
 
   const renderSeo = () => (
     <div className="space-y-6">
@@ -910,6 +1235,7 @@ export default function AdminPage() {
       case "employees": return renderEmployees();
       case "cities": return renderCities();
       case "blog": return renderBlog();
+      case "pages": return renderPages();
       case "seo": return renderSeo();
       case "settings": return renderSettings();
       default: return renderDashboard();
@@ -954,14 +1280,20 @@ export default function AdminPage() {
         <div className="p-6">{renderContent()}</div>
       </main>
 
-      <Dialog open={isAddPropertyOpen} onOpenChange={setIsAddPropertyOpen}>
+      <Dialog open={isAddPropertyOpen || !!editingProperty} onOpenChange={(open) => {
+        if (!open) {
+          setIsAddPropertyOpen(false);
+          setEditingProperty(null);
+          propertyForm.reset();
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add New Property</DialogTitle>
-            <DialogDescription>Create a new property listing</DialogDescription>
+            <DialogTitle>{editingProperty ? "Edit Property" : "Add New Property"}</DialogTitle>
+            <DialogDescription>{editingProperty ? "Update property details" : "Create a new property listing"}</DialogDescription>
           </DialogHeader>
           <Form {...propertyForm}>
-            <form onSubmit={propertyForm.handleSubmit((data) => createPropertyMutation.mutate(data))} className="space-y-4">
+            <form onSubmit={propertyForm.handleSubmit(handlePropertySubmit)} className="space-y-4">
               <FormField control={propertyForm.control} name="title" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Title</FormLabel>
@@ -980,7 +1312,7 @@ export default function AdminPage() {
                 <FormField control={propertyForm.control} name="propertyType" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Property Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="apartment">Apartment</SelectItem>
@@ -998,7 +1330,7 @@ export default function AdminPage() {
                 <FormField control={propertyForm.control} name="listingType" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Listing Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="rent">For Rent</SelectItem>
@@ -1071,10 +1403,14 @@ export default function AdminPage() {
                 </FormItem>
               )} />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsAddPropertyOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={createPropertyMutation.isPending}>
-                  {createPropertyMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                  Add Property
+                <Button type="button" variant="outline" onClick={() => {
+                  setIsAddPropertyOpen(false);
+                  setEditingProperty(null);
+                  propertyForm.reset();
+                }}>Cancel</Button>
+                <Button type="submit" disabled={createPropertyMutation.isPending || updatePropertyMutation.isPending}>
+                  {(createPropertyMutation.isPending || updatePropertyMutation.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  {editingProperty ? "Update Property" : "Add Property"}
                 </Button>
               </DialogFooter>
             </form>
@@ -1105,7 +1441,10 @@ export default function AdminPage() {
               )} />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsAddCityOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={createCityMutation.isPending}>Add City</Button>
+                <Button type="submit" disabled={createCityMutation.isPending}>
+                  {createCityMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Add City
+                </Button>
               </DialogFooter>
             </form>
           </Form>
@@ -1129,8 +1468,8 @@ export default function AdminPage() {
               <FormField control={localityForm.control} name="cityId" render={({ field }) => (
                 <FormItem>
                   <FormLabel>City</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select city" /></SelectTrigger></FormControl>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-locality-city"><SelectValue placeholder="Select city" /></SelectTrigger></FormControl>
                     <SelectContent>
                       {cities.map((city) => (
                         <SelectItem key={city.id} value={city.id}>{city.name}</SelectItem>
@@ -1149,20 +1488,30 @@ export default function AdminPage() {
               )} />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsAddLocalityOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={createLocalityMutation.isPending}>Add Locality</Button>
+                <Button type="submit" disabled={createLocalityMutation.isPending}>
+                  {createLocalityMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Add Locality
+                </Button>
               </DialogFooter>
             </form>
           </Form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isAddBlogOpen} onOpenChange={setIsAddBlogOpen}>
+      <Dialog open={isAddBlogOpen || !!editingBlog} onOpenChange={(open) => {
+        if (!open) {
+          setIsAddBlogOpen(false);
+          setEditingBlog(null);
+          blogForm.reset();
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create Blog Post</DialogTitle>
+            <DialogTitle>{editingBlog ? "Edit Blog Post" : "Create Blog Post"}</DialogTitle>
+            <DialogDescription>{editingBlog ? "Update blog post details" : "Create a new blog post"}</DialogDescription>
           </DialogHeader>
           <Form {...blogForm}>
-            <form onSubmit={blogForm.handleSubmit((data) => createBlogMutation.mutate(data))} className="space-y-4">
+            <form onSubmit={blogForm.handleSubmit(handleBlogSubmit)} className="space-y-4">
               <FormField control={blogForm.control} name="title" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Title</FormLabel>
@@ -1173,29 +1522,29 @@ export default function AdminPage() {
               <FormField control={blogForm.control} name="slug" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Slug</FormLabel>
-                  <FormControl><Input {...field} placeholder="blog-post-slug" data-testid="input-blog-slug" /></FormControl>
+                  <FormControl><Input {...field} placeholder="blog-post-url-slug" data-testid="input-blog-slug" /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={blogForm.control} name="excerpt" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Excerpt</FormLabel>
-                  <FormControl><Textarea {...field} placeholder="Short summary" rows={2} /></FormControl>
+                  <FormControl><Textarea {...field} placeholder="Short description..." rows={2} data-testid="input-blog-excerpt" /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={blogForm.control} name="content" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Content</FormLabel>
-                  <FormControl><Textarea {...field} placeholder="Full blog content..." rows={8} /></FormControl>
+                  <FormControl><Textarea {...field} placeholder="Full blog content..." rows={8} data-testid="input-blog-content" /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={blogForm.control} name="status" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Status</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-blog-status"><SelectValue /></SelectTrigger></FormControl>
                     <SelectContent>
                       <SelectItem value="draft">Draft</SelectItem>
                       <SelectItem value="published">Published</SelectItem>
@@ -1205,10 +1554,14 @@ export default function AdminPage() {
                 </FormItem>
               )} />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsAddBlogOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={createBlogMutation.isPending}>
-                  {createBlogMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                  Create Post
+                <Button type="button" variant="outline" onClick={() => {
+                  setIsAddBlogOpen(false);
+                  setEditingBlog(null);
+                  blogForm.reset();
+                }}>Cancel</Button>
+                <Button type="submit" disabled={createBlogMutation.isPending || updateBlogMutation.isPending}>
+                  {(createBlogMutation.isPending || updateBlogMutation.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  {editingBlog ? "Update Post" : "Create Post"}
                 </Button>
               </DialogFooter>
             </form>
@@ -1220,42 +1573,42 @@ export default function AdminPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Employee</DialogTitle>
-            <DialogDescription>Give team members access to the admin panel</DialogDescription>
+            <DialogDescription>Add a team member with admin access</DialogDescription>
           </DialogHeader>
           <Form {...employeeForm}>
             <form onSubmit={employeeForm.handleSubmit((data) => createEmployeeMutation.mutate(data))} className="space-y-4">
-              <FormField control={employeeForm.control} name="email" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl><Input {...field} type="email" placeholder="employee@company.com" data-testid="input-employee-email" /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={employeeForm.control} name="firstName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>First Name</FormLabel>
-                    <FormControl><Input {...field} placeholder="John" /></FormControl>
+                    <FormControl><Input {...field} placeholder="John" data-testid="input-employee-firstname" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={employeeForm.control} name="lastName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Last Name</FormLabel>
-                    <FormControl><Input {...field} placeholder="Doe" /></FormControl>
+                    <FormControl><Input {...field} placeholder="Doe" data-testid="input-employee-lastname" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
               </div>
+              <FormField control={employeeForm.control} name="email" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl><Input {...field} type="email" placeholder="john@example.com" data-testid="input-employee-email" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={employeeForm.control} name="role" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Role</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-employee-role"><SelectValue /></SelectTrigger></FormControl>
                     <SelectContent>
                       <SelectItem value="admin">Admin</SelectItem>
                       <SelectItem value="editor">Editor</SelectItem>
-                      <SelectItem value="support">Support</SelectItem>
+                      <SelectItem value="viewer">Viewer</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -1266,6 +1619,111 @@ export default function AdminPage() {
                 <Button type="submit" disabled={createEmployeeMutation.isPending}>
                   {createEmployeeMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                   Add Employee
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewingEnquiry} onOpenChange={(open) => {
+        if (!open) {
+          setViewingEnquiry(null);
+          setReplyMessage("");
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Enquiry Details</DialogTitle>
+            <DialogDescription>View and respond to this enquiry</DialogDescription>
+          </DialogHeader>
+          {viewingEnquiry && (
+            <div className="space-y-4">
+              <div className="grid gap-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">{viewingEnquiry.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <span>{viewingEnquiry.email}</span>
+                </div>
+                {viewingEnquiry.phone && (
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                    <span>{viewingEnquiry.phone}</span>
+                  </div>
+                )}
+              </div>
+              <div className="p-4 bg-muted rounded-lg">
+                <p className="text-sm font-medium mb-2">Message:</p>
+                <p className="text-sm">{viewingEnquiry.message}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Reply Message</Label>
+                <Textarea
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                  placeholder="Type your reply..."
+                  rows={4}
+                  data-testid="input-enquiry-reply"
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setViewingEnquiry(null)}>Close</Button>
+                <Button onClick={handleReply} disabled={!replyMessage}>
+                  <Reply className="h-4 w-4 mr-2" />
+                  Send Reply
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingPage} onOpenChange={(open) => {
+        if (!open) {
+          setEditingPage(null);
+          pageForm.reset();
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Page: {editingPage?.pageKey}</DialogTitle>
+            <DialogDescription>Update page content</DialogDescription>
+          </DialogHeader>
+          <Form {...pageForm}>
+            <form onSubmit={pageForm.handleSubmit(handlePageSubmit)} className="space-y-4">
+              <FormField control={pageForm.control} name="title" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Page Title</FormLabel>
+                  <FormControl><Input {...field} placeholder="Page title" data-testid="input-page-title" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={pageForm.control} name="content" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Content (JSON or Text)</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      {...field} 
+                      placeholder="Page content..." 
+                      rows={12} 
+                      className="font-mono text-sm"
+                      data-testid="input-page-content" 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => {
+                  setEditingPage(null);
+                  pageForm.reset();
+                }}>Cancel</Button>
+                <Button type="submit" disabled={updatePageMutation.isPending}>
+                  {updatePageMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Save Page
                 </Button>
               </DialogFooter>
             </form>

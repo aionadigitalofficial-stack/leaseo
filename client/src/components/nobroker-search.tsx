@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Search, ChevronDown, Check, Building2, Home, Users, Bed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
   PROPERTY_TYPES_COMMERCIAL,
   RENT_RANGES,
 } from "@/lib/constants";
+import type { FeatureFlag } from "@shared/schema";
 
 const RESIDENTIAL_TYPES = [
   { id: "full-house", label: "Full House", icon: Home },
@@ -30,7 +32,7 @@ const RESIDENTIAL_TYPES = [
   { id: "flatmates", label: "Flatmates", icon: Users },
 ];
 
-type TabType = "rent" | "commercial";
+type TabType = "rent" | "buy" | "commercial";
 
 export function NoBrokerSearch() {
   const [, setLocation] = useLocation();
@@ -42,6 +44,14 @@ export function NoBrokerSearch() {
   const [selectedCommercialTypes, setSelectedCommercialTypes] = useState<string[]>([]);
   const [rentRange, setRentRange] = useState("");
 
+  const { data: featureFlags = [] } = useQuery<FeatureFlag[]>({
+    queryKey: ["/api/feature-flags"],
+  });
+
+  const showBuyTab = featureFlags.some(
+    (flag) => flag.name === "sell_property" && flag.enabled
+  );
+
   const handleSearch = () => {
     const citySlug = city.toLowerCase().replace(/\s+/g, "-");
     const localitySlug = locality.trim() ? locality.toLowerCase().replace(/\s+/g, "-") : "";
@@ -51,6 +61,11 @@ export function NoBrokerSearch() {
       params.set("type", "commercial");
       if (selectedCommercialTypes.length > 0) {
         params.set("propertyType", selectedCommercialTypes.join(","));
+      }
+    } else if (activeTab === "buy") {
+      params.set("listingType", "sale");
+      if (selectedBhks.length > 0) {
+        params.set("bhk", selectedBhks.join(","));
       }
     } else {
       if (selectedBhks.length > 0) {
@@ -69,7 +84,8 @@ export function NoBrokerSearch() {
       }
     }
     
-    const basePath = localitySlug ? `/rent/${citySlug}/${localitySlug}` : `/rent/${citySlug}`;
+    const listingPath = activeTab === "buy" ? "buy" : "rent";
+    const basePath = localitySlug ? `/${listingPath}/${citySlug}/${localitySlug}` : `/${listingPath}/${citySlug}`;
     const queryString = params.toString();
     setLocation(queryString ? `${basePath}?${queryString}` : basePath);
   };
@@ -105,6 +121,23 @@ export function NoBrokerSearch() {
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
             )}
           </button>
+          {showBuyTab && (
+            <button
+              onClick={() => setActiveTab("buy")}
+              className={cn(
+                "flex-1 py-3 px-6 text-center font-medium transition-colors relative",
+                activeTab === "buy"
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              data-testid="tab-buy"
+            >
+              Buy
+              {activeTab === "buy" && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+              )}
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("commercial")}
             className={cn(

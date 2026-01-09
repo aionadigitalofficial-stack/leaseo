@@ -969,6 +969,32 @@ export async function registerRoutes(
     }
   });
 
+  // Update blog post
+  app.patch("/api/blog/:id", async (req, res) => {
+    try {
+      const { title, slug, excerpt, content, status } = req.body;
+      
+      const updateData: any = { updatedAt: new Date() };
+      if (title !== undefined) updateData.title = title;
+      if (slug !== undefined) updateData.slug = slug;
+      if (excerpt !== undefined) updateData.excerpt = excerpt;
+      if (content !== undefined) updateData.content = content;
+      if (status !== undefined) {
+        updateData.status = status;
+        if (status === "published") updateData.publishedAt = new Date();
+      }
+
+      const [post] = await db.update(blogPosts).set(updateData).where(eq(blogPosts.id, req.params.id)).returning();
+      if (!post) {
+        return res.status(404).json({ error: "Blog post not found" });
+      }
+      res.json(post);
+    } catch (error) {
+      console.error("Error updating blog post:", error);
+      res.status(500).json({ error: "Failed to update blog post" });
+    }
+  });
+
   // Delete blog post (admin only)
   app.delete("/api/blog/:id", authMiddleware, adminMiddleware, async (req, res) => {
     try {
@@ -980,6 +1006,50 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting blog post:", error);
       res.status(500).json({ error: "Failed to delete blog post" });
+    }
+  });
+
+  // Get all pages (for admin panel without auth for simplicity)
+  app.get("/api/pages", async (req, res) => {
+    try {
+      const pages = await db.select().from(pageContents).orderBy(pageContents.pageKey);
+      res.json(pages);
+    } catch (error) {
+      console.error("Error fetching pages:", error);
+      res.status(500).json({ error: "Failed to fetch pages" });
+    }
+  });
+
+  // Update page content
+  app.patch("/api/pages/:key", async (req, res) => {
+    try {
+      const { title, content } = req.body;
+      
+      if (!title && !content) {
+        return res.status(400).json({ error: "Title or content is required" });
+      }
+
+      const [existing] = await db.select().from(pageContents).where(eq(pageContents.pageKey, req.params.key));
+      
+      let page;
+      if (existing) {
+        const updateData: any = { updatedAt: new Date() };
+        if (title !== undefined) updateData.title = title;
+        if (content !== undefined) updateData.content = content;
+        
+        [page] = await db.update(pageContents).set(updateData).where(eq(pageContents.pageKey, req.params.key)).returning();
+      } else {
+        [page] = await db.insert(pageContents).values({
+          pageKey: req.params.key,
+          title: title || req.params.key,
+          content: content || {},
+        }).returning();
+      }
+
+      res.json(page);
+    } catch (error) {
+      console.error("Error updating page content:", error);
+      res.status(500).json({ error: "Failed to update page content" });
     }
   });
 
