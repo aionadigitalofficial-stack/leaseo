@@ -191,13 +191,25 @@ export async function registerRoutes(
     }
   });
 
-  // Update property
-  app.patch("/api/properties/:id", async (req, res) => {
+  // Update property - requires authentication and ownership
+  app.patch("/api/properties/:id", authMiddleware, async (req, res) => {
     try {
-      const property = await storage.updateProperty(req.params.id, req.body);
-      if (!property) {
+      // First check if property exists and user owns it
+      const existingProperty = await storage.getProperty(req.params.id);
+      if (!existingProperty) {
         return res.status(404).json({ error: "Property not found" });
       }
+      
+      // Verify ownership (unless admin)
+      const isAdmin = req.user?.activeRoleId === "admin";
+      if (!isAdmin && existingProperty.ownerId !== req.user?.id) {
+        return res.status(403).json({ error: "You don't have permission to update this property" });
+      }
+      
+      // Don't allow changing ownerId
+      const { ownerId, ...updateData } = req.body;
+      
+      const property = await storage.updateProperty(req.params.id, updateData);
       res.json(property);
     } catch (error) {
       console.error("Error updating property:", error);

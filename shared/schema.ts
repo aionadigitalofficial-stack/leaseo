@@ -26,6 +26,7 @@ export const listingTypeEnum = pgEnum("listing_type", [
 export const listingStatusEnum = pgEnum("listing_status", [
   "active",
   "pending",
+  "paused",
   "rented",
   "sold",
   "inactive",

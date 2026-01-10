@@ -330,25 +330,106 @@ export default function DashboardPage() {
     enabled: !!user?.id && isOwnerRole,
   });
 
-  const handlePropertyAction = (propertyId: string, action: string) => {
-    const actionLabels: Record<string, string> = {
-      edit: "Opening editor...",
-      pause: "Listing paused",
-      activate: "Listing activated",
-      renew: "Listing renewed for 30 days",
-      markRented: "Marked as rented",
-      delete: "Listing deleted",
-    };
+  // Mutation for updating property status
+  const updatePropertyMutation = useMutation({
+    mutationFn: async ({ propertyId, updates }: { propertyId: string; updates: Record<string, any> }) => {
+      return apiRequest("PATCH", `/api/properties/${propertyId}`, updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/owner/properties"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update property",
+        variant: "destructive",
+      });
+    },
+  });
 
+  // Mutation for deleting property
+  const deletePropertyMutation = useMutation({
+    mutationFn: async (propertyId: string) => {
+      return apiRequest("DELETE", `/api/properties/${propertyId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/owner/properties"] });
+      toast({
+        title: "Deleted",
+        description: "Property listing has been deleted",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete property",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handlePropertyAction = (propertyId: string, action: string) => {
     if (action === "edit") {
       navigate(`/post-property?edit=${propertyId}`);
       return;
     }
 
-    toast({
-      title: "Action Completed",
-      description: actionLabels[action] || "Action completed successfully",
-    });
+    if (action === "pause") {
+      updatePropertyMutation.mutate(
+        { propertyId, updates: { status: "paused" } },
+        {
+          onSuccess: () => {
+            toast({ title: "Paused", description: "Property listing has been paused" });
+          },
+        }
+      );
+      return;
+    }
+
+    if (action === "activate") {
+      updatePropertyMutation.mutate(
+        { propertyId, updates: { status: "active" } },
+        {
+          onSuccess: () => {
+            toast({ title: "Activated", description: "Property listing is now active" });
+          },
+        }
+      );
+      return;
+    }
+
+    if (action === "markRented") {
+      updatePropertyMutation.mutate(
+        { propertyId, updates: { status: "rented" } },
+        {
+          onSuccess: () => {
+            toast({ title: "Marked as Rented", description: "Property has been marked as rented" });
+          },
+        }
+      );
+      return;
+    }
+
+    if (action === "renew") {
+      const newExpiryDate = new Date();
+      newExpiryDate.setDate(newExpiryDate.getDate() + 30);
+      updatePropertyMutation.mutate(
+        { propertyId, updates: { expiresAt: newExpiryDate.toISOString() } },
+        {
+          onSuccess: () => {
+            toast({ title: "Renewed", description: "Property listing has been renewed for 30 days" });
+          },
+        }
+      );
+      return;
+    }
+
+    if (action === "delete") {
+      if (window.confirm("Are you sure you want to delete this listing? This action cannot be undone.")) {
+        deletePropertyMutation.mutate(propertyId);
+      }
+      return;
+    }
   };
 
   const handleBoostListing = (propertyId: string) => {

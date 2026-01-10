@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,9 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -116,6 +117,7 @@ const initialFormData: PropertyFormData = {
 
 export default function PostPropertyPage() {
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
   const { user, isAuthenticated, login } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
@@ -130,6 +132,62 @@ export default function PostPropertyPage() {
   const [isOtpLoading, setIsOtpLoading] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
+
+  // Check if we're in edit mode
+  const searchParams = new URLSearchParams(searchString);
+  const editPropertyId = searchParams.get("edit");
+  const isEditMode = !!editPropertyId;
+
+  // Fetch existing property for edit mode
+  const { data: existingProperty, isLoading: isLoadingProperty } = useQuery({
+    queryKey: ["/api/properties", editPropertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/properties/${editPropertyId}`);
+      if (!res.ok) throw new Error("Failed to fetch property");
+      return res.json();
+    },
+    enabled: isEditMode,
+  });
+
+  // Pre-populate form when editing
+  useEffect(() => {
+    if (existingProperty && isEditMode) {
+      const isCommercial = existingProperty.isCommercial;
+      const segment = isCommercial ? "commercial" : (existingProperty.listingType === "sale" ? "buy" : "rent");
+      
+      setFormData({
+        segment: segment as "rent" | "buy" | "commercial",
+        listingType: existingProperty.listingType || "rent",
+        propertyCategory: isCommercial ? "commercial" : "residential",
+        propertyType: existingProperty.propertyType || "",
+        city: existingProperty.city || "",
+        locality: existingProperty.address?.split(",")[0] || "",
+        address: existingProperty.address || "",
+        pincode: existingProperty.pincode || "",
+        bedrooms: existingProperty.bedrooms || 2,
+        bathrooms: parseInt(existingProperty.bathrooms) || 2,
+        balconies: existingProperty.balconies || 1,
+        squareFeet: existingProperty.squareFeet || 0,
+        carpetArea: existingProperty.carpetArea || 0,
+        floorNumber: existingProperty.floorNumber || 0,
+        totalFloors: existingProperty.totalFloors || 1,
+        facing: existingProperty.facing || "",
+        furnishing: existingProperty.furnishing || "unfurnished",
+        amenities: existingProperty.amenities || [],
+        rent: parseFloat(existingProperty.rent) || 0,
+        price: parseFloat(existingProperty.salePrice || existingProperty.price) || 0,
+        securityDeposit: parseFloat(existingProperty.securityDeposit) || 0,
+        maintenanceCharges: parseFloat(existingProperty.maintenanceCharges) || 0,
+        availableFrom: existingProperty.availableFrom ? new Date(existingProperty.availableFrom).toISOString().split("T")[0] : "",
+        preferredTenants: existingProperty.preferredTenants || ["Any"],
+        description: existingProperty.description || "",
+        images: [],
+        videoUrl: existingProperty.videoUrl || "",
+      });
+      // In edit mode, skip verification since user is editing their own property
+      setIsVerified(true);
+    }
+  }, [existingProperty, isEditMode]);
 
   const isOwnerRole = user?.activeRoleId?.includes("owner") || false;
 
@@ -146,7 +204,7 @@ export default function PostPropertyPage() {
 
   const progress = (currentStep / STEPS.length) * 100;
 
-  const createPropertyMutation = useMutation({
+  const propertyMutation = useMutation({
     mutationFn: async (data: PropertyFormData) => {
       const isForSale = data.listingType === "sale";
       const titleType = isForSale ? "Sale" : "Rent";
@@ -179,19 +237,23 @@ export default function PostPropertyPage() {
         amenities: data.amenities,
         availableFrom: data.availableFrom ? new Date(data.availableFrom) : undefined,
       };
+      
+      if (isEditMode && editPropertyId) {
+        return apiRequest("PATCH", `/api/properties/${editPropertyId}`, propertyData);
+      }
       return apiRequest("POST", "/api/properties", propertyData);
     },
     onSuccess: () => {
       toast({
-        title: "Property Listed Successfully!",
-        description: "Your property has been submitted for review.",
+        title: isEditMode ? "Property Updated Successfully!" : "Property Listed Successfully!",
+        description: isEditMode ? "Your changes have been saved." : "Your property has been submitted for review.",
       });
       setLocation("/dashboard");
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to list property. Please try again.",
+        description: isEditMode ? "Failed to update property. Please try again." : "Failed to list property. Please try again.",
         variant: "destructive",
       });
     },
@@ -369,7 +431,7 @@ export default function PostPropertyPage() {
       setShowVerifyDialog(true);
       return;
     }
-    createPropertyMutation.mutate(formData);
+    propertyMutation.mutate(formData);
   };
 
   const renderStepContent = () => {
@@ -1074,6 +1136,23 @@ export default function PostPropertyPage() {
     }
   };
 
+  // Show loading state when fetching property for edit
+  if (isEditMode && isLoadingProperty) {
+    return (
+      <div className="min-h-screen flex flex-col bg-muted/30">
+        <Header />
+        <main className="flex-1 container mx-auto px-4 py-8">
+          <div className="max-w-4xl mx-auto">
+            <Skeleton className="h-10 w-64 mb-4" />
+            <Skeleton className="h-6 w-96 mb-8" />
+            <Skeleton className="h-[400px] w-full" />
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
       <Header />
@@ -1081,8 +1160,12 @@ export default function PostPropertyPage() {
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <div className="mb-8">
-            <h1 className="text-2xl md:text-3xl font-bold mb-2">Post Your Property</h1>
-            <p className="text-muted-foreground">List your property for free - No brokerage, no middlemen</p>
+            <h1 className="text-2xl md:text-3xl font-bold mb-2">
+              {isEditMode ? "Edit Your Property" : "Post Your Property"}
+            </h1>
+            <p className="text-muted-foreground">
+              {isEditMode ? "Update your property listing details" : "List your property for free - No brokerage, no middlemen"}
+            </p>
           </div>
 
           <div className="mb-8">
@@ -1142,11 +1225,11 @@ export default function PostPropertyPage() {
                 {currentStep === STEPS.length ? (
                   <Button
                     onClick={handleSubmit}
-                    disabled={!canProceed() || createPropertyMutation.isPending}
+                    disabled={!canProceed() || propertyMutation.isPending}
                     className="gap-2"
                     data-testid="button-submit-listing"
                   >
-                    {createPropertyMutation.isPending ? "Submitting..." : "Submit Listing"}
+                    {propertyMutation.isPending ? (isEditMode ? "Updating..." : "Submitting...") : (isEditMode ? "Update Property" : "Submit Listing")}
                     <Check className="h-4 w-4" />
                   </Button>
                 ) : (
