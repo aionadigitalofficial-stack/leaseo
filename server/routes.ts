@@ -162,8 +162,8 @@ export async function registerRoutes(
     }
   });
 
-  // Create new property
-  app.post("/api/properties", async (req, res) => {
+  // Create new property - requires authentication
+  app.post("/api/properties", authMiddleware, async (req, res) => {
     try {
       // Preprocess: convert date strings to Date objects
       const body = { ...req.body };
@@ -171,10 +171,9 @@ export async function registerRoutes(
         body.availableFrom = new Date(body.availableFrom);
       }
       
-      // Link property to logged-in user if authenticated
-      if (req.user?.id && !body.ownerId) {
-        body.ownerId = req.user.id;
-      }
+      // Always link property to authenticated user
+      body.ownerId = req.user!.id;
+      console.log(`[Property] Creating property for authenticated user: ${req.user!.id}`);
       
       const validationResult = insertPropertySchema.safeParse(body);
       if (!validationResult.success) {
@@ -646,10 +645,10 @@ export async function registerRoutes(
     }
   });
 
-  // Verify OTP
+  // Verify OTP - also creates/logs in user for property listing flow
   app.post("/api/auth/otp/verify", async (req, res) => {
     try {
-      const { email, phone, code } = req.body;
+      const { email, phone, code, segment, createAccount } = req.body;
 
       if (!email && !phone) {
         return res.status(400).json({ error: "Email or phone is required" });
@@ -691,7 +690,100 @@ export async function registerRoutes(
         .set({ consumedAt: new Date() })
         .where(eq(otpRequests.id, otpRequest.id));
 
-      // If verifying for a user, update their verified status
+      // Check if this is for property listing (createAccount flag from frontend)
+      if (createAccount) {
+        // Find or create user
+        let [existingUser] = await db.select().from(users).where(
+          email ? eq(users.email, email) : eq(users.phone, phone!)
+        );
+
+        let user = existingUser;
+        
+        // Determine the owner role based on segment
+        const roleName = segment === "commercial" ? "commercial_owner" : "residential_owner";
+        const [ownerRole] = await db.select().from(roles).where(eq(roles.name, roleName));
+
+        if (!user) {
+          // Create new user
+          const [newUser] = await db.insert(users).values({
+            email: email || null,
+            phone: phone || null,
+            emailVerifiedAt: email ? new Date() : null,
+            phoneVerifiedAt: phone ? new Date() : null,
+            activeRoleId: ownerRole?.id || null,
+            isActive: true,
+          }).returning();
+          user = newUser;
+
+          // Assign owner role
+          if (ownerRole && user) {
+            await db.insert(userRoles).values({
+              userId: user.id,
+              roleId: ownerRole.id,
+            }).onConflictDoNothing();
+          }
+          
+          console.log(`[OTP] Created new owner account: ${email || phone} with role ${roleName}`);
+        } else {
+          // Update verification status for existing user
+          if (email && !user.emailVerifiedAt) {
+            await db.update(users)
+              .set({ emailVerifiedAt: new Date() })
+              .where(eq(users.id, user.id));
+          }
+          if (phone && !user.phoneVerifiedAt) {
+            await db.update(users)
+              .set({ phoneVerifiedAt: new Date() })
+              .where(eq(users.id, user.id));
+          }
+          
+          // Ensure user has owner role
+          if (ownerRole) {
+            const [existingUserRole] = await db.select().from(userRoles).where(
+              and(
+                eq(userRoles.userId, user.id),
+                eq(userRoles.roleId, ownerRole.id)
+              )
+            );
+            if (!existingUserRole) {
+              await db.insert(userRoles).values({
+                userId: user.id,
+                roleId: ownerRole.id,
+              }).onConflictDoNothing();
+            }
+            // Update active role to owner role if not set
+            if (!user.activeRoleId) {
+              await db.update(users)
+                .set({ activeRoleId: ownerRole.id })
+                .where(eq(users.id, user.id));
+              user.activeRoleId = ownerRole.id;
+            }
+          }
+          
+          console.log(`[OTP] Existing user verified: ${email || phone}`);
+        }
+
+        // Get updated user info with roles
+        const authUser = await getAuthUser(user.id);
+        
+        // Generate JWT token
+        const token = generateToken({
+          userId: user.id,
+          email: user.email,
+          isAdmin: authUser?.isAdmin || false,
+        });
+
+        return res.json({ 
+          success: true, 
+          message: "Verification successful",
+          verified: true,
+          user: authUser,
+          token,
+        });
+      }
+
+      // Standard OTP verification (no account creation)
+      // If verifying for an existing user, update their verified status
       if (email) {
         await db.update(users)
           .set({ emailVerifiedAt: new Date() })

@@ -117,7 +117,7 @@ const initialFormData: PropertyFormData = {
 export default function PostPropertyPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, login } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<PropertyFormData>(initialFormData);
   const [showVerifyDialog, setShowVerifyDialog] = useState(false);
@@ -300,18 +300,30 @@ export default function PostPropertyPage() {
           email: verifyMethod === "email" ? email : undefined,
           phone: verifyMethod === "phone" ? phoneNumber : undefined,
           code: otp,
+          segment: formData.segment,
+          createAccount: true,
         }),
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
+      // If account was created/found, log the user in
+      if (data.token && data.user) {
+        login(data.token, data.user);
+        toast({
+          title: "Account Created",
+          description: "Your owner account has been created and verified.",
+        });
+      } else {
+        toast({
+          title: "Verified",
+          description: `Your ${verifyMethod === "email" ? "email" : "phone"} has been verified successfully.`,
+        });
+      }
+
       setIsVerified(true);
       setShowVerifyDialog(false);
-      toast({
-        title: "Verified",
-        description: `Your ${verifyMethod === "email" ? "email" : "phone"} has been verified successfully.`,
-      });
     } catch (error: any) {
       toast({ title: "Verification Failed", description: error.message || "Invalid code", variant: "destructive" });
     } finally {
