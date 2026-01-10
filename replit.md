@@ -159,6 +159,13 @@ The platform includes a live content editing system for administrators:
 5. Query cache is invalidated for immediate UI updates
 
 ## Recent Changes (January 2026)
+- **OTP Property Submission Flow**: Fixed critical issue where properties submitted via OTP verification weren't linked to owner accounts
+  - OTP verification now creates/finds owner accounts automatically
+  - Assigns residential_owner or commercial_owner role based on property segment
+  - Returns JWT token to log user in after verification
+  - Property creation requires authentication - always links to ownerId
+- Property type constants updated to use schema-compliant values (house, apartment, villa, etc.)
+- Auto-verification for logged-in property owners in listing form
 - Added Page Live Editor for admin content management
 - Extended database schema with roles, cities, localities, property images
 - Added user roles system (Residential/Commercial Owner/Tenant, Admin)
