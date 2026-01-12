@@ -55,9 +55,6 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Brand & Newsletter */}
           <div className="lg:col-span-1">
-            <Link href="/" className="flex items-center gap-2 mb-4" data-testid="footer-logo">
-              <span className="text-2xl font-bold text-white">Leaseo</span>
-            </Link>
             <p className="text-white/70 mb-4 max-w-sm">
               {settings.description}
             </p>
