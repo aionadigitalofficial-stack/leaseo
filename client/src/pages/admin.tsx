@@ -4021,20 +4021,58 @@ export default function AdminPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Logo URL</Label>
-                <div className="flex gap-4 items-center">
-                  <Input 
-                    value={orgLogo} 
-                    onChange={(e) => setOrgLogo(e.target.value)}
-                    placeholder="https://example.com/logo.png"
-                    className="flex-1"
-                    data-testid="input-org-logo"
-                  />
+                <Label>Logo</Label>
+                <div className="flex gap-4 items-start">
+                  <div className="flex-1 space-y-3">
+                    <div className="flex gap-2">
+                      <Input 
+                        value={orgLogo} 
+                        onChange={(e) => setOrgLogo(e.target.value)}
+                        placeholder="https://example.com/logo.png"
+                        className="flex-1"
+                        data-testid="input-org-logo"
+                      />
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const result = await uploadFile(file);
+                              if (result?.objectPath) {
+                                setOrgLogo(result.objectPath);
+                                toast({ title: "Logo uploaded successfully" });
+                              }
+                            }
+                          }}
+                          disabled={isUploadingFile}
+                          data-testid="input-upload-logo"
+                        />
+                        <Button type="button" variant="outline" disabled={isUploadingFile}>
+                          {isUploadingFile ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-4 w-4 mr-2" />
+                              Upload
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Upload an image file or enter a direct URL</p>
+                  </div>
                   {orgLogo && (
-                    <img src={orgLogo} alt="Logo preview" className="h-10 w-auto object-contain border rounded" />
+                    <div className="shrink-0 border rounded p-2 bg-muted/50">
+                      <img src={orgLogo} alt="Logo preview" className="h-12 w-auto object-contain" />
+                    </div>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">Enter a URL for your logo, or upload to Object Storage and paste the URL</p>
               </div>
 
               <Separator />
