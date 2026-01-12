@@ -6,16 +6,16 @@ import type { Property } from "@shared/schema";
 interface PropertyGridProps {
   properties: Property[];
   isLoading?: boolean;
-  favorites?: string[];
-  onFavorite?: (id: string) => void;
+  shortlisted?: string[];
+  onShortlist?: (id: string) => void;
   emptyMessage?: string;
 }
 
 export function PropertyGrid({ 
   properties, 
   isLoading = false, 
-  favorites = [],
-  onFavorite,
+  shortlisted = [],
+  onShortlist,
   emptyMessage = "No properties found"
 }: PropertyGridProps) {
   if (isLoading) {
@@ -58,8 +58,8 @@ export function PropertyGrid({
         <PropertyCard
           key={property.id}
           property={property}
-          isFavorited={favorites.includes(property.id)}
-          onFavorite={onFavorite}
+          isShortlisted={shortlisted.includes(property.id)}
+          onShortlist={onShortlist}
         />
       ))}
     </div>

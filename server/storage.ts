@@ -181,7 +181,33 @@ export class DatabaseStorage implements IStorage {
         .orderBy(desc(properties.createdAt));
     }
 
-    return result;
+    // Batch fetch all images for the returned properties in a single query
+    if (result.length === 0) {
+      return [];
+    }
+    
+    const propertyIds = result.map(p => p.id);
+    const allImages = await db
+      .select()
+      .from(propertyImages)
+      .where(sql`${propertyImages.propertyId} IN (${sql.join(propertyIds.map(id => sql`${id}`), sql`, `)})`)
+      .orderBy(propertyImages.displayOrder);
+    
+    // Group images by property ID
+    const imagesByPropertyId = new Map<string, string[]>();
+    for (const img of allImages) {
+      const existing = imagesByPropertyId.get(img.propertyId) || [];
+      existing.push(img.url);
+      imagesByPropertyId.set(img.propertyId, existing);
+    }
+    
+    // Merge images into properties
+    const propertiesWithImages = result.map(property => ({
+      ...property,
+      images: imagesByPropertyId.get(property.id) || [],
+    }));
+
+    return propertiesWithImages;
   }
 
   async getProperty(id: string): Promise<PropertyWithImages | undefined> {
@@ -202,11 +228,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getFeaturedProperties(limit: number = 8): Promise<Property[]> {
-    return await db
+    const result = await db
       .select()
       .from(properties)
       .where(and(eq(properties.isFeatured, true), eq(properties.status, "active")))
       .limit(limit);
+    
+    if (result.length === 0) {
+      return [];
+    }
+    
+    // Batch fetch all images for featured properties in a single query
+    const propertyIds = result.map(p => p.id);
+    const allImages = await db
+      .select()
+      .from(propertyImages)
+      .where(sql`${propertyImages.propertyId} IN (${sql.join(propertyIds.map(id => sql`${id}`), sql`, `)})`)
+      .orderBy(propertyImages.displayOrder);
+    
+    // Group images by property ID
+    const imagesByPropertyId = new Map<string, string[]>();
+    for (const img of allImages) {
+      const existing = imagesByPropertyId.get(img.propertyId) || [];
+      existing.push(img.url);
+      imagesByPropertyId.set(img.propertyId, existing);
+    }
+    
+    // Merge images into properties
+    const propertiesWithImages = result.map(property => ({
+      ...property,
+      images: imagesByPropertyId.get(property.id) || [],
+    }));
+    
+    return propertiesWithImages;
   }
 
   async getSimilarProperties(cityId: string, excludeId: string, limit: number = 4): Promise<Property[]> {

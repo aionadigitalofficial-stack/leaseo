@@ -1139,9 +1139,10 @@ export async function registerRoutes(
   });
 
   // ==================== BLOG (PUBLIC) ====================
+  // These are public routes for the frontend blog pages
 
-  // Get all published blog posts
-  app.get("/api/blog", async (req, res) => {
+  // Get all published blog posts (public)
+  app.get("/api/public/blog", async (req, res) => {
     try {
       const posts = await db.select().from(blogPosts).where(eq(blogPosts.status, "published")).orderBy(desc(blogPosts.publishedAt));
       res.json(posts);
@@ -1151,10 +1152,10 @@ export async function registerRoutes(
     }
   });
 
-  // Get blog post by slug
-  app.get("/api/blog/:slug", async (req, res) => {
+  // Get blog post by slug (public)
+  app.get("/api/public/blog/:slug", async (req, res) => {
     try {
-      const [post] = await db.select().from(blogPosts).where(eq(blogPosts.slug, req.params.slug));
+      const [post] = await db.select().from(blogPosts).where(and(eq(blogPosts.slug, req.params.slug), eq(blogPosts.status, "published")));
       if (!post) {
         return res.status(404).json({ error: "Blog post not found" });
       }
@@ -1165,31 +1166,7 @@ export async function registerRoutes(
     }
   });
 
-  // Create blog post (admin only)
-  app.post("/api/blog", authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-      const { title, slug, excerpt, content, category, status, metaTitle, metaDescription } = req.body;
-      if (!title || !slug || !content) {
-        return res.status(400).json({ error: "Title, slug, and content are required" });
-      }
-      const [post] = await db.insert(blogPosts).values({
-        title,
-        slug,
-        excerpt,
-        content,
-        status: status || "draft",
-        metaTitle: metaTitle || null,
-        metaDescription: metaDescription || null,
-        publishedAt: status === "published" ? new Date() : null,
-      }).returning();
-      res.status(201).json(post);
-    } catch (error) {
-      console.error("Error creating blog post:", error);
-      res.status(500).json({ error: "Failed to create blog post" });
-    }
-  });
-
-  // Update blog post
+  // Update blog post (legacy route - kept for backwards compatibility)
   app.patch("/api/blog/:id", async (req, res) => {
     try {
       const { title, slug, excerpt, content, status, metaTitle, metaDescription } = req.body;

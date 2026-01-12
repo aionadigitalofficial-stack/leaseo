@@ -1237,7 +1237,14 @@ export default function AdminPage() {
 
   const downloadSampleCSV = async () => {
     try {
-      const res = await fetch("/api/admin/properties/sample-csv", { credentials: "include" });
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/admin/properties/sample-csv", { 
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!res.ok) {
+        throw new Error("Unauthorized");
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1246,7 +1253,7 @@ export default function AdminPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      toast({ title: "Error", description: "Failed to download template", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to download template. Please make sure you are logged in as admin.", variant: "destructive" });
     }
   };
 

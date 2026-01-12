@@ -11,7 +11,7 @@ import type { BlogPost } from "@shared/schema";
 
 export default function BlogPage() {
   const { data: blogPosts = [], isLoading } = useQuery<BlogPost[]>({
-    queryKey: ["/api/blog"],
+    queryKey: ["/api/public/blog"],
   });
 
   const publishedPosts = blogPosts.filter(post => post.status === "published");
