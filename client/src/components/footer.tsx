@@ -28,7 +28,7 @@ const footerLinks = {
 
 export function Footer() {
   return (
-    <footer className="bg-muted/50 border-t">
+    <footer className="border-t" style={{ backgroundColor: '#0b2743' }}>
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
           {/* Brand & Newsletter */}
@@ -40,32 +40,32 @@ export function Footer() {
                 className="h-10 w-auto"
               />
             </Link>
-            <p className="text-muted-foreground mb-4 max-w-sm">
+            <p className="text-white/70 mb-4 max-w-sm">
               Find your perfect rental property. We connect renters directly with property owners for a seamless experience.
             </p>
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium">Subscribe to our newsletter</p>
+              <p className="text-sm font-medium text-white">Subscribe to our newsletter</p>
               <div className="flex gap-2 flex-wrap">
                 <Input
                   type="email"
                   placeholder="Enter your email"
-                  className="max-w-[250px]"
+                  className="max-w-[250px] bg-white/10 border-white/20 text-white placeholder:text-white/50"
                   data-testid="input-newsletter-email"
                 />
-                <Button data-testid="button-subscribe">Subscribe</Button>
+                <Button className="bg-[#ff9a00] hover:bg-[#ff9a00]/90 text-white" data-testid="button-subscribe">Subscribe</Button>
               </div>
             </div>
           </div>
 
           {/* Company Links */}
           <div>
-            <h4 className="font-semibold mb-4">Company</h4>
+            <h4 className="font-semibold mb-4 text-white">Company</h4>
             <ul className="space-y-2">
               {footerLinks.company.map((link) => (
                 <li key={link.label}>
                   <Link
                     href={link.href}
-                    className="text-muted-foreground hover:text-foreground transition-colors text-sm"
+                    className="text-white/70 hover:text-white transition-colors text-sm"
                     data-testid={`footer-link-${link.label.toLowerCase().replace(" ", "-")}`}
                   >
                     {link.label}
@@ -77,13 +77,13 @@ export function Footer() {
 
           {/* Support Links */}
           <div>
-            <h4 className="font-semibold mb-4">Support</h4>
+            <h4 className="font-semibold mb-4 text-white">Support</h4>
             <ul className="space-y-2">
               {footerLinks.support.map((link) => (
                 <li key={link.label}>
                   <Link
                     href={link.href}
-                    className="text-muted-foreground hover:text-foreground transition-colors text-sm"
+                    className="text-white/70 hover:text-white transition-colors text-sm"
                   >
                     {link.label}
                   </Link>
@@ -94,17 +94,17 @@ export function Footer() {
 
           {/* Contact Info */}
           <div>
-            <h4 className="font-semibold mb-4">Contact</h4>
+            <h4 className="font-semibold mb-4 text-white">Contact</h4>
             <ul className="space-y-3">
-              <li className="flex items-center gap-2 text-sm text-muted-foreground">
+              <li className="flex items-center gap-2 text-sm text-white/70">
                 <MapPin className="h-4 w-4 flex-shrink-0" />
                 <span>Pune, Maharashtra, India</span>
               </li>
-              <li className="flex items-center gap-2 text-sm text-muted-foreground">
+              <li className="flex items-center gap-2 text-sm text-white/70">
                 <Phone className="h-4 w-4 flex-shrink-0" />
                 <span>+91 1234567890</span>
               </li>
-              <li className="flex items-center gap-2 text-sm text-muted-foreground">
+              <li className="flex items-center gap-2 text-sm text-white/70">
                 <Mail className="h-4 w-4 flex-shrink-0" />
                 <span>support@leaseo.in</span>
               </li>
@@ -112,10 +112,10 @@ export function Footer() {
           </div>
         </div>
 
-        <Separator className="my-8" />
+        <Separator className="my-8 bg-white/20" />
 
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-white/70">
             2024 Leaseo. All rights reserved.
           </p>
           <div className="flex gap-4">
@@ -123,7 +123,7 @@ export function Footer() {
               <Link
                 key={link.label}
                 href={link.href}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="text-xs text-white/70 hover:text-white transition-colors"
               >
                 {link.label}
               </Link>

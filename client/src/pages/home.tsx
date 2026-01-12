@@ -7,20 +7,17 @@ import { OwnerToTenant } from "@/components/owner-to-tenant";
 import { TrustBadges } from "@/components/trust-badges";
 import { SeoFooter } from "@/components/seo-footer";
 import { EditableText } from "@/components/editable-text";
-import { EditableImage } from "@/components/editable-image";
 import { SEOHead } from "@/components/seo-head";
 import type { PageContent } from "@shared/schema";
 
 const DEFAULT_CONTENT = {
   heroTitle: "India's Largest <span style=\"color: #ff9a00\">Zero Brokerage</span> Property Site",
   heroSubtitle: "Find your perfect rental home directly from verified owners. No brokers, no hidden fees.",
-  heroImage: "",
   stat1: "50,000+ Active Listings",
   stat2: "100% Verified Owners",
   stat3: "10+ Cities",
   ctaTitle: "Ready to Find Your New Home?",
   ctaSubtitle: "Join thousands of happy renters who saved on brokerage with Leaseo",
-  ctaImage: "",
 };
 
 export default function HomePage() {
@@ -37,13 +34,11 @@ export default function HomePage() {
       setLocalContent({
         heroTitle: content.heroTitle || DEFAULT_CONTENT.heroTitle,
         heroSubtitle: content.heroSubtitle || DEFAULT_CONTENT.heroSubtitle,
-        heroImage: content.heroImage || DEFAULT_CONTENT.heroImage,
         stat1: content.stat1 || DEFAULT_CONTENT.stat1,
         stat2: content.stat2 || DEFAULT_CONTENT.stat2,
         stat3: content.stat3 || DEFAULT_CONTENT.stat3,
         ctaTitle: content.ctaTitle || DEFAULT_CONTENT.ctaTitle,
         ctaSubtitle: content.ctaSubtitle || DEFAULT_CONTENT.ctaSubtitle,
-        ctaImage: content.ctaImage || DEFAULT_CONTENT.ctaImage,
       });
     }
   }, [content]);
@@ -62,36 +57,21 @@ export default function HomePage() {
       <Header />
       
       <main className="flex-1">
-        <section 
-          className="py-12 md:py-20 relative"
-          style={localContent.heroImage ? { 
-            backgroundImage: `linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.7)), url(${localContent.heroImage})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center'
-          } : undefined}
-        >
-          <div className={`absolute inset-0 ${localContent.heroImage ? '' : 'bg-gradient-to-b from-muted/50 to-background'}`} style={{zIndex: -1}} />
+        <section className="py-12 md:py-20 relative bg-gradient-to-b from-muted/50 to-background">
           <div className="container mx-auto px-4 relative">
             <div className="text-center mb-8 md:mb-12">
-              <EditableImage
-                src={localContent.heroImage}
-                alt="Hero Background"
-                onChange={updateContent("heroImage")}
-                className={`mx-auto rounded-lg max-w-xs h-24 object-cover mb-4 ${!localContent.heroImage ? 'opacity-50' : ''}`}
-                contentKey="homepage.heroImage"
-              />
               <EditableText
                 value={localContent.heroTitle}
                 onChange={updateContent("heroTitle")}
                 as="h1"
-                className={`text-3xl md:text-4xl lg:text-5xl font-bold mb-4 ${localContent.heroImage ? 'text-white' : ''}`}
+                className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4"
                 contentKey="homepage.heroTitle"
               />
               <EditableText
                 value={localContent.heroSubtitle}
                 onChange={updateContent("heroSubtitle")}
                 as="p"
-                className={`text-lg max-w-2xl mx-auto ${localContent.heroImage ? 'text-white/90' : 'text-muted-foreground'}`}
+                className="text-lg max-w-2xl mx-auto text-muted-foreground"
                 contentKey="homepage.heroSubtitle"
               />
             </div>

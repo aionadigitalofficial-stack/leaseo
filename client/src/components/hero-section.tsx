@@ -35,25 +35,14 @@ export function HeroSection({ showSaleOption = false }: HeroSectionProps) {
   };
 
   return (
-    <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
-      {/* Background Image with Overlay */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1920&auto=format&fit=crop&q=80')`,
-        }}
-      >
-        {/* Dark wash gradient */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70" />
-      </div>
-
+    <section className="relative min-h-[70vh] flex items-center justify-center overflow-hidden bg-gradient-to-b from-muted/50 to-background">
       {/* Content */}
       <div className="relative z-10 container mx-auto px-4 text-center">
         {/* Headline */}
-        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 max-w-4xl mx-auto leading-tight">
+        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-4 max-w-4xl mx-auto leading-tight">
           Find Your Perfect Rental Home
         </h1>
-        <p className="text-lg md:text-xl text-white/90 mb-8 max-w-2xl mx-auto">
+        <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
           Discover thousands of rental properties directly from verified landlords. 
           No middlemen, no hidden fees.
         </p>
@@ -154,17 +143,17 @@ export function HeroSection({ showSaleOption = false }: HeroSectionProps) {
 
         {/* Stats */}
         <div className="mt-12 grid grid-cols-3 gap-4 max-w-2xl mx-auto">
-          <div className="text-white">
-            <div className="text-3xl md:text-4xl font-bold">500+</div>
-            <div className="text-sm md:text-base text-white/80">Active Listings</div>
+          <div>
+            <div className="text-3xl md:text-4xl font-bold text-primary">500+</div>
+            <div className="text-sm md:text-base text-muted-foreground">Active Listings</div>
           </div>
-          <div className="text-white">
-            <div className="text-3xl md:text-4xl font-bold">200+</div>
-            <div className="text-sm md:text-base text-white/80">Verified Landlords</div>
+          <div>
+            <div className="text-3xl md:text-4xl font-bold text-primary">200+</div>
+            <div className="text-sm md:text-base text-muted-foreground">Verified Landlords</div>
           </div>
-          <div className="text-white">
-            <div className="text-3xl md:text-4xl font-bold">50+</div>
-            <div className="text-sm md:text-base text-white/80">Cities Covered</div>
+          <div>
+            <div className="text-3xl md:text-4xl font-bold text-primary">50+</div>
+            <div className="text-sm md:text-base text-muted-foreground">Cities Covered</div>
           </div>
         </div>
       </div>
