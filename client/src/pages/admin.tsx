@@ -763,8 +763,8 @@ export default function AdminPage() {
   });
 
   const createPageMutation = useMutation({
-    mutationFn: async (data: { pageKey: string; title: string; content: any }) =>
-      apiRequest("POST", "/api/pages", data),
+    mutationFn: async (data: { pageKey: string; title: string; content: any; status?: string }) =>
+      apiRequest("POST", "/api/pages", { ...data, status: "published" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
       setIsAddPageOpen(false);
