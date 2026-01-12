@@ -14,6 +14,8 @@ import RentalSearchPage from "@/pages/rental-search";
 import PostPropertyPage from "@/pages/post-property";
 import AboutPage from "@/pages/about";
 import ContactPage from "@/pages/contact";
+import BlogPage from "@/pages/blog";
+import BlogDetailPage from "@/pages/blog-detail";
 import AdminPage from "@/pages/admin";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
@@ -36,6 +38,8 @@ function Router() {
       <Route path="/post-property" component={PostPropertyPage} />
       <Route path="/about" component={AboutPage} />
       <Route path="/contact" component={ContactPage} />
+      <Route path="/blog" component={BlogPage} />
+      <Route path="/blog/:slug" component={BlogDetailPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/register" component={RegisterPage} />
       <Route path="/profile/complete" component={ProfileCompletePage} />

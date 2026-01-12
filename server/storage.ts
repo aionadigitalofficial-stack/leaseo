@@ -1,6 +1,7 @@
 import {
   users,
   properties,
+  propertyImages,
   enquiries,
   shortlists,
   reports,
@@ -21,6 +22,11 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, ilike, sql, desc, asc, ne } from "drizzle-orm";
+
+// Extended property type with images array
+export interface PropertyWithImages extends Property {
+  images?: string[];
+}
 
 export interface IStorage {
   // Users
@@ -178,9 +184,21 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getProperty(id: string): Promise<Property | undefined> {
+  async getProperty(id: string): Promise<PropertyWithImages | undefined> {
     const [property] = await db.select().from(properties).where(eq(properties.id, id));
-    return property || undefined;
+    if (!property) return undefined;
+    
+    // Fetch associated images
+    const images = await db
+      .select()
+      .from(propertyImages)
+      .where(eq(propertyImages.propertyId, id))
+      .orderBy(propertyImages.displayOrder);
+    
+    return {
+      ...property,
+      images: images.map(img => img.url),
+    };
   }
 
   async getFeaturedProperties(limit: number = 8): Promise<Property[]> {

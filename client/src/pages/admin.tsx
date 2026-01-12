@@ -81,10 +81,21 @@ import {
   XCircle,
   ExternalLink,
   UserCheck,
+  Download,
+  Phone,
+  Calendar,
+  Key as KeyIcon,
+  Filter as FilterIcon,
+  Shield,
+  MessageCircle,
+  LogOut,
+  Upload,
+  Building,
+  UserX,
+  FilePlus,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon, Shield, MessageCircle, LogOut, Upload, Building } from "lucide-react";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
 type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization" | "footer";
@@ -331,6 +342,9 @@ export default function AdminPage() {
   const [isAddLocalityOpen, setIsAddLocalityOpen] = useState(false);
   const [isAddBlogOpen, setIsAddBlogOpen] = useState(false);
   const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState(false);
+  const [isAddPageOpen, setIsAddPageOpen] = useState(false);
+  const [newPageKey, setNewPageKey] = useState("");
+  const [newPageTitle, setNewPageTitle] = useState("");
   const [editingBlog, setEditingBlog] = useState<BlogPost | null>(null);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [viewingEnquiry, setViewingEnquiry] = useState<Enquiry | null>(null);
@@ -449,9 +463,9 @@ export default function AdminPage() {
     defaultValues: { name: "", cityId: "", pincode: "" },
   });
 
-  const blogForm = useForm<{ title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; metaTitle?: string; metaDescription?: string; metaKeywords?: string }>({
+  const blogForm = useForm<{ title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; featuredImage?: string; metaTitle?: string; metaDescription?: string; metaKeywords?: string }>({
     resolver: zodResolver(blogFormSchema),
-    defaultValues: { title: "", slug: "", excerpt: "", content: "", status: "draft", metaTitle: "", metaDescription: "", metaKeywords: "" },
+    defaultValues: { title: "", slug: "", excerpt: "", content: "", status: "draft", featuredImage: "", metaTitle: "", metaDescription: "", metaKeywords: "" },
   });
 
   const employeeForm = useForm({
@@ -535,6 +549,7 @@ export default function AdminPage() {
         excerpt: editingBlog.excerpt || "",
         content: editingBlog.content,
         status: (editingBlog.status === "published" ? "published" : "draft") as "draft" | "published",
+        featuredImage: editingBlog.featuredImage || "",
         metaTitle: (editingBlog as any).metaTitle || "",
         metaDescription: (editingBlog as any).metaDescription || "",
         metaKeywords: ((editingBlog as any).metaKeywords || []).join(", "),
@@ -747,6 +762,21 @@ export default function AdminPage() {
     },
   });
 
+  const createPageMutation = useMutation({
+    mutationFn: async (data: { pageKey: string; title: string; content: any }) =>
+      apiRequest("POST", "/api/pages", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pages"] });
+      setIsAddPageOpen(false);
+      setNewPageKey("");
+      setNewPageTitle("");
+      toast({ title: "Page created successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create page", variant: "destructive" });
+    },
+  });
+
   const updatePageMutation = useMutation({
     mutationFn: async ({ key, data }: { key: string; data: { title: string; content: any; metaTitle?: string | null; metaDescription?: string | null; metaKeywords?: string[] } }) =>
       apiRequest("PATCH", `/api/pages/${key}`, data),
@@ -907,13 +937,14 @@ export default function AdminPage() {
     }
   };
 
-  const handleBlogSubmit = (data: { title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; metaTitle?: string; metaDescription?: string; metaKeywords?: string }) => {
+  const handleBlogSubmit = (data: { title: string; slug: string; excerpt: string; content: string; status: "draft" | "published"; featuredImage?: string; metaTitle?: string; metaDescription?: string; metaKeywords?: string }) => {
     const blogData = {
       title: data.title,
       slug: data.slug,
       excerpt: data.excerpt,
       content: data.content,
       status: data.status,
+      featuredImage: data.featuredImage || null,
       metaTitle: data.metaTitle || null,
       metaDescription: data.metaDescription || null,
       metaKeywords: data.metaKeywords ? data.metaKeywords.split(",").map(k => k.trim()).filter(Boolean) : [],
@@ -2021,15 +2052,44 @@ export default function AdminPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        onClick={() => setResetPasswordUserId(user.id)}
-                        title="Reset Password"
-                        data-testid={`button-reset-password-user-${user.id}`}
-                      >
-                        <KeyIcon className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          onClick={() => setResetPasswordUserId(user.id)}
+                          title="Reset Password"
+                          data-testid={`button-reset-password-user-${user.id}`}
+                        >
+                          <KeyIcon className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          onClick={() => {
+                            toggleUserStatusMutation.mutate({ 
+                              userId: user.id, 
+                              isActive: user.isActive === false 
+                            });
+                          }}
+                          title={user.isActive !== false ? "Deactivate User" : "Activate User"}
+                          data-testid={`button-toggle-status-user-${user.id}`}
+                        >
+                          {user.isActive !== false ? (
+                            <UserX className="h-4 w-4 text-destructive" />
+                          ) : (
+                            <UserCheck className="h-4 w-4 text-green-600" />
+                          )}
+                        </Button>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          onClick={() => setActiveSection("roles")}
+                          title="Manage Roles"
+                          data-testid={`button-manage-roles-user-${user.id}`}
+                        >
+                          <Shield className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -2402,9 +2462,15 @@ export default function AdminPage() {
 
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Pages</h1>
-          <p className="text-muted-foreground">Manage static page content</p>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold">Pages</h1>
+            <p className="text-muted-foreground">Manage static page content</p>
+          </div>
+          <Button onClick={() => setIsAddPageOpen(true)} data-testid="button-add-page">
+            <FilePlus className="h-4 w-4 mr-2" />
+            Add New Page
+          </Button>
         </div>
 
         <Card>
@@ -4986,6 +5052,16 @@ export default function AdminPage() {
                   <FormMessage />
                 </FormItem>
               )} />
+              <FormField control={blogForm.control} name="featuredImage" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Featured Image URL</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="https://example.com/image.jpg" data-testid="input-blog-featured-image" />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">Enter image URL for the blog post thumbnail</p>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={blogForm.control} name="status" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Status</FormLabel>
@@ -5278,6 +5354,59 @@ export default function AdminPage() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAddPageOpen} onOpenChange={setIsAddPageOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Page</DialogTitle>
+            <DialogDescription>Create a new static page for your website</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-page-key">Page URL Key</Label>
+              <Input
+                id="new-page-key"
+                value={newPageKey}
+                onChange={(e) => setNewPageKey(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
+                placeholder="e.g., faq, pricing, services"
+                data-testid="input-new-page-key"
+              />
+              <p className="text-xs text-muted-foreground">
+                This will be the URL path: /{newPageKey || "page-key"}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-page-title">Page Title</Label>
+              <Input
+                id="new-page-title"
+                value={newPageTitle}
+                onChange={(e) => setNewPageTitle(e.target.value)}
+                placeholder="e.g., Frequently Asked Questions"
+                data-testid="input-new-page-title"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => {
+              setIsAddPageOpen(false);
+              setNewPageKey("");
+              setNewPageTitle("");
+            }}>Cancel</Button>
+            <Button
+              onClick={() => createPageMutation.mutate({
+                pageKey: newPageKey,
+                title: newPageTitle,
+                content: { text: "Add your content here..." }
+              })}
+              disabled={!newPageKey || !newPageTitle || createPageMutation.isPending}
+              data-testid="button-create-page"
+            >
+              {createPageMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Create Page
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
