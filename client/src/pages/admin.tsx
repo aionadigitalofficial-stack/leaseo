@@ -854,8 +854,24 @@ export default function AdminPage() {
 
   const [uploadingImages, setUploadingImages] = useState(false);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [uploadingBlogImage, setUploadingBlogImage] = useState(false);
 
   const { uploadFile, isUploading: isUploadingFile } = useUpload();
+
+  const handleBlogImageUpload = async (file: File) => {
+    setUploadingBlogImage(true);
+    try {
+      const uploadResponse = await uploadFile(file);
+      if (uploadResponse) {
+        blogForm.setValue("featuredImage", uploadResponse.objectPath);
+        toast({ title: "Featured image uploaded successfully" });
+      }
+    } catch (error) {
+      toast({ title: "Failed to upload image", variant: "destructive" });
+    } finally {
+      setUploadingBlogImage(false);
+    }
+  };
 
   const uploadImageMutation = useMutation({
     mutationFn: async ({ propertyId, url, caption }: { propertyId: string; url: string; caption?: string }) =>
@@ -5061,11 +5077,50 @@ export default function AdminPage() {
               )} />
               <FormField control={blogForm.control} name="featuredImage" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Featured Image URL</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="https://example.com/image.jpg" data-testid="input-blog-featured-image" />
-                  </FormControl>
-                  <p className="text-xs text-muted-foreground">Enter image URL for the blog post thumbnail</p>
+                  <FormLabel>Featured Image</FormLabel>
+                  <div className="space-y-3">
+                    {field.value && (
+                      <div className="relative w-full h-40 rounded-md overflow-hidden border">
+                        <img 
+                          src={field.value} 
+                          alt="Featured preview" 
+                          className="w-full h-full object-cover"
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-2 right-2 h-6 w-6"
+                          onClick={() => blogForm.setValue("featuredImage", "")}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleBlogImageUpload(file);
+                        }}
+                        className="flex-1"
+                        disabled={uploadingBlogImage}
+                        data-testid="input-blog-featured-image-upload"
+                      />
+                      {uploadingBlogImage && <span className="text-sm text-muted-foreground flex items-center">Uploading...</span>}
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <span className="text-xs text-muted-foreground">Or enter URL:</span>
+                      <Input 
+                        {...field} 
+                        placeholder="https://example.com/image.jpg" 
+                        className="flex-1"
+                        data-testid="input-blog-featured-image" 
+                      />
+                    </div>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )} />
