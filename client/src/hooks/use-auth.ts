@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export interface AuthUser {
   id: string;
@@ -38,7 +38,9 @@ export function useAuth(): UseAuthReturn {
     return localStorage.getItem("token");
   });
 
-  const [isLoading, setIsLoading] = useState(false);
+  // Start with loading=true if there's a token to verify
+  const [isLoading, setIsLoading] = useState(() => !!localStorage.getItem("token"));
+  const hasVerified = useRef(false);
 
   const login = useCallback((newToken: string, newUser: AuthUser) => {
     localStorage.setItem("token", newToken);
@@ -82,6 +84,46 @@ export function useAuth(): UseAuthReturn {
       setIsLoading(false);
     }
   }, [logout]);
+
+  // Verify token on mount
+  useEffect(() => {
+    const verifyToken = async () => {
+      if (hasVerified.current) return;
+      hasVerified.current = true;
+
+      const currentToken = localStorage.getItem("token");
+      if (!currentToken) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/auth/me", {
+          headers: {
+            Authorization: `Bearer ${currentToken}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+          localStorage.setItem("user", JSON.stringify(data.user));
+        } else {
+          // Token invalid - clear auth state
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setToken(null);
+          setUser(null);
+        }
+      } catch {
+        console.error("Failed to verify token");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    verifyToken();
+  }, []);
 
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {

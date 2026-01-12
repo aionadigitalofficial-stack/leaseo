@@ -3,7 +3,7 @@ import { Mail, Phone, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import leaseoLogo from "@assets/lessso_1767868424345.png";
+import leaseoLogo from "@assets/lessso_1767868424345-DMafamKW_1768207660992.png";
 
 const footerLinks = {
   company: [
@@ -98,15 +98,15 @@ export function Footer() {
             <ul className="space-y-3">
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <MapPin className="h-4 w-4 flex-shrink-0" />
-                <span>123 Real Estate Ave, NY 10001</span>
+                <span>Pune, Maharashtra, India</span>
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Phone className="h-4 w-4 flex-shrink-0" />
-                <span>(555) 123-4567</span>
+                <span>+91 1234567890</span>
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4 flex-shrink-0" />
-                <span>info@leaseo.in</span>
+                <span>support@leaseo.in</span>
               </li>
             </ul>
           </div>

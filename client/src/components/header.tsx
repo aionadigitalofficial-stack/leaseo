@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import leaseoLogo from "@assets/lessso_1767868424345.png";
+import leaseoLogo from "@assets/lessso_1767868424345-DMafamKW_1768207660992.png";
 
 const rentCategories = [
   { href: "/properties?segment=rent&propertyType=apartment", label: "Apartment", icon: Building2 },
@@ -73,7 +73,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b" style={{ backgroundColor: '#0b2743' }}>
       <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-4">
         <Link href="/" className="flex items-center gap-2" data-testid="link-home">
           <img 
@@ -86,8 +86,8 @@ export function Header() {
         <nav className="hidden lg:flex items-center gap-1">
           <Link href="/">
             <Button
-              variant={location === "/" ? "secondary" : "ghost"}
-              className="text-sm"
+              variant="ghost"
+              className={`text-sm text-white hover:text-white hover:bg-white/10 ${location === "/" ? "bg-[#ff9a00] hover:bg-[#ff9a00]/90" : ""}`}
               data-testid="nav-home"
             >
               Home
@@ -96,7 +96,7 @@ export function Header() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="text-sm gap-1" data-testid="nav-rent">
+              <Button variant="ghost" className="text-sm gap-1 text-white hover:text-white hover:bg-white/10" data-testid="nav-rent">
                 Rent <ChevronDown className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -122,7 +122,7 @@ export function Header() {
           {showBuyTab && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="text-sm gap-1" data-testid="nav-buy">
+                <Button variant="ghost" className="text-sm gap-1 text-white hover:text-white hover:bg-white/10" data-testid="nav-buy">
                   Buy <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -148,7 +148,7 @@ export function Header() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="text-sm gap-1" data-testid="nav-commercial">
+              <Button variant="ghost" className="text-sm gap-1 text-white hover:text-white hover:bg-white/10" data-testid="nav-commercial">
                 Commercial <ChevronDown className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -173,8 +173,8 @@ export function Header() {
 
           <Link href="/about">
             <Button
-              variant={location === "/about" ? "secondary" : "ghost"}
-              className="text-sm"
+              variant="ghost"
+              className={`text-sm text-white hover:text-white hover:bg-white/10 ${location === "/about" ? "bg-[#ff9a00] hover:bg-[#ff9a00]/90" : ""}`}
               data-testid="nav-about"
             >
               About
@@ -182,8 +182,8 @@ export function Header() {
           </Link>
           <Link href="/contact">
             <Button
-              variant={location === "/contact" ? "secondary" : "ghost"}
-              className="text-sm"
+              variant="ghost"
+              className={`text-sm text-white hover:text-white hover:bg-white/10 ${location === "/contact" ? "bg-[#ff9a00] hover:bg-[#ff9a00]/90" : ""}`}
               data-testid="nav-contact"
             >
               Contact
@@ -194,9 +194,8 @@ export function Header() {
         <div className="flex items-center gap-2">
           <Link href="/post-property">
             <Button 
-              variant="default" 
               size="sm" 
-              className="gap-2"
+              className="gap-2 bg-[#ff9a00] hover:bg-[#ff9a00]/90 text-white"
               data-testid="button-post-property"
             >
               <Plus className="h-4 w-4" />
@@ -204,15 +203,15 @@ export function Header() {
               <span className="sm:hidden">Post</span>
             </Button>
           </Link>
-          <Button variant="ghost" size="icon" className="hidden sm:flex" data-testid="button-favorites">
+          <Button variant="ghost" size="icon" className="hidden sm:flex text-white hover:text-white hover:bg-white/10" data-testid="button-favorites">
             <Heart className="h-5 w-5" />
           </Button>
-          <ThemeToggle />
+          <ThemeToggle className="text-white hover:text-white hover:bg-white/10" />
           
           {isAuthenticated ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="hidden sm:flex gap-2" data-testid="button-user-menu">
+                <Button size="sm" variant="outline" className="hidden sm:flex gap-2 border-white/30 text-white hover:bg-white/10 hover:text-white" data-testid="button-user-menu">
                   <User className="h-4 w-4" />
                   {user?.firstName || user?.email?.split("@")[0] || "Account"}
                   <ChevronDown className="h-3 w-3" />
@@ -253,7 +252,7 @@ export function Header() {
             </DropdownMenu>
           ) : (
             <Link href="/login">
-              <Button size="sm" variant="outline" className="hidden sm:flex gap-2" data-testid="button-login">
+              <Button size="sm" variant="outline" className="hidden sm:flex gap-2 border-white/30 text-white hover:bg-white/10 hover:text-white" data-testid="button-login">
                 <User className="h-4 w-4" />
                 Login
               </Button>
@@ -262,7 +261,7 @@ export function Header() {
 
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild className="lg:hidden">
-              <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
+              <Button variant="ghost" size="icon" className="text-white hover:text-white hover:bg-white/10" data-testid="button-mobile-menu">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
