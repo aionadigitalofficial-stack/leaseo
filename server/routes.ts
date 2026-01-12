@@ -3373,6 +3373,86 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== FOOTER SETTINGS ====================
+
+  // Get footer settings (public - used by footer component)
+  app.get("/api/footer-settings", async (req, res) => {
+    try {
+      const settings = await db.select().from(siteSettings)
+        .where(sql`key LIKE 'footer_%'`);
+      
+      if (settings.length === 0) {
+        // Return default settings
+        return res.json({
+          description: "Find your perfect rental property. We connect renters directly with property owners for a seamless experience.",
+          address: "Pune, Maharashtra, India",
+          phone: "+91 1234567890",
+          email: "support@leaseo.in",
+          copyrightText: "2024 Leaseo. All rights reserved.",
+          companyLinks: [
+            { label: "About Us", href: "/about" },
+            { label: "Careers", href: "#" },
+            { label: "Press", href: "#" },
+            { label: "Blog", href: "#" },
+          ],
+          supportLinks: [
+            { label: "Help Center", href: "#" },
+            { label: "Safety Information", href: "#" },
+            { label: "Cancellation Options", href: "#" },
+            { label: "Report a Concern", href: "#" },
+          ],
+          legalLinks: [
+            { label: "Terms of Service", href: "#" },
+            { label: "Privacy Policy", href: "#" },
+            { label: "Cookie Policy", href: "#" },
+            { label: "Accessibility", href: "#" },
+          ],
+        });
+      }
+      
+      // Convert settings array to object
+      const footerData: any = {};
+      for (const s of settings) {
+        const key = s.key.replace('footer_', '');
+        const value = s.value || '';
+        try {
+          footerData[key] = JSON.parse(value);
+        } catch {
+          footerData[key] = value;
+        }
+      }
+      
+      res.json(footerData);
+    } catch (error) {
+      console.error("Error fetching footer settings:", error);
+      res.status(500).json({ error: "Failed to fetch footer settings" });
+    }
+  });
+
+  // Save footer settings (admin only)
+  app.post("/api/admin/footer-settings", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const footerData = req.body;
+      
+      for (const [key, value] of Object.entries(footerData)) {
+        const dbKey = `footer_${key}`;
+        const dbValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        
+        await db.insert(siteSettings)
+          .values({ key: dbKey, value: dbValue })
+          .onConflictDoUpdate({
+            target: siteSettings.key,
+            set: { value: dbValue, updatedAt: new Date() }
+          });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error saving footer settings:", error);
+      res.status(500).json({ error: "Failed to save footer settings" });
+    }
+  });
+
   // ==================== CSV IMPORT ====================
 
   // Download sample CSV template

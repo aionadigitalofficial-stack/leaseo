@@ -191,3 +191,96 @@ The platform includes a live content editing system for administrators:
 - Dark mode support throughout
 - Mobile-first responsive design
 - India-focused (INR currency, +91 country code)
+
+## VPS Deployment Instructions
+
+### Prerequisites
+- Node.js 18+ and npm
+- PostgreSQL 15+ database
+- Linux VPS (Ubuntu 20.04+ recommended)
+
+### Deployment Steps
+
+1. **Download Project Files**
+   - Download the project as a ZIP from Replit or use `git clone`
+   - Extract to your VPS: `/var/www/leaseo`
+
+2. **Install Dependencies**
+   ```bash
+   cd /var/www/leaseo
+   npm install
+   ```
+
+3. **Configure Environment Variables**
+   Create a `.env` file with the following:
+   ```
+   DATABASE_URL=postgresql://user:password@localhost:5432/leaseo
+   SESSION_SECRET=your-strong-secret-key
+   JWT_SECRET=your-jwt-secret-key
+   NODE_ENV=production
+   PORT=5000
+   
+   # SMTP for email OTP (optional)
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USER=your-email@gmail.com
+   SMTP_PASS=your-app-password
+   SMTP_FROM_EMAIL=noreply@leaseo.in
+   SMTP_FROM_NAME=Leaseo
+   
+   # Object Storage (optional - for file uploads)
+   DEFAULT_OBJECT_STORAGE_BUCKET_ID=your-bucket-id
+   ```
+
+4. **Setup Database**
+   ```bash
+   # Create PostgreSQL database
+   createdb leaseo
+   
+   # Run migrations
+   npm run db:push
+   ```
+
+5. **Build Production Bundle**
+   ```bash
+   npm run build
+   ```
+
+6. **Start Application**
+   ```bash
+   npm start
+   ```
+
+7. **Configure Nginx (Reverse Proxy)**
+   ```nginx
+   server {
+       listen 80;
+       server_name leaseo.in www.leaseo.in;
+       
+       location / {
+           proxy_pass http://localhost:5000;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+       }
+   }
+   ```
+
+8. **Use PM2 for Process Management**
+   ```bash
+   npm install -g pm2
+   pm2 start npm --name "leaseo" -- start
+   pm2 save
+   pm2 startup
+   ```
+
+### Data Storage Confirmation
+All data is stored in PostgreSQL database:
+- Users, properties, enquiries, shortlists
+- Cities, localities, categories
+- Blog posts, pages, site settings
+- Payment records, newsletter subscribers
+- Footer settings, organization settings
+- No external APIs or mock data - everything persists in the database

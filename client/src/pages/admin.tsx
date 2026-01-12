@@ -87,7 +87,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, Phone, Calendar, Key as KeyIcon, Filter as FilterIcon, Shield, MessageCircle, LogOut, Upload, Building } from "lucide-react";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization" | "footer";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -314,6 +314,7 @@ const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "pages", label: "Pages", icon: FileText },
   { id: "seo", label: "SEO Settings", icon: Search },
   { id: "organization", label: "Organization", icon: Building },
+  { id: "footer", label: "Footer", icon: FileText },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -4132,6 +4133,272 @@ export default function AdminPage() {
     </div>
   );
 
+  // Footer settings state
+  const [footerDescription, setFooterDescription] = useState("Find your perfect rental property. We connect renters directly with property owners for a seamless experience.");
+  const [footerAddress, setFooterAddress] = useState("Pune, Maharashtra, India");
+  const [footerPhone, setFooterPhone] = useState("+91 1234567890");
+  const [footerEmail, setFooterEmail] = useState("support@leaseo.in");
+  const [footerCopyright, setFooterCopyright] = useState("2024 Leaseo. All rights reserved.");
+  const [footerCompanyLinks, setFooterCompanyLinks] = useState<{label: string; href: string}[]>([
+    { label: "About Us", href: "/about" },
+    { label: "Careers", href: "#" },
+    { label: "Press", href: "#" },
+    { label: "Blog", href: "#" },
+  ]);
+  const [footerSupportLinks, setFooterSupportLinks] = useState<{label: string; href: string}[]>([
+    { label: "Help Center", href: "#" },
+    { label: "Safety Information", href: "#" },
+    { label: "Cancellation Options", href: "#" },
+    { label: "Report a Concern", href: "#" },
+  ]);
+  const [footerLegalLinks, setFooterLegalLinks] = useState<{label: string; href: string}[]>([
+    { label: "Terms of Service", href: "#" },
+    { label: "Privacy Policy", href: "#" },
+    { label: "Cookie Policy", href: "#" },
+    { label: "Accessibility", href: "#" },
+  ]);
+
+  const { data: footerSettings, isLoading: footerLoading } = useQuery<any>({
+    queryKey: ["/api/footer-settings"],
+    enabled: activeSection === "footer",
+  });
+
+  useEffect(() => {
+    if (footerSettings) {
+      if (footerSettings.description) setFooterDescription(footerSettings.description);
+      if (footerSettings.address) setFooterAddress(footerSettings.address);
+      if (footerSettings.phone) setFooterPhone(footerSettings.phone);
+      if (footerSettings.email) setFooterEmail(footerSettings.email);
+      if (footerSettings.copyrightText) setFooterCopyright(footerSettings.copyrightText);
+      if (footerSettings.companyLinks) setFooterCompanyLinks(footerSettings.companyLinks);
+      if (footerSettings.supportLinks) setFooterSupportLinks(footerSettings.supportLinks);
+      if (footerSettings.legalLinks) setFooterLegalLinks(footerSettings.legalLinks);
+    }
+  }, [footerSettings]);
+
+  const saveFooterMutation = useMutation({
+    mutationFn: async (data: any) => apiRequest("POST", "/api/admin/footer-settings", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/footer-settings"] });
+      toast({ title: "Footer settings saved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to save footer settings", variant: "destructive" });
+    },
+  });
+
+  const updateLink = (type: "company" | "support" | "legal", index: number, field: "label" | "href", value: string) => {
+    if (type === "company") {
+      const updated = [...footerCompanyLinks];
+      updated[index] = { ...updated[index], [field]: value };
+      setFooterCompanyLinks(updated);
+    } else if (type === "support") {
+      const updated = [...footerSupportLinks];
+      updated[index] = { ...updated[index], [field]: value };
+      setFooterSupportLinks(updated);
+    } else {
+      const updated = [...footerLegalLinks];
+      updated[index] = { ...updated[index], [field]: value };
+      setFooterLegalLinks(updated);
+    }
+  };
+
+  const addLink = (type: "company" | "support" | "legal") => {
+    const newLink = { label: "New Link", href: "#" };
+    if (type === "company") setFooterCompanyLinks([...footerCompanyLinks, newLink]);
+    else if (type === "support") setFooterSupportLinks([...footerSupportLinks, newLink]);
+    else setFooterLegalLinks([...footerLegalLinks, newLink]);
+  };
+
+  const removeLink = (type: "company" | "support" | "legal", index: number) => {
+    if (type === "company") setFooterCompanyLinks(footerCompanyLinks.filter((_, i) => i !== index));
+    else if (type === "support") setFooterSupportLinks(footerSupportLinks.filter((_, i) => i !== index));
+    else setFooterLegalLinks(footerLegalLinks.filter((_, i) => i !== index));
+  };
+
+  const renderFooter = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Footer Settings</h1>
+        <p className="text-muted-foreground">Customize the footer content and links</p>
+      </div>
+
+      {footerLoading ? (
+        <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}</div>
+      ) : (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Contact Information</CardTitle>
+              <CardDescription>Update footer contact details</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={footerDescription}
+                  onChange={(e) => setFooterDescription(e.target.value)}
+                  placeholder="About your company..."
+                  data-testid="input-footer-description"
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Address</Label>
+                  <Input
+                    value={footerAddress}
+                    onChange={(e) => setFooterAddress(e.target.value)}
+                    placeholder="City, State, Country"
+                    data-testid="input-footer-address"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input
+                    value={footerPhone}
+                    onChange={(e) => setFooterPhone(e.target.value)}
+                    placeholder="+91 1234567890"
+                    data-testid="input-footer-phone"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    value={footerEmail}
+                    onChange={(e) => setFooterEmail(e.target.value)}
+                    placeholder="support@example.com"
+                    data-testid="input-footer-email"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Copyright Text</Label>
+                <Input
+                  value={footerCopyright}
+                  onChange={(e) => setFooterCopyright(e.target.value)}
+                  placeholder="2024 Company. All rights reserved."
+                  data-testid="input-footer-copyright"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Company Links</CardTitle>
+              <CardDescription>Links shown under "Company" section</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {footerCompanyLinks.map((link, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <Input
+                    value={link.label}
+                    onChange={(e) => updateLink("company", i, "label", e.target.value)}
+                    placeholder="Label"
+                    className="flex-1"
+                  />
+                  <Input
+                    value={link.href}
+                    onChange={(e) => updateLink("company", i, "href", e.target.value)}
+                    placeholder="/path or URL"
+                    className="flex-1"
+                  />
+                  <Button size="icon" variant="ghost" onClick={() => removeLink("company", i)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+              <Button variant="outline" onClick={() => addLink("company")} className="w-full">
+                <Plus className="h-4 w-4 mr-2" /> Add Company Link
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Support Links</CardTitle>
+              <CardDescription>Links shown under "Support" section</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {footerSupportLinks.map((link, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <Input
+                    value={link.label}
+                    onChange={(e) => updateLink("support", i, "label", e.target.value)}
+                    placeholder="Label"
+                    className="flex-1"
+                  />
+                  <Input
+                    value={link.href}
+                    onChange={(e) => updateLink("support", i, "href", e.target.value)}
+                    placeholder="/path or URL"
+                    className="flex-1"
+                  />
+                  <Button size="icon" variant="ghost" onClick={() => removeLink("support", i)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+              <Button variant="outline" onClick={() => addLink("support")} className="w-full">
+                <Plus className="h-4 w-4 mr-2" /> Add Support Link
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Legal Links</CardTitle>
+              <CardDescription>Links shown at the bottom of the footer</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {footerLegalLinks.map((link, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <Input
+                    value={link.label}
+                    onChange={(e) => updateLink("legal", i, "label", e.target.value)}
+                    placeholder="Label"
+                    className="flex-1"
+                  />
+                  <Input
+                    value={link.href}
+                    onChange={(e) => updateLink("legal", i, "href", e.target.value)}
+                    placeholder="/path or URL"
+                    className="flex-1"
+                  />
+                  <Button size="icon" variant="ghost" onClick={() => removeLink("legal", i)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+              <Button variant="outline" onClick={() => addLink("legal")} className="w-full">
+                <Plus className="h-4 w-4 mr-2" /> Add Legal Link
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Button
+            onClick={() => saveFooterMutation.mutate({
+              description: footerDescription,
+              address: footerAddress,
+              phone: footerPhone,
+              email: footerEmail,
+              copyrightText: footerCopyright,
+              companyLinks: footerCompanyLinks,
+              supportLinks: footerSupportLinks,
+              legalLinks: footerLegalLinks,
+            })}
+            disabled={saveFooterMutation.isPending}
+            data-testid="button-save-footer"
+          >
+            {saveFooterMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+            <Save className="h-4 w-4 mr-2" />
+            Save Footer Settings
+          </Button>
+        </>
+      )}
+    </div>
+  );
+
   const renderSettings = () => (
     <div className="space-y-6">
       <div>
@@ -4239,6 +4506,7 @@ export default function AdminPage() {
       case "pages": return renderPages();
       case "seo": return renderSeo();
       case "organization": return renderOrganization();
+      case "footer": return renderFooter();
       case "settings": return renderSettings();
       default: return renderDashboard();
     }

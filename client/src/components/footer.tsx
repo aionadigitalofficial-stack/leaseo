@@ -3,45 +3,63 @@ import { Mail, Phone, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import leaseoLogo from "@assets/lessso_1767868424345-DMafamKW_1768207660992.png";
+import { useQuery } from "@tanstack/react-query";
 
-const footerLinks = {
-  company: [
+interface FooterSettings {
+  description: string;
+  address: string;
+  phone: string;
+  email: string;
+  companyLinks: { label: string; href: string }[];
+  supportLinks: { label: string; href: string }[];
+  legalLinks: { label: string; href: string }[];
+  copyrightText: string;
+}
+
+const defaultFooterSettings: FooterSettings = {
+  description: "Find your perfect rental property. We connect renters directly with property owners for a seamless experience.",
+  address: "Pune, Maharashtra, India",
+  phone: "+91 1234567890",
+  email: "support@leaseo.in",
+  companyLinks: [
     { label: "About Us", href: "/about" },
     { label: "Careers", href: "#" },
     { label: "Press", href: "#" },
     { label: "Blog", href: "#" },
   ],
-  support: [
+  supportLinks: [
     { label: "Help Center", href: "#" },
     { label: "Safety Information", href: "#" },
     { label: "Cancellation Options", href: "#" },
     { label: "Report a Concern", href: "#" },
   ],
-  legal: [
+  legalLinks: [
     { label: "Terms of Service", href: "#" },
     { label: "Privacy Policy", href: "#" },
     { label: "Cookie Policy", href: "#" },
     { label: "Accessibility", href: "#" },
   ],
+  copyrightText: "2024 Leaseo. All rights reserved.",
 };
 
 export function Footer() {
+  const { data: footerData } = useQuery<FooterSettings>({
+    queryKey: ["/api/footer-settings"],
+  });
+
+  const settings = footerData || defaultFooterSettings;
+
   return (
     <footer className="border-t" style={{ backgroundColor: '#0b2743' }}>
       <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Brand & Newsletter */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-1">
             <Link href="/" className="flex items-center gap-2 mb-4" data-testid="footer-logo">
-              <img 
-                src={leaseoLogo} 
-                alt="Leaseo" 
-                className="h-10 w-auto"
-              />
+              <span className="text-2xl font-bold text-white">Leaseo</span>
             </Link>
             <p className="text-white/70 mb-4 max-w-sm">
-              Find your perfect rental property. We connect renters directly with property owners for a seamless experience.
+              {settings.description}
             </p>
             <div className="flex flex-col gap-2">
               <p className="text-sm font-medium text-white">Subscribe to our newsletter</p>
@@ -61,7 +79,7 @@ export function Footer() {
           <div>
             <h4 className="font-semibold mb-4 text-white">Company</h4>
             <ul className="space-y-2">
-              {footerLinks.company.map((link) => (
+              {settings.companyLinks.map((link) => (
                 <li key={link.label}>
                   <Link
                     href={link.href}
@@ -79,7 +97,7 @@ export function Footer() {
           <div>
             <h4 className="font-semibold mb-4 text-white">Support</h4>
             <ul className="space-y-2">
-              {footerLinks.support.map((link) => (
+              {settings.supportLinks.map((link) => (
                 <li key={link.label}>
                   <Link
                     href={link.href}
@@ -98,15 +116,15 @@ export function Footer() {
             <ul className="space-y-3">
               <li className="flex items-center gap-2 text-sm text-white/70">
                 <MapPin className="h-4 w-4 flex-shrink-0" />
-                <span>Pune, Maharashtra, India</span>
+                <span>{settings.address}</span>
               </li>
               <li className="flex items-center gap-2 text-sm text-white/70">
                 <Phone className="h-4 w-4 flex-shrink-0" />
-                <span>+91 1234567890</span>
+                <span>{settings.phone}</span>
               </li>
               <li className="flex items-center gap-2 text-sm text-white/70">
                 <Mail className="h-4 w-4 flex-shrink-0" />
-                <span>support@leaseo.in</span>
+                <span>{settings.email}</span>
               </li>
             </ul>
           </div>
@@ -116,10 +134,10 @@ export function Footer() {
 
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-sm text-white/70">
-            2024 Leaseo. All rights reserved.
+            {settings.copyrightText}
           </p>
-          <div className="flex gap-4">
-            {footerLinks.legal.map((link) => (
+          <div className="flex gap-4 flex-wrap">
+            {settings.legalLinks.map((link) => (
               <Link
                 key={link.label}
                 href={link.href}
