@@ -2463,18 +2463,8 @@ export default function AdminPage() {
   );
 
   const renderPages = () => {
-    const defaultPages = [
-      { pageKey: "homepage", title: "Homepage", content: { hero: "Welcome to Leaseo", description: "Find your perfect rental property" } },
-      { pageKey: "about", title: "About Us", content: { text: "About our company" } },
-      { pageKey: "contact", title: "Contact Us", content: { email: "contact@leaseo.in", phone: "+91 XXXXXXXXXX" } },
-      { pageKey: "privacy", title: "Privacy Policy", content: { text: "Privacy policy content" } },
-      { pageKey: "terms", title: "Terms of Service", content: { text: "Terms of service content" } },
-    ];
-    
-    const mergedPages = defaultPages.map(dp => {
-      const existingPage = pages.find(p => p.pageKey === dp.pageKey);
-      return existingPage || dp;
-    });
+    // Show all pages from database
+    const allPages = pages || [];
 
     const getContentPreview = (content: any) => {
       if (!content) return "No content";
@@ -2514,7 +2504,7 @@ export default function AdminPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mergedPages.map((page) => (
+                  {allPages.map((page) => (
                     <TableRow key={page.pageKey} data-testid={`row-page-${page.pageKey}`}>
                       <TableCell className="font-medium capitalize">{page.pageKey}</TableCell>
                       <TableCell>{page.title}</TableCell>
