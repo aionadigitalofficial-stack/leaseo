@@ -988,20 +988,6 @@ export async function registerRoutes(
 
   // ==================== PAGE CONTENT (CMS - Admin) ====================
 
-  // Get page content
-  app.get("/api/pages/:key", async (req, res) => {
-    try {
-      const [page] = await db.select().from(pageContents).where(eq(pageContents.pageKey, req.params.key));
-      if (!page) {
-        return res.status(404).json({ error: "Page not found" });
-      }
-      res.json(page);
-    } catch (error) {
-      console.error("Error fetching page content:", error);
-      res.status(500).json({ error: "Failed to fetch page content" });
-    }
-  });
-
   // Update/Create page content (admin only)
   app.put("/api/admin/pages/:key", authMiddleware, adminMiddleware, async (req, res) => {
     try {
@@ -1205,54 +1191,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting blog post:", error);
       res.status(500).json({ error: "Failed to delete blog post" });
-    }
-  });
-
-  // Get all pages (for admin panel without auth for simplicity)
-  app.get("/api/pages", async (req, res) => {
-    try {
-      const pages = await db.select().from(pageContents).orderBy(pageContents.pageKey);
-      res.json(pages);
-    } catch (error) {
-      console.error("Error fetching pages:", error);
-      res.status(500).json({ error: "Failed to fetch pages" });
-    }
-  });
-
-  // Update page content
-  app.patch("/api/pages/:key", async (req, res) => {
-    try {
-      const { title, content, metaTitle, metaDescription } = req.body;
-      
-      if (!title && !content && metaTitle === undefined && metaDescription === undefined) {
-        return res.status(400).json({ error: "At least one field is required" });
-      }
-
-      const [existing] = await db.select().from(pageContents).where(eq(pageContents.pageKey, req.params.key));
-      
-      let page;
-      if (existing) {
-        const updateData: any = { updatedAt: new Date() };
-        if (title !== undefined) updateData.title = title;
-        if (content !== undefined) updateData.content = content;
-        if (metaTitle !== undefined) updateData.metaTitle = metaTitle;
-        if (metaDescription !== undefined) updateData.metaDescription = metaDescription;
-        
-        [page] = await db.update(pageContents).set(updateData).where(eq(pageContents.pageKey, req.params.key)).returning();
-      } else {
-        [page] = await db.insert(pageContents).values({
-          pageKey: req.params.key,
-          title: title || req.params.key,
-          content: content || {},
-          metaTitle: metaTitle || null,
-          metaDescription: metaDescription || null,
-        }).returning();
-      }
-
-      res.json(page);
-    } catch (error) {
-      console.error("Error updating page content:", error);
-      res.status(500).json({ error: "Failed to update page content" });
     }
   });
 
@@ -3491,7 +3429,7 @@ export async function registerRoutes(
             amenities: row.amenities ? row.amenities.split(",").map((a: string) => a.trim()) : [],
             isFeatured: row.isFeatured === "true",
             ownerId,
-            status: "pending",
+            status: "active",
           });
 
           results.success++;
