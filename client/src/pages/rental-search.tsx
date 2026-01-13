@@ -400,13 +400,13 @@ export default function RentalSearchPage() {
               <AccordionContent>
                 <div className="space-y-2">
                   {PROPERTY_TYPES_RESIDENTIAL.map(type => (
-                    <label key={type} className="flex items-center gap-2 cursor-pointer text-sm">
+                    <label key={type.value} className="flex items-center gap-2 cursor-pointer text-sm">
                       <Checkbox
-                        checked={filters.propertyType.includes(type)}
-                        onCheckedChange={() => toggleArrayFilter("propertyType", type)}
-                        data-testid={`checkbox-type-${type.toLowerCase().replace(/\s+/g, "-")}`}
+                        checked={filters.propertyType.includes(type.value)}
+                        onCheckedChange={() => toggleArrayFilter("propertyType", type.value)}
+                        data-testid={`checkbox-type-${type.value}`}
                       />
-                      {type}
+                      {type.label}
                     </label>
                   ))}
                 </div>
@@ -517,9 +517,9 @@ export default function RentalSearchPage() {
               <AccordionContent>
                 <div className="space-y-2">
                   {PROPERTY_TYPES_COMMERCIAL.map(type => (
-                    <label key={type} className="flex items-center gap-2 cursor-pointer text-sm">
-                      <Checkbox checked={filters.propertyType.includes(type)} onCheckedChange={() => toggleArrayFilter("propertyType", type)} data-testid={`checkbox-commercial-type-${type.toLowerCase().replace(/\s+/g, "-")}`} />
-                      {type}
+                    <label key={type.value} className="flex items-center gap-2 cursor-pointer text-sm">
+                      <Checkbox checked={filters.propertyType.includes(type.value)} onCheckedChange={() => toggleArrayFilter("propertyType", type.value)} data-testid={`checkbox-commercial-type-${type.value}`} />
+                      {type.label}
                     </label>
                   ))}
                 </div>
