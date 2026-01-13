@@ -7,7 +7,8 @@ import type { PropertyFilters } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser, seedTestUsers } from "./auth";
 import { db } from "./db";
 import DOMPurify from "isomorphic-dompurify";
-import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+// Use local storage for VPS deployment (Replit object storage removed)
+import { registerLocalStorageRoutes } from "./local-storage";
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
@@ -40,8 +41,8 @@ export async function registerRoutes(
   // Initialize feature flags on startup
   await (storage as any).initializeFeatureFlags?.();
 
-  // Register object storage routes for file uploads
-  registerObjectStorageRoutes(app);
+  // Register local storage routes for file uploads (VPS compatible)
+  registerLocalStorageRoutes(app);
 
   // ==================== PROPERTIES ====================
 

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict Of6FE8LN5Sy6cLQ3dxENKxZaqcq9lQbkIgRbeYgM7u4N1qR2aa0hMGcAUgLc4a7
+\restrict bUKXHAc5kiulH5vUbTYB82majmhgY3KBsiNJaTbKYdmMrC6HJpawoLyIj56PTbR
 
 -- Dumped from database version 16.10
 -- Dumped by pg_dump version 16.10
@@ -180,7 +180,8 @@ CREATE TABLE public.blog_posts (
     created_at timestamp without time zone DEFAULT now(),
     updated_at timestamp without time zone DEFAULT now(),
     meta_title text,
-    meta_description text
+    meta_description text,
+    meta_keywords text[] DEFAULT ARRAY[]::text[]
 );
 
 
@@ -303,6 +304,48 @@ CREATE TABLE public.login_attempts (
 
 
 --
+-- Name: newsletter_subscribers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.newsletter_subscribers (
+    id character varying DEFAULT gen_random_uuid() NOT NULL,
+    email text NOT NULL,
+    name text,
+    is_active boolean DEFAULT true,
+    source text DEFAULT 'website'::text,
+    subscribed_at timestamp without time zone DEFAULT now(),
+    unsubscribed_at timestamp without time zone,
+    created_at timestamp without time zone DEFAULT now()
+);
+
+
+--
+-- Name: notification_providers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.notification_providers (
+    id character varying DEFAULT gen_random_uuid() NOT NULL,
+    provider_name text NOT NULL,
+    display_name text NOT NULL,
+    provider_type text DEFAULT 'sms'::text NOT NULL,
+    is_active boolean DEFAULT false,
+    mode text DEFAULT 'sandbox'::text,
+    account_sid text,
+    auth_token text,
+    api_key text,
+    from_number text,
+    sandbox_account_sid text,
+    sandbox_auth_token text,
+    sandbox_api_key text,
+    sandbox_from_number text,
+    config_json jsonb,
+    updated_by character varying,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now()
+);
+
+
+--
 -- Name: otp_requests; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -338,7 +381,8 @@ CREATE TABLE public.page_contents (
     meta_title text,
     meta_description text,
     status public.page_status DEFAULT 'published'::public.page_status,
-    created_at timestamp without time zone DEFAULT now()
+    created_at timestamp without time zone DEFAULT now(),
+    meta_keywords text[] DEFAULT ARRAY[]::text[]
 );
 
 
@@ -354,7 +398,30 @@ CREATE TABLE public.page_versions (
     meta_description text,
     version_number integer NOT NULL,
     edited_by character varying,
-    created_at timestamp without time zone DEFAULT now()
+    created_at timestamp without time zone DEFAULT now(),
+    meta_keywords text[] DEFAULT ARRAY[]::text[]
+);
+
+
+--
+-- Name: payment_providers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.payment_providers (
+    id character varying DEFAULT gen_random_uuid() NOT NULL,
+    provider_name text NOT NULL,
+    display_name text NOT NULL,
+    is_active boolean DEFAULT false,
+    mode text DEFAULT 'sandbox'::text,
+    api_key text,
+    auth_token text,
+    webhook_secret text,
+    sandbox_api_key text,
+    sandbox_auth_token text,
+    config_json jsonb,
+    updated_by character varying,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now()
 );
 
 
@@ -377,6 +444,21 @@ CREATE TABLE public.payments (
     paid_at timestamp without time zone,
     created_at timestamp without time zone DEFAULT now(),
     payment_request_id text
+);
+
+
+--
+-- Name: permissions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.permissions (
+    id character varying DEFAULT gen_random_uuid() NOT NULL,
+    name text NOT NULL,
+    display_name text NOT NULL,
+    description text,
+    category text DEFAULT 'general'::text,
+    is_active boolean DEFAULT true,
+    created_at timestamp without time zone DEFAULT now()
 );
 
 
@@ -505,6 +587,18 @@ CREATE TABLE public.reports (
 
 
 --
+-- Name: role_permissions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.role_permissions (
+    id character varying DEFAULT gen_random_uuid() NOT NULL,
+    role_id character varying NOT NULL,
+    permission_id character varying NOT NULL,
+    created_at timestamp without time zone DEFAULT now()
+);
+
+
+--
 -- Name: roles; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -541,6 +635,17 @@ CREATE TABLE public.shortlists (
     property_id character varying NOT NULL,
     notes text,
     created_at timestamp without time zone DEFAULT now()
+);
+
+
+--
+-- Name: site_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.site_settings (
+    key character varying(100) NOT NULL,
+    value text,
+    updated_at timestamp without time zone DEFAULT now()
 );
 
 
@@ -591,11 +696,12 @@ CREATE TABLE public.users (
 -- Data for Name: blog_posts; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.blog_posts (id, title, slug, excerpt, content, featured_image, author_id, status, tags, published_at, created_at, updated_at, meta_title, meta_description) FROM stdin;
-8e3fd54a-0dfc-46b2-ab6b-57d7ccc3cc7d	10 Tips for First-Time Renters in Mumbai	tips-first-time-renters-mumbai	Essential tips for finding your perfect rental home in Mumbai without paying brokerage.	Finding your first rental home in Mumbai can be overwhelming. Here are 10 essential tips to make your search easier and help you avoid common pitfalls. From verifying landlord documents to negotiating rent, we cover everything you need to know.	\N	\N	published	{}	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	\N	\N
-9d58f485-42cf-4703-8af0-4c197e5d70a8	Commercial Real Estate Trends 2026	commercial-real-estate-trends-2026	Explore the latest trends shaping commercial real estate in India.	The commercial real estate market in India is evolving rapidly. From co-working spaces to sustainable buildings, discover the trends that are reshaping how businesses choose their office spaces. This comprehensive guide covers everything from rental prices to location preferences.	\N	\N	published	{}	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	\N	\N
-cfe6c718-f8f3-49b8-a1ec-618782bc5dc6	How to Verify Property Documents Before Renting	verify-property-documents-renting	A complete guide to ensuring your rental property is legally compliant.	Before signing any rental agreement, it is crucial to verify the property documents. This article walks you through the essential documents to check, including ownership proof, NOC from society, and rental agreement terms. Protect yourself from rental frauds with these tips.	\N	\N	published	{}	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	\N	\N
-b7fd5ade-856f-4ca1-be44-921cc17cd7ed	Best Localities for IT Professionals in Pune	best-localities-it-professionals-pune	Top neighborhoods near tech hubs in Pune for working professionals.	Pune has become the second IT hub of India after Bangalore. If you are an IT professional looking for a rental in Pune, these localities offer the best connectivity, amenities, and value for money. From Hinjewadi to Kharadi, we cover all the top areas.	\N	\N	draft	{}	\N	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	\N	\N
+COPY public.blog_posts (id, title, slug, excerpt, content, featured_image, author_id, status, tags, published_at, created_at, updated_at, meta_title, meta_description, meta_keywords) FROM stdin;
+8e3fd54a-0dfc-46b2-ab6b-57d7ccc3cc7d	10 Tips for First-Time Renters in Mumbai	tips-first-time-renters-mumbai	Essential tips for finding your perfect rental home in Mumbai without paying brokerage.	Finding your first rental home in Mumbai can be overwhelming. Here are 10 essential tips to make your search easier and help you avoid common pitfalls. From verifying landlord documents to negotiating rent, we cover everything you need to know.	\N	\N	published	{}	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	\N	\N	{}
+9d58f485-42cf-4703-8af0-4c197e5d70a8	Commercial Real Estate Trends 2026	commercial-real-estate-trends-2026	Explore the latest trends shaping commercial real estate in India.	The commercial real estate market in India is evolving rapidly. From co-working spaces to sustainable buildings, discover the trends that are reshaping how businesses choose their office spaces. This comprehensive guide covers everything from rental prices to location preferences.	\N	\N	published	{}	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	\N	\N	{}
+cfe6c718-f8f3-49b8-a1ec-618782bc5dc6	How to Verify Property Documents Before Renting	verify-property-documents-renting	A complete guide to ensuring your rental property is legally compliant.	Before signing any rental agreement, it is crucial to verify the property documents. This article walks you through the essential documents to check, including ownership proof, NOC from society, and rental agreement terms. Protect yourself from rental frauds with these tips.	\N	\N	published	{}	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	\N	\N	{}
+b7fd5ade-856f-4ca1-be44-921cc17cd7ed	Best Localities for IT Professionals in Pune	best-localities-it-professionals-pune	Top neighborhoods near tech hubs in Pune for working professionals.	Pune has become the second IT hub of India after Bangalore. If you are an IT professional looking for a rental in Pune, these localities offer the best connectivity, amenities, and value for money. From Hinjewadi to Kharadi, we cover all the top areas.	\N	\N	draft	{}	\N	2026-01-08 11:54:17.46976	2026-01-08 11:54:17.46976	\N	\N	{}
+134994de-d477-4e6d-a649-a3bbacd26edb	Why Choosing the Right Real Estate Broker Can Change Your Property Journey	Why Choosing the Right Real Estate Broker Can Change Your Property Journey	Why Choosing the Right Real Estate Broker Can Change Your Property Journey	Buying or selling a property is not just a transaction—it’s a life decision. Whether you are investing for the future, upgrading your lifestyle, or selling a valuable asset, the right real estate broker can make the entire journey smooth, transparent, and profitable.\n\nUnderstanding the Real Value of a Broker\n\nA professional real estate broker does much more than show properties. They understand local market trends, price movements, legal processes, and negotiation strategies. Their expertise helps you avoid costly mistakes and ensures you get the best value for your money.\n\nLocal Market Knowledge Matters\n\nEvery locality has its own pricing logic, demand cycle, and future growth potential. A well-connected broker knows which areas are emerging, which projects are reliable, and where your investment will appreciate over time. This insight is especially valuable in fast-growing urban markets.\n\nSaving Time, Effort, and Stress\n\nProperty searches can be overwhelming—multiple site visits, paperwork, follow-ups, and negotiations. A trusted broker filters the best options based on your needs, budget, and goals, saving you countless hours and unnecessary stress.\n\nTransparency and Legal Guidance\n\nFrom agreement clauses to documentation and compliance, real estate transactions involve critical legal steps. An experienced broker ensures transparency, verifies property details, and guides you through paperwork so you can make informed decisions with confidence.\n\nStrong Negotiation for Better Deals\n\nOne of the biggest advantages of working with a broker is negotiation. With market experience and deal exposure, brokers know when and how to negotiate—helping buyers get the right price and sellers maximize returns.\n\nBuilding Long-Term Relationships\n\nA reliable broker focuses on long-term trust, not quick sales. Many clients return for future investments or recommend brokers who deliver honest advice, professional service, and consistent results.\n\nFinal Thoughts\n\nIn real estate, the right guidance can make all the difference. Choosing a knowledgeable and ethical real estate broker means gaining a partner who understands your goals and works tirelessly to achieve them. Whether you’re buying, selling, or investing—expert support ensures peace of mind and smarter decisions.	\N	\N	published	{}	2026-01-12 13:41:11.707	2026-01-12 10:40:18.313682	2026-01-12 13:41:11.707	\N	\N	{}
 \.
 
 
@@ -614,6 +720,7 @@ COPY public.cities (id, name, state, country, is_active, latitude, longitude, cr
 fd671890-4d1a-42d3-8642-bf2fe9a724c6	Ahmedabad	Gujarat	India	t	\N	\N	2026-01-08 08:27:24.871981
 c2279283-b7ca-4f30-987b-5e2bff9577b1	Jaipur	Rajasthan	India	t	\N	\N	2026-01-08 08:27:24.871981
 896cf873-7785-4873-8098-ceb8d89889e9	Lucknow	Uttar Pradesh	India	t	\N	\N	2026-01-08 08:27:24.871981
+03cc7efd-e857-4802-9272-10748d213151	Surat	Gujrat	India	t	\N	\N	2026-01-12 09:54:19.148686
 \.
 
 
@@ -682,12 +789,28 @@ COPY public.login_attempts (id, identifier, identifier_type, ip_address, success
 
 
 --
+-- Data for Name: newsletter_subscribers; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.newsletter_subscribers (id, email, name, is_active, source, subscribed_at, unsubscribed_at, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: notification_providers; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.notification_providers (id, provider_name, display_name, provider_type, is_active, mode, account_sid, auth_token, api_key, from_number, sandbox_account_sid, sandbox_auth_token, sandbox_api_key, sandbox_from_number, config_json, updated_by, created_at, updated_at) FROM stdin;
+\.
+
+
+--
 -- Data for Name: otp_requests; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.otp_requests (id, user_id, phone, email, country_code, code_hash, purpose, attempt_count, max_attempts, expires_at, consumed_at, ip_address, user_agent, created_at) FROM stdin;
 cef5c2b8-58d5-4039-91e4-7ced1c763846	\N	\N	namrata@creativebrain.co.in	+91	$2b$12$VifeYARzZqHxwIkGJiJVyOE7Llc6xH15RVd2xMeCl0zwhFk2FagpS	verify_email	0	3	2026-01-08 12:34:44.092	2026-01-08 12:24:49.244	\N	\N	2026-01-08 12:24:44.104004
-bb8639e1-a8ba-4a90-b41f-df3b39483d84	\N	\N	mdjalgaonkar@gmail.com	+91	$2b$12$lVwXtwsZU9tC75LRl8p2nuUNn.M01UExHI4nOE97u6JHUiIiZyq/.	verify_email	0	3	2026-01-09 10:09:05.579	2026-01-09 09:59:13.283	\N	\N	2026-01-09 09:59:05.616689
+9e78e9d3-31bc-4ee5-a056-7b9509d54fd3	\N	\N	mdjalgaonkar@gmail.com	+91	$2b$12$sE86KGieq.zKSufDKH3VBeNJ7bhzCyg03uKVXRPJWoqMQ9m/bkoVG	verify_email	0	3	2026-01-10 08:10:38.4	2026-01-10 08:00:46.075	\N	\N	2026-01-10 08:00:38.436704
 \.
 
 
@@ -695,7 +818,12 @@ bb8639e1-a8ba-4a90-b41f-df3b39483d84	\N	\N	mdjalgaonkar@gmail.com	+91	$2b$12$lVw
 -- Data for Name: page_contents; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.page_contents (id, page_key, title, content, last_edited_by, updated_at, meta_title, meta_description, status, created_at) FROM stdin;
+COPY public.page_contents (id, page_key, title, content, last_edited_by, updated_at, meta_title, meta_description, status, created_at, meta_keywords) FROM stdin;
+4bbe6f23-b8a8-4680-9e73-bd3c6588f5c7	homepage	Homepage	{"heroSubtitle": "Find your perfect rental home directly from verified owners. No brokers, no hidden fee."}	\N	2026-01-09 18:07:21.62837	\N	\N	published	2026-01-09 18:07:21.62837	{}
+9554de33-cc85-4ef8-a79e-81efa7bc6bee	blog	Blog	{"text": "Add your content here..."}	07b60a58-4ded-423f-9a59-088a259c5c98	2026-01-12 11:09:44.048884	Blog		published	2026-01-12 11:09:44.048884	{}
+4829f64a-a03e-47e7-80f9-20d1acea780a	services	services	{"text": "Add your content here..."}	07b60a58-4ded-423f-9a59-088a259c5c98	2026-01-12 13:41:30.394413	services		published	2026-01-12 13:41:30.394413	{}
+82de79a4-0ccc-415a-a8a5-2386cfe843f9	test	test	{"text": "Add your content here..."}	07b60a58-4ded-423f-9a59-088a259c5c98	2026-01-12 12:38:20.720405	test		published	2026-01-12 12:38:20.720405	{}
+4daa5bf1-f238-4b9c-ab66-3b59d0e97d06	service	service	{"text": "Add your content here..."}	07b60a58-4ded-423f-9a59-088a259c5c98	2026-01-12 13:52:41.166572	service		published	2026-01-12 13:52:41.166572	{}
 \.
 
 
@@ -703,7 +831,16 @@ COPY public.page_contents (id, page_key, title, content, last_edited_by, updated
 -- Data for Name: page_versions; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.page_versions (id, page_id, content, meta_title, meta_description, version_number, edited_by, created_at) FROM stdin;
+COPY public.page_versions (id, page_id, content, meta_title, meta_description, version_number, edited_by, created_at, meta_keywords) FROM stdin;
+\.
+
+
+--
+-- Data for Name: payment_providers; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.payment_providers (id, provider_name, display_name, is_active, mode, api_key, auth_token, webhook_secret, sandbox_api_key, sandbox_auth_token, config_json, updated_by, created_at, updated_at) FROM stdin;
+ab2e8987-270c-4ce5-a4a3-51f3bc195ae9	instamojo	Instamojo	t	sandbox	\N	\N	\N	\N	\N	\N	07b60a58-4ded-423f-9a59-088a259c5c98	2026-01-09 14:33:21.811269	2026-01-09 18:06:08.713
 \.
 
 
@@ -712,6 +849,31 @@ COPY public.page_versions (id, page_id, content, meta_title, meta_description, v
 --
 
 COPY public.payments (id, user_id, property_id, boost_id, amount, currency, status, payment_method, transaction_id, gateway_response, description, paid_at, created_at, payment_request_id) FROM stdin;
+\.
+
+
+--
+-- Data for Name: permissions; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.permissions (id, name, display_name, description, category, is_active, created_at) FROM stdin;
+d9fed80d-2ba8-4ce6-a0d7-0251da4f3648	manage_properties	Manage Properties	Create, edit, and delete property listings	properties	t	2026-01-09 18:16:02.337876
+f80e2bed-d0d0-408e-a0ef-a38b0b1324b3	view_properties	View Properties	View all property listings	properties	t	2026-01-09 18:16:02.337876
+24f1cb4e-3065-47bb-83f7-a3f32cb4fdc7	approve_properties	Approve Properties	Approve or reject property listings	properties	t	2026-01-09 18:16:02.337876
+b952245a-da85-4fec-8252-10edaec7d716	manage_users	Manage Users	Create, edit, and manage user accounts	users	t	2026-01-09 18:16:02.337876
+cea15008-8519-43fd-9da2-51d89fd3cc07	view_users	View Users	View user information	users	t	2026-01-09 18:16:02.337876
+30bc2d3c-cab6-4891-82e2-4e00ad0d0408	manage_roles	Manage Roles	Create and manage user roles	roles	t	2026-01-09 18:16:02.337876
+4fc5df79-fc53-4482-af25-e0986e7dff90	assign_roles	Assign Roles	Assign roles to users	roles	t	2026-01-09 18:16:02.337876
+37412e01-d4bd-4fa6-a928-d50ce5e72c23	manage_enquiries	Manage Enquiries	View and respond to property enquiries	enquiries	t	2026-01-09 18:16:02.337876
+50b2126d-802b-470f-a9e2-3ab1bd9acb58	manage_payments	Manage Payments	View and manage payment transactions	payments	t	2026-01-09 18:16:02.337876
+d5db6f7e-a3e2-4fcd-8802-561beced4fc3	manage_boosts	Manage Boosts	Approve and manage listing boosts	boosts	t	2026-01-09 18:16:02.337876
+af9b5cf1-0317-40f9-ad2e-4233bcb246d1	manage_cities	Manage Cities	Add and edit cities and localities	locations	t	2026-01-09 18:16:02.337876
+7e17e45b-5f4b-4d35-ac55-8791f80007e3	manage_blog	Manage Blog	Create and edit blog posts	content	t	2026-01-09 18:16:02.337876
+d76a1155-985d-45b4-bf75-4c603b86aa72	manage_pages	Manage Pages	Edit website pages	content	t	2026-01-09 18:16:02.337876
+d7d2e9e5-eb0e-44e7-a4d1-7852ef0b4f15	manage_seo	Manage SEO	Configure SEO settings	settings	t	2026-01-09 18:16:02.337876
+d70407c9-5870-4fb4-b689-078e44e29f0d	manage_settings	Manage Settings	Configure system settings	settings	t	2026-01-09 18:16:02.337876
+c1a8fe19-454f-4e8d-b209-4c4a07b6dd32	view_dashboard	View Dashboard	Access admin dashboard	general	t	2026-01-09 18:16:02.337876
+f0f8d248-708b-4f38-8d3b-c17c6d17a5be	manage_newsletter	Manage Newsletter	Manage newsletter subscribers	content	t	2026-01-09 18:16:02.337876
 \.
 
 
@@ -749,6 +911,12 @@ b7b78596-f6a8-41eb-b350-00e98002e944	Retail Shop in Koregaon Park	Premium retail
 ef72b198-1883-437e-8673-2638a6c1ac71	Office in Viman Nagar	Compact office space near Pune Airport. Ideal for startups and small businesses. Close to Phoenix Marketcity.	office	rent	active	35000.00	month	Nagar Road, Viman Nagar, Pune	Pune	Maharashtra	\N	USA	\N	\N	0	2.0	800	\N	{}	{AC,Parking,Lift,Security,"Power Backup"}	f	\N	2026-01-08 11:12:02.940029	2026-01-08 11:12:02.940029	t	099c6eb9-4088-4a44-80f7-9a74364d8f61	32373f67-702c-46ce-af90-b6235743e238	35000.00	\N	105000.00	4000.00	0	720	3	8	semi_furnished	\N	f	0	\N	\N	\N
 4bb186c0-0a94-4399-98bc-ff0bcd520ab5	Commercial Space in Wakad	Versatile commercial space suitable for showroom, clinic, or office. Ground floor with main road visibility. Near Wakad Bridge.	shop	rent	active	45000.00	month	Mumbai-Pune Highway, Wakad, Pune	Pune	Maharashtra	\N	USA	\N	\N	0	2.0	1000	\N	{}	{Security,"Power Backup","Water Supply",Parking,"Road Facing"}	f	\N	2026-01-08 11:12:02.940029	2026-01-08 11:12:02.940029	t	099c6eb9-4088-4a44-80f7-9a74364d8f61	92c8b748-8c18-49a4-aee8-8967885ce8ef	45000.00	\N	135000.00	3500.00	0	900	0	3	unfurnished	\N	f	0	\N	\N	\N
 d41b0200-691c-4ca5-8cd0-07c55e0490a8	2 BHK Apartment for Rent in andheri		apartment	rent	active	25000.00	month	test	Mumbai	Maharashtra	\N	USA	\N	\N	2	2.0	900	\N	{}	{"Swimming Pool",Lift}	f	e64e025e-a3e7-47f5-928a-a97d537c61ac	2026-01-09 09:59:29.646453	2026-01-09 09:59:29.646453	f	\N	\N	25000.00	\N	150000.00	\N	1	700	9	12	semi_furnished	north-west	f	0	2026-01-31 00:00:00	\N	400093
+6cd158f8-485c-4dc8-a192-492171f9bbdf	2 BHK Apartment for Rent in fdddf		apartment	rent	active	35000.00	month	dvfff	Mumbai	Maharashtra	\N	USA	\N	\N	2	2.0	900	\N	{}	{Security,Garden}	f	\N	2026-01-09 18:49:20.571722	2026-01-09 18:49:20.571722	f	\N	\N	35000.00	\N	10000.00	\N	1	500	10	1	semi_furnished		f	0	2026-01-10 00:00:00	\N	400093
+e994f97c-6e04-4f31-af37-160037b5bff9	2 BHK apartment for Rent in andheri		apartment	rent	active	35000.00	month	midc Ackruti	Mumbai	Maharashtra	\N	USA	\N	\N	2	2.0	800	\N	{}	{"Power Backup",Lift,Parking,Garden,Security,CCTV,"Club House",Gym,"Gas Pipeline"}	f	\N	2026-01-10 06:12:12.410418	2026-01-10 06:12:12.410418	f	\N	\N	35000.00	\N	150000.00	\N	1	700	5	12	semi_furnished	north-east	f	0	2026-01-10 00:00:00	\N	400009
+7d91ce9d-ca36-48be-adac-9e8112eea2f7	2 BHK apartment for Rent in Indiana nagar		apartment	rent	active	66000.00	month	jkajkj	Delhi	Delhi	\N	USA	\N	\N	2	3.0	900	\N	{}	{Lift,Parking}	f	\N	2026-01-10 06:14:18.370498	2026-01-10 06:14:18.370498	f	\N	\N	66000.00	\N	3000000.00	\N	2	700	5	1	fully_furnished	north-east	f	0	\N	\N	400060
+df789db3-5858-4b75-9e71-2a98291f1d5f	3 BHK apartment for Rent in Bandra		apartment	rent	active	55000.00	month	Ackruti star	Mumbai	Maharashtra	\N	USA	\N	\N	3	2.0	1200	\N	{}	{"Power Backup",Lift,"Swimming Pool",Parking,Security,CCTV,"Club House",Garden}	f	e64e025e-a3e7-47f5-928a-a97d537c61ac	2026-01-10 08:00:48.818041	2026-01-10 08:00:48.818041	f	\N	\N	55000.00	\N	200000.00	\N	2	850	6	11	fully_furnished	north-east	f	0	2026-01-10 00:00:00	\N	400060
+c5e53ae6-b015-4b38-b028-f55a78b38c48	1 BHK Vile Parle	1 BHK property	house	rent	active	9000.00	month	Hanuman Road SO (Vile Parle East): 400057	Mumbai	Maharashtra	\N	USA	\N	\N	2	2.0	250	\N	{}	{}	t	07b60a58-4ded-423f-9a59-088a259c5c98	2026-01-12 10:08:44.927252	2026-01-12 10:09:19.904	f	\N	\N	\N	\N	\N	\N	0	\N	\N	\N	unfurnished	\N	f	0	\N	\N	\N
+2db0ca8e-c984-4ffc-91a1-7c099dba9cc7	3BHK Apartment	Spacious apartment with balcony and modern amenities. Located near metro station.	apartment	rent	active	30000.00	month	123 Main Street, Koregaon Park	Pune	Maharashtra	\N	USA	\N	\N	2	2.0	1200	\N	{}	{parking,gym,security}	f	07b60a58-4ded-423f-9a59-088a259c5c98	2026-01-12 11:37:53.928752	2026-01-12 11:37:53.928752	f	\N	\N	30000.00	\N	50000.00	\N	0	\N	\N	\N	unfurnished	\N	f	0	\N	\N	\N
 \.
 
 
@@ -786,6 +954,9 @@ c143a9b7-b32d-4e90-8a37-a76c5fe375ae	Co-working	commercial-coworking	Co-working 
 --
 
 COPY public.property_images (id, property_id, url, caption, display_order, is_primary, created_at, is_approved, is_video, file_size) FROM stdin;
+a5f8af70-8d89-4f38-981d-aca08f817683	c5e53ae6-b015-4b38-b028-f55a78b38c48	/objects/uploads/6502b85c-be87-488b-a6f0-16fbc12376e2	service banner (1).jpg	0	f	2026-01-12 10:09:07.156719	t	f	\N
+bd7741a7-19cc-4f92-840f-b7dc9fe56d07	c5e53ae6-b015-4b38-b028-f55a78b38c48	/objects/uploads/e5a4ed8b-18d1-4cfa-9d24-bae403016b8d	service banner (2).jpg	1	f	2026-01-12 10:09:11.300708	t	f	\N
+33da5be6-1089-4654-a37d-dc70f1d130a6	c5e53ae6-b015-4b38-b028-f55a78b38c48	/objects/uploads/8b4dca38-5958-4a3b-8d01-dd5c4a7231d8	rmc.jpg	2	f	2026-01-12 10:09:14.947415	t	f	\N
 \.
 
 
@@ -802,6 +973,17 @@ COPY public.refresh_tokens (id, user_id, token_hash, expires_at, issued_at, revo
 --
 
 COPY public.reports (id, property_id, reporter_id, reason, description, status, reviewed_by, reviewed_at, resolution, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: role_permissions; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.role_permissions (id, role_id, permission_id, created_at) FROM stdin;
+c36960c4-ada6-4309-b024-9d40b113d6a0	89362a8d-6b09-4d42-bf31-646dc7ae4c87	d9fed80d-2ba8-4ce6-a0d7-0251da4f3648	2026-01-12 11:10:46.718621
+439e8154-41f5-4f77-98b0-082829a94e97	89362a8d-6b09-4d42-bf31-646dc7ae4c87	24f1cb4e-3065-47bb-83f7-a3f32cb4fdc7	2026-01-12 11:10:47.369989
+bc34afd8-f2a4-4408-ae51-991d8a4efd70	89362a8d-6b09-4d42-bf31-646dc7ae4c87	b952245a-da85-4fec-8252-10edaec7d716	2026-01-12 11:10:48.105397
 \.
 
 
@@ -835,12 +1017,23 @@ COPY public.shortlists (id, user_id, property_id, notes, created_at) FROM stdin;
 
 
 --
+-- Data for Name: site_settings; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.site_settings (key, value, updated_at) FROM stdin;
+\.
+
+
+--
 -- Data for Name: user_roles; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.user_roles (id, user_id, role_id, assigned_at, assigned_by) FROM stdin;
 d39c7195-31fe-47cc-9ce4-e40698dd4220	07b60a58-4ded-423f-9a59-088a259c5c98	a6089300-45fc-4670-b52a-bee0bbbe2b49	2026-01-08 10:39:48.930865	\N
 b7612c82-43cc-412c-8316-2959632b494f	e64e025e-a3e7-47f5-928a-a97d537c61ac	89362a8d-6b09-4d42-bf31-646dc7ae4c87	2026-01-09 08:38:35.351258	\N
+69c1eb75-f56c-4d32-91c8-67b8ef318c06	2c645869-77b6-4198-97e2-bbd65d7cdaa4	089b1d6c-5c7d-4afb-b5d5-7045bb109da6	2026-01-09 18:29:11.798467	\N
+850cff52-5cae-4193-91d5-6ce95655b239	44202c7b-ae38-42c5-9d7f-5d6e65cd84a1	89362a8d-6b09-4d42-bf31-646dc7ae4c87	2026-01-09 18:29:11.898431	\N
+c0fe82f2-0295-483f-b658-f4ad2d319668	e64e025e-a3e7-47f5-928a-a97d537c61ac	089b1d6c-5c7d-4afb-b5d5-7045bb109da6	2026-01-10 08:00:46.094103	\N
 \.
 
 
@@ -849,8 +1042,10 @@ b7612c82-43cc-412c-8316-2959632b494f	e64e025e-a3e7-47f5-928a-a97d537c61ac	89362a
 --
 
 COPY public.users (id, username, password, email, phone, role, avatar_url, country_code, phone_verified_at, email_verified_at, password_hash, first_name, last_name, active_role, available_roles, is_active, profile_completed, metadata, last_login_at, created_at, updated_at, active_role_id) FROM stdin;
-07b60a58-4ded-423f-9a59-088a259c5c98	admin	$2b$12$bZPpU4OLKhcz8GlSjx9H4uvXHbIzK2X3DvZQE3FJ4wA/0fvXVzDdq	admin@leaseo.in	\N	user	\N	+91	\N	2026-01-08 10:31:24.835472	$2b$12$bZPpU4OLKhcz8GlSjx9H4uvXHbIzK2X3DvZQE3FJ4wA/0fvXVzDdq	Super	Admin	admin	{admin}	t	t	\N	\N	2026-01-08 10:31:24.835472	2026-01-08 10:31:24.835472	\N
-e64e025e-a3e7-47f5-928a-a97d537c61ac	\N	\N	mdjalgaonkar@gmail.com	9819832759	user	\N	+91	\N	2026-01-09 09:59:13.29	$2b$12$r6aexJnyUiDbQwPmZOru6eEp4PJS9tMp2.L0OB8xRAVcwoIgwjvei	mahesh	Jalgaonkar	residential_tenant	{residential_tenant}	t	f	\N	\N	2026-01-09 08:38:35.344826	2026-01-09 08:38:35.344826	89362a8d-6b09-4d42-bf31-646dc7ae4c87
+2c645869-77b6-4198-97e2-bbd65d7cdaa4	\N	\N	owner@leaseo.in	\N	user	\N	+91	\N	2026-01-09 18:29:11.776	$2b$10$czVTQs9S4D4/ei6ayAu3b.ohxo8ANM53XBAri0kK9vTqq8zJMewWi	Test	Owner	residential_tenant	{residential_tenant}	t	f	\N	2026-01-10 06:10:13.337	2026-01-09 18:29:11.778212	2026-01-09 18:29:11.778212	\N
+e64e025e-a3e7-47f5-928a-a97d537c61ac	\N	\N	mdjalgaonkar@gmail.com	9819832759	user	\N	+91	\N	2026-01-10 06:14:16.175	$2b$12$r6aexJnyUiDbQwPmZOru6eEp4PJS9tMp2.L0OB8xRAVcwoIgwjvei	mahesh	Jalgaonkar	residential_tenant	{residential_tenant}	t	f	\N	\N	2026-01-09 08:38:35.344826	2026-01-09 08:38:35.344826	89362a8d-6b09-4d42-bf31-646dc7ae4c87
+44202c7b-ae38-42c5-9d7f-5d6e65cd84a1	\N	\N	tenant@leaseo.in	\N	user	\N	+91	\N	2026-01-09 18:29:11.891	$2b$10$vXti4x5apg7lTqmsVZ2Bm.zNmIbI.Z5eLnvS0yHmRZVwSIhixkuJa	Test	Tenant	residential_tenant	{residential_tenant}	f	f	\N	\N	2026-01-09 18:29:11.892733	2026-01-09 18:29:11.892733	\N
+07b60a58-4ded-423f-9a59-088a259c5c98	admin	$2b$10$yvfRTa3MYjvCBAYE2kCSteeUjpIacb.Ca2.h6Ipb9i3fNuJUYUctm	admin@leaseo.in	\N	admin	\N	+91	\N	2026-01-08 10:31:24.835472	$2b$10$yvfRTa3MYjvCBAYE2kCSteeUjpIacb.Ca2.h6Ipb9i3fNuJUYUctm	Super	Admin	admin	{admin}	t	t	\N	2026-01-12 13:51:34.166	2026-01-08 10:31:24.835472	2026-01-08 10:31:24.835472	\N
 \.
 
 
@@ -943,6 +1138,38 @@ ALTER TABLE ONLY public.login_attempts
 
 
 --
+-- Name: newsletter_subscribers newsletter_subscribers_email_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.newsletter_subscribers
+    ADD CONSTRAINT newsletter_subscribers_email_key UNIQUE (email);
+
+
+--
+-- Name: newsletter_subscribers newsletter_subscribers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.newsletter_subscribers
+    ADD CONSTRAINT newsletter_subscribers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: notification_providers notification_providers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notification_providers
+    ADD CONSTRAINT notification_providers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: notification_providers notification_providers_provider_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notification_providers
+    ADD CONSTRAINT notification_providers_provider_name_key UNIQUE (provider_name);
+
+
+--
 -- Name: otp_requests otp_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -975,11 +1202,43 @@ ALTER TABLE ONLY public.page_versions
 
 
 --
+-- Name: payment_providers payment_providers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_providers
+    ADD CONSTRAINT payment_providers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payment_providers payment_providers_provider_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_providers
+    ADD CONSTRAINT payment_providers_provider_name_key UNIQUE (provider_name);
+
+
+--
 -- Name: payments payments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.payments
     ADD CONSTRAINT payments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: permissions permissions_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.permissions
+    ADD CONSTRAINT permissions_name_key UNIQUE (name);
+
+
+--
+-- Name: permissions permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.permissions
+    ADD CONSTRAINT permissions_pkey PRIMARY KEY (id);
 
 
 --
@@ -1023,6 +1282,22 @@ ALTER TABLE ONLY public.reports
 
 
 --
+-- Name: role_permissions role_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.role_permissions
+    ADD CONSTRAINT role_permissions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: role_permissions role_permissions_role_id_permission_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.role_permissions
+    ADD CONSTRAINT role_permissions_role_id_permission_id_key UNIQUE (role_id, permission_id);
+
+
+--
 -- Name: roles roles_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1060,6 +1335,14 @@ ALTER TABLE ONLY public.shortlists
 
 ALTER TABLE ONLY public.shortlists
     ADD CONSTRAINT shortlists_user_id_property_id_key UNIQUE (user_id, property_id);
+
+
+--
+-- Name: site_settings site_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.site_settings
+    ADD CONSTRAINT site_settings_pkey PRIMARY KEY (key);
 
 
 --
@@ -1201,6 +1484,34 @@ CREATE INDEX login_occurred_idx ON public.login_attempts USING btree (occurred_a
 
 
 --
+-- Name: newsletter_active_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX newsletter_active_idx ON public.newsletter_subscribers USING btree (is_active);
+
+
+--
+-- Name: newsletter_email_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX newsletter_email_idx ON public.newsletter_subscribers USING btree (email);
+
+
+--
+-- Name: notification_providers_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX notification_providers_name_idx ON public.notification_providers USING btree (provider_name);
+
+
+--
+-- Name: notification_providers_type_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX notification_providers_type_idx ON public.notification_providers USING btree (provider_type);
+
+
+--
 -- Name: otp_email_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1236,6 +1547,13 @@ CREATE INDEX page_versions_page_idx ON public.page_versions USING btree (page_id
 
 
 --
+-- Name: payment_providers_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payment_providers_name_idx ON public.payment_providers USING btree (provider_name);
+
+
+--
 -- Name: payments_property_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1254,6 +1572,20 @@ CREATE INDEX payments_status_idx ON public.payments USING btree (status);
 --
 
 CREATE INDEX payments_user_idx ON public.payments USING btree (user_id);
+
+
+--
+-- Name: permissions_category_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX permissions_category_idx ON public.permissions USING btree (category);
+
+
+--
+-- Name: permissions_name_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX permissions_name_idx ON public.permissions USING btree (name);
 
 
 --
@@ -1441,6 +1773,14 @@ ALTER TABLE ONLY public.localities
 
 
 --
+-- Name: notification_providers notification_providers_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.notification_providers
+    ADD CONSTRAINT notification_providers_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id);
+
+
+--
 -- Name: otp_requests otp_requests_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1470,6 +1810,14 @@ ALTER TABLE ONLY public.page_versions
 
 ALTER TABLE ONLY public.page_versions
     ADD CONSTRAINT page_versions_page_id_fkey FOREIGN KEY (page_id) REFERENCES public.page_contents(id);
+
+
+--
+-- Name: payment_providers payment_providers_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_providers
+    ADD CONSTRAINT payment_providers_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id);
 
 
 --
@@ -1553,6 +1901,22 @@ ALTER TABLE ONLY public.reports
 
 
 --
+-- Name: role_permissions role_permissions_permission_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.role_permissions
+    ADD CONSTRAINT role_permissions_permission_id_fkey FOREIGN KEY (permission_id) REFERENCES public.permissions(id);
+
+
+--
+-- Name: role_permissions role_permissions_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.role_permissions
+    ADD CONSTRAINT role_permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id);
+
+
+--
 -- Name: saved_properties saved_properties_property_id_properties_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1620,5 +1984,5 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict Of6FE8LN5Sy6cLQ3dxENKxZaqcq9lQbkIgRbeYgM7u4N1qR2aa0hMGcAUgLc4a7
+\unrestrict bUKXHAc5kiulH5vUbTYB82majmhgY3KBsiNJaTbKYdmMrC6HJpawoLyIj56PTbR
 
