@@ -188,27 +188,77 @@ export function NoBrokerSearch() {
             </Button>
           </div>
 
-          {activeTab === "rent" ? (
+          {activeTab === "commercial" ? (
             <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                {RESIDENTIAL_TYPES.map((type) => (
-                  <label
-                    key={type.id}
-                    className="flex items-center gap-2 cursor-pointer"
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 gap-2"
+                    data-testid="button-property-type"
                   >
-                    <input
-                      type="radio"
-                      name="residential-type"
-                      value={type.id}
-                      checked={residentialType === type.id}
-                      onChange={(e) => setResidentialType(e.target.value)}
-                      className="w-4 h-4 text-primary"
-                      data-testid={`radio-${type.id}`}
-                    />
-                    <span className="text-sm">{type.label}</span>
-                  </label>
-                ))}
-              </div>
+                    <Building2 className="h-4 w-4" />
+                    {selectedCommercialTypes.length > 0
+                      ? `${selectedCommercialTypes.length} Types Selected`
+                      : "Property Type"}
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2" align="start">
+                  <div className="space-y-2">
+                    {PROPERTY_TYPES_COMMERCIAL.map((type) => (
+                      <label
+                        key={type.value}
+                        className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-muted"
+                      >
+                        <Checkbox
+                          checked={selectedCommercialTypes.includes(type.value)}
+                          onCheckedChange={() => toggleCommercialType(type.value)}
+                          data-testid={`checkbox-commercial-${type.value}`}
+                        />
+                        <span className="text-sm">{type.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Select value={rentRange} onValueChange={setRentRange}>
+                <SelectTrigger className="w-40 h-9" data-testid="select-rent-range-commercial">
+                  <SelectValue placeholder="Rent Range" />
+                </SelectTrigger>
+                <SelectContent>
+                  {RENT_RANGES.map((range) => (
+                    <SelectItem key={range.value} value={range.value}>
+                      {range.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-4">
+              {activeTab === "rent" && (
+                <div className="flex items-center gap-2">
+                  {RESIDENTIAL_TYPES.map((type) => (
+                    <label
+                      key={type.id}
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
+                      <input
+                        type="radio"
+                        name="residential-type"
+                        value={type.id}
+                        checked={residentialType === type.id}
+                        onChange={(e) => setResidentialType(e.target.value)}
+                        className="w-4 h-4 text-primary"
+                        data-testid={`radio-${type.id}`}
+                      />
+                      <span className="text-sm">{type.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
 
               <Popover>
                 <PopoverTrigger asChild>
@@ -244,56 +294,8 @@ export function NoBrokerSearch() {
               </Popover>
 
               <Select value={rentRange} onValueChange={setRentRange}>
-                <SelectTrigger className="w-40 h-9" data-testid="select-rent-range">
-                  <SelectValue placeholder="Rent Range" />
-                </SelectTrigger>
-                <SelectContent>
-                  {RENT_RANGES.map((range) => (
-                    <SelectItem key={range.value} value={range.value}>
-                      {range.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-4">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="h-9 gap-2"
-                    data-testid="button-property-type"
-                  >
-                    <Building2 className="h-4 w-4" />
-                    {selectedCommercialTypes.length > 0
-                      ? `${selectedCommercialTypes.length} Types Selected`
-                      : "Property Type"}
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-56 p-2" align="start">
-                  <div className="space-y-2">
-                    {PROPERTY_TYPES_COMMERCIAL.map((type) => (
-                      <label
-                        key={type}
-                        className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-muted"
-                      >
-                        <Checkbox
-                          checked={selectedCommercialTypes.includes(type)}
-                          onCheckedChange={() => toggleCommercialType(type)}
-                          data-testid={`checkbox-commercial-${type.toLowerCase().replace(/\s+/g, "-")}`}
-                        />
-                        <span className="text-sm">{type}</span>
-                      </label>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-
-              <Select value={rentRange} onValueChange={setRentRange}>
-                <SelectTrigger className="w-40 h-9" data-testid="select-rent-range-commercial">
-                  <SelectValue placeholder="Rent Range" />
+                <SelectTrigger className="w-40 h-9" data-testid="select-price-range">
+                  <SelectValue placeholder={activeTab === "buy" ? "Price Range" : "Rent Range"} />
                 </SelectTrigger>
                 <SelectContent>
                   {RENT_RANGES.map((range) => (
