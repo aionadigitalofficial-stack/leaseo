@@ -44,6 +44,23 @@ export async function registerRoutes(
   // Register local storage routes for file uploads (VPS compatible)
   registerLocalStorageRoutes(app);
 
+  // ==================== VPS DEPLOYMENT DOWNLOAD ====================
+  // Serve the VPS deployment zip file for download
+  app.get("/api/download/vps-deploy", async (req, res) => {
+    const { join } = await import("path");
+    const { existsSync, createReadStream } = await import("fs");
+    const zipPath = join(process.cwd(), "leaseo-vps-deploy.zip");
+    
+    if (existsSync(zipPath)) {
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", "attachment; filename=leaseo-vps-deploy.zip");
+      const fileStream = createReadStream(zipPath);
+      fileStream.pipe(res);
+    } else {
+      res.status(404).json({ error: "Deployment package not found" });
+    }
+  });
+
   // ==================== PROPERTIES ====================
 
   // Get all properties with optional filters
