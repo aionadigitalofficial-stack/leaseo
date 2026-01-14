@@ -13,14 +13,28 @@ const createTransporter = () => {
     return null;
   }
 
+  console.log(`[EMAIL] Configuring SMTP: host=${host}, port=${port}, user=${user}`);
+
+  // For port 465 use SSL, for 587 use STARTTLS
+  const isSecure = port === 465;
+  
   return nodemailer.createTransport({
     host,
     port,
-    secure: port === 465,
+    secure: isSecure,
     auth: {
       user,
       pass,
     },
+    // TLS options for better compatibility
+    tls: {
+      rejectUnauthorized: false, // Accept self-signed certs
+      minVersion: 'TLSv1.2',
+    },
+    // Connection timeout settings
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 };
 
