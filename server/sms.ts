@@ -1,18 +1,21 @@
 import twilio from "twilio";
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
-
 let client: twilio.Twilio | null = null;
+let lastAccountSid: string | null = null;
 
 function getTwilioClient(): twilio.Twilio | null {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  
   if (!accountSid || !authToken) {
     console.log("[SMS] Twilio credentials not configured");
     return null;
   }
-  if (!client) {
+  
+  if (!client || lastAccountSid !== accountSid) {
+    console.log(`[SMS] Initializing Twilio client with SID: ${accountSid.substring(0, 6)}...`);
     client = twilio(accountSid, authToken);
+    lastAccountSid = accountSid;
   }
   return client;
 }
@@ -25,6 +28,7 @@ export async function sendOTPSMS(phone: string, code: string): Promise<boolean> 
     return false;
   }
 
+  const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
   if (!twilioPhoneNumber) {
     console.log("[SMS] Twilio phone number not configured");
     return false;
