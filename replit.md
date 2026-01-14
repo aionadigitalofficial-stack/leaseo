@@ -123,10 +123,13 @@ For email OTP to work, set these environment variables on your VPS:
 - `SMTP_FROM_EMAIL` - From email address (default: noreply@leaseo.in)
 - `SMTP_FROM_NAME` - From name (default: Leaseo)
 
-### SMS OTP (Optional - Not yet implemented)
-- `TWILIO_ACCOUNT_SID` - Twilio Account SID
+### SMS OTP (Twilio) - Required for Phone Verification
+For phone OTP to work, set these environment variables:
+- `TWILIO_ACCOUNT_SID` - Twilio Account SID (from console.twilio.com)
 - `TWILIO_AUTH_TOKEN` - Twilio Auth Token
-- `TWILIO_PHONE_NUMBER` - Twilio phone number
+- `TWILIO_PHONE_NUMBER` - Twilio phone number (format: +1234567890)
+
+Note: Phone numbers without country code are assumed to be Indian (+91).
 
 ### Other Secrets
 - `JWT_SECRET` - Secret for signing JWT tokens

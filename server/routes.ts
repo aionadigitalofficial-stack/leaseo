@@ -655,22 +655,28 @@ export async function registerRoutes(
       console.log(`[OTP] Code for ${email || phone}: ${code}`);
 
       let emailSent = false;
+      let smsSent = false;
+      
       if (email) {
         const { sendOTPEmail } = await import("./email");
         emailSent = await sendOTPEmail(email, code);
       }
 
-      // TODO: Add SMS service for phone OTP (e.g., Twilio, MSG91)
+      if (phone) {
+        const { sendOTPSMS } = await import("./sms");
+        smsSent = await sendOTPSMS(phone, code);
+      }
       
-      // Only include devCode if email failed to send (for testing purposes)
+      // Only include devCode if both email and SMS failed to send (for testing purposes)
       const response: any = { 
         success: true, 
         message: `Verification code sent to ${email || phone}`,
         emailSent,
+        smsSent,
       };
       
-      // Only show dev code if email sending failed
-      if (!emailSent) {
+      // Only show dev code if sending failed
+      if (!emailSent && !smsSent) {
         response.devCode = code;
       }
       
