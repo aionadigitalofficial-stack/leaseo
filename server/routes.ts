@@ -662,13 +662,19 @@ export async function registerRoutes(
 
       // TODO: Add SMS service for phone OTP (e.g., Twilio, MSG91)
       
-      res.json({ 
+      // Only include devCode if email failed to send (for testing purposes)
+      const response: any = { 
         success: true, 
         message: `Verification code sent to ${email || phone}`,
         emailSent,
-        // In development mode, include code for testing
-        ...(process.env.NODE_ENV === "development" && { devCode: code })
-      });
+      };
+      
+      // Only show dev code if email sending failed
+      if (!emailSent) {
+        response.devCode = code;
+      }
+      
+      res.json(response);
     } catch (error) {
       console.error("Error sending OTP:", error);
       res.status(500).json({ error: "Failed to send verification code" });
