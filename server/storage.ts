@@ -191,9 +191,9 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(propertyImages)
       .where(sql`${propertyImages.propertyId} IN (${sql.join(propertyIds.map(id => sql`${id}`), sql`, `)})`)
-      .orderBy(desc(propertyImages.isPrimary), propertyImages.displayOrder);
+      .orderBy(sql`COALESCE(${propertyImages.isPrimary}, false) DESC`, propertyImages.displayOrder);
     
-    // Group images by property ID (primary image will be first due to ordering)
+    // Group images by property ID (primary image will be first due to COALESCE ordering)
     const imagesByPropertyId = new Map<string, string[]>();
     for (const img of allImages) {
       const existing = imagesByPropertyId.get(img.propertyId) || [];
@@ -214,12 +214,12 @@ export class DatabaseStorage implements IStorage {
     const [property] = await db.select().from(properties).where(eq(properties.id, id));
     if (!property) return undefined;
     
-    // Fetch associated images - primary image first, then by display order
+    // Fetch associated images - primary image first (COALESCE handles null values), then by display order
     const images = await db
       .select()
       .from(propertyImages)
       .where(eq(propertyImages.propertyId, id))
-      .orderBy(desc(propertyImages.isPrimary), propertyImages.displayOrder);
+      .orderBy(sql`COALESCE(${propertyImages.isPrimary}, false) DESC`, propertyImages.displayOrder);
     
     return {
       ...property,
@@ -244,9 +244,9 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(propertyImages)
       .where(sql`${propertyImages.propertyId} IN (${sql.join(propertyIds.map(id => sql`${id}`), sql`, `)})`)
-      .orderBy(desc(propertyImages.isPrimary), propertyImages.displayOrder);
+      .orderBy(sql`COALESCE(${propertyImages.isPrimary}, false) DESC`, propertyImages.displayOrder);
     
-    // Group images by property ID (primary image will be first due to ordering)
+    // Group images by property ID (primary image will be first due to COALESCE ordering)
     const imagesByPropertyId = new Map<string, string[]>();
     for (const img of allImages) {
       const existing = imagesByPropertyId.get(img.propertyId) || [];
