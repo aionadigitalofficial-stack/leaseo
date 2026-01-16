@@ -165,3 +165,103 @@ export async function sendWelcomeEmail(to: string, name: string): Promise<boolea
     return false;
   }
 }
+
+export async function sendEnquiryNotificationEmail(
+  ownerEmail: string,
+  ownerName: string,
+  enquirerName: string,
+  enquirerEmail: string,
+  enquirerPhone: string,
+  propertyTitle: string,
+  propertyId: string,
+  message: string
+): Promise<boolean> {
+  const transporter = createTransporter();
+  
+  if (!transporter) {
+    console.log(`[EMAIL] Would send enquiry notification to ${ownerEmail} (SMTP not configured)`);
+    return false;
+  }
+
+  const fromEmail = process.env.SMTP_FROM_EMAIL || "noreply@leaseo.in";
+  const fromName = process.env.SMTP_FROM_NAME || "Leaseo";
+
+  try {
+    await transporter.sendMail({
+      from: `"${fromName}" <${fromEmail}>`,
+      to: ownerEmail,
+      subject: `New Enquiry for Your Property: ${propertyTitle}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #ff9a00 0%, #ff7b00 100%); padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Leaseo</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0;">New Property Enquiry</p>
+          </div>
+          
+          <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none;">
+            <h2 style="color: #333; margin-top: 0;">Hello ${ownerName || 'Property Owner'},</h2>
+            <p>Great news! Someone is interested in your property.</p>
+            
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin: 0 0 15px 0; color: #ff9a00;">Property: ${propertyTitle}</h3>
+              
+              <p style="margin: 10px 0;"><strong>Enquirer Details:</strong></p>
+              <ul style="list-style: none; padding: 0; margin: 0;">
+                <li style="margin: 5px 0;"><strong>Name:</strong> ${enquirerName}</li>
+                <li style="margin: 5px 0;"><strong>Email:</strong> <a href="mailto:${enquirerEmail}" style="color: #ff9a00;">${enquirerEmail}</a></li>
+                <li style="margin: 5px 0;"><strong>Phone:</strong> <a href="tel:${enquirerPhone}" style="color: #ff9a00;">${enquirerPhone}</a></li>
+              </ul>
+              
+              ${message ? `
+              <p style="margin: 15px 0 10px 0;"><strong>Message:</strong></p>
+              <p style="background: white; padding: 15px; border-radius: 4px; margin: 0; font-style: italic;">"${message}"</p>
+              ` : ''}
+            </div>
+            
+            <p>Please respond to this enquiry as soon as possible to maximize your chances of finding the right tenant/buyer.</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://leaseo.in/properties/${propertyId}" style="background: #ff9a00; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Property</a>
+            </div>
+            
+            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 30px 0;">
+            
+            <p style="color: #999; font-size: 12px; text-align: center;">
+              Leaseo - India's Largest Zero Brokerage Property Site<br>
+              Pune, Maharashtra | +91 1234567890 | support@leaseo.in
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `Hello ${ownerName || 'Property Owner'},
+
+Great news! Someone is interested in your property: ${propertyTitle}
+
+Enquirer Details:
+- Name: ${enquirerName}
+- Email: ${enquirerEmail}
+- Phone: ${enquirerPhone}
+${message ? `\nMessage: "${message}"` : ''}
+
+Please respond to this enquiry as soon as possible.
+
+View Property: https://leaseo.in/properties/${propertyId}
+
+---
+Leaseo - India's Largest Zero Brokerage Property Site`,
+    });
+    
+    console.log(`[EMAIL] Enquiry notification sent to owner ${ownerEmail}`);
+    return true;
+  } catch (error) {
+    console.error(`[EMAIL] Failed to send enquiry notification to ${ownerEmail}:`, error);
+    return false;
+  }
+}

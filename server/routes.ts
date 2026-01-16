@@ -276,6 +276,32 @@ export async function registerRoutes(
       }
 
       const enquiry = await storage.createEnquiry(validationResult.data);
+      
+      // Send email notification to property owner
+      try {
+        const property = await storage.getProperty(validationResult.data.propertyId);
+        if (property && property.ownerId) {
+          const owner = await storage.getUser(property.ownerId);
+          if (owner && owner.email) {
+            const ownerName = [owner.firstName, owner.lastName].filter(Boolean).join(" ");
+            const { sendEnquiryNotificationEmail } = await import("./email");
+            await sendEnquiryNotificationEmail(
+              owner.email,
+              ownerName,
+              validationResult.data.name,
+              validationResult.data.email,
+              validationResult.data.phone || "",
+              property.title,
+              property.id,
+              validationResult.data.message || ""
+            );
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending enquiry notification email:", emailError);
+        // Don't fail the enquiry creation if email fails
+      }
+      
       res.status(201).json(enquiry);
     } catch (error) {
       console.error("Error creating enquiry:", error);
