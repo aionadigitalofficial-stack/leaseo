@@ -191,9 +191,9 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(propertyImages)
       .where(sql`${propertyImages.propertyId} IN (${sql.join(propertyIds.map(id => sql`${id}`), sql`, `)})`)
-      .orderBy(propertyImages.displayOrder);
+      .orderBy(desc(propertyImages.isPrimary), propertyImages.displayOrder);
     
-    // Group images by property ID
+    // Group images by property ID (primary image will be first due to ordering)
     const imagesByPropertyId = new Map<string, string[]>();
     for (const img of allImages) {
       const existing = imagesByPropertyId.get(img.propertyId) || [];
@@ -214,12 +214,12 @@ export class DatabaseStorage implements IStorage {
     const [property] = await db.select().from(properties).where(eq(properties.id, id));
     if (!property) return undefined;
     
-    // Fetch associated images
+    // Fetch associated images - primary image first, then by display order
     const images = await db
       .select()
       .from(propertyImages)
       .where(eq(propertyImages.propertyId, id))
-      .orderBy(propertyImages.displayOrder);
+      .orderBy(desc(propertyImages.isPrimary), propertyImages.displayOrder);
     
     return {
       ...property,
@@ -238,15 +238,15 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
     
-    // Batch fetch all images for featured properties in a single query
+    // Batch fetch all images for featured properties - primary image first
     const propertyIds = result.map(p => p.id);
     const allImages = await db
       .select()
       .from(propertyImages)
       .where(sql`${propertyImages.propertyId} IN (${sql.join(propertyIds.map(id => sql`${id}`), sql`, `)})`)
-      .orderBy(propertyImages.displayOrder);
+      .orderBy(desc(propertyImages.isPrimary), propertyImages.displayOrder);
     
-    // Group images by property ID
+    // Group images by property ID (primary image will be first due to ordering)
     const imagesByPropertyId = new Map<string, string[]>();
     for (const img of allImages) {
       const existing = imagesByPropertyId.get(img.propertyId) || [];

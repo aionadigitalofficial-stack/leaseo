@@ -3249,6 +3249,10 @@ export default function AdminPage() {
             <MessageCircle className="h-4 w-4 mr-2" />
             MSG91
           </TabsTrigger>
+          <TabsTrigger value="bhashsms" data-testid="tab-bhashsms">
+            <MessageCircle className="h-4 w-4 mr-2" />
+            BhashSMS
+          </TabsTrigger>
           <TabsTrigger value="wati" data-testid="tab-wati">
             <MessageCircle className="h-4 w-4 mr-2" />
             WATI
@@ -3285,6 +3289,23 @@ export default function AdminPage() {
               { key: "apiKey", label: "API Key", placeholder: "Your MSG91 API Key", secret: true },
               { key: "accountSid", label: "Sender ID", placeholder: "LEASEO" },
               { key: "fromNumber", label: "Template ID", placeholder: "DLT Template ID" },
+            ]}
+          />
+        </TabsContent>
+
+        <TabsContent value="bhashsms" className="mt-4">
+          <SmsProviderCard 
+            provider="bhashsms" 
+            displayName="BhashSMS" 
+            description="Indian bulk SMS gateway with DLT support"
+            providerData={smsProviders?.find(p => p.providerName === "bhashsms")}
+            isLoading={smsProvidersLoading}
+            onSave={(settings) => updateSmsMutation.mutate({ provider: "bhashsms", settings })}
+            isSaving={updateSmsMutation.isPending}
+            fields={[
+              { key: "accountSid", label: "Username", placeholder: "Your BhashSMS Username" },
+              { key: "authToken", label: "Password", placeholder: "Your BhashSMS Password", secret: true },
+              { key: "fromNumber", label: "Sender ID", placeholder: "LEASEO (DLT Registered)" },
             ]}
           />
         </TabsContent>

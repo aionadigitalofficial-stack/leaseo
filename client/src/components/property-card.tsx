@@ -6,10 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Property } from "@shared/schema";
 
-export interface PropertyWithDetails extends Property {
+export interface PropertyWithDetails extends Omit<Property, 'city'> {
   images?: string[];
   locality?: string;
-  city?: string;
+  city: string;
 }
 
 interface PropertyCardProps {

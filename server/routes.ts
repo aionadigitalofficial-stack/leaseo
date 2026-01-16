@@ -3373,6 +3373,11 @@ export async function registerRoutes(
 
   // Get footer settings (public - used by footer component)
   app.get("/api/footer-settings", async (req, res) => {
+    // Prevent HTTP caching to ensure fresh data
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
     try {
       const settings = await db.select().from(siteSettings)
         .where(sql`key LIKE 'footer_%'`);

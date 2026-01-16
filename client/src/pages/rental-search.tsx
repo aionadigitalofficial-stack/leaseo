@@ -233,6 +233,7 @@ export default function RentalSearchPage() {
 
   const { data: propertiesData, isLoading, isFetching } = useQuery<Property[]>({
     queryKey: ["/api/properties", buildApiQuery()],
+    staleTime: 0, // Always refetch fresh data
   });
 
   const properties = propertiesData || [];
