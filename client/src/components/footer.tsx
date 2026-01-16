@@ -45,6 +45,7 @@ const defaultFooterSettings: FooterSettings = {
 export function Footer() {
   const { data: footerData } = useQuery<FooterSettings>({
     queryKey: ["/api/footer-settings"],
+    staleTime: 0, // Always refetch when cache is invalidated
   });
 
   const settings = footerData || defaultFooterSettings;
