@@ -7,6 +7,7 @@ export interface AuthUser {
   firstName: string | null;
   lastName: string | null;
   activeRoleId: string | null;
+  activeRoleName: string | null;
   isAdmin: boolean;
 }
 

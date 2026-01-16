@@ -311,14 +311,14 @@ export default function DashboardPage() {
     priceDrops: true,
   });
 
-  // Derive role from user's activeRoleId or default to residential_owner
-  const activeRole: UserRoleType = (user?.activeRoleId as UserRoleType) || "residential_owner";
+  // Derive role from user's activeRoleName - default to tenant if no role set
+  const activeRole: UserRoleType = (user?.activeRoleName as UserRoleType) || "residential_tenant";
   const currentRole = AVAILABLE_ROLES.find(r => r.id === activeRole);
   const isOwnerRole = activeRole.includes("owner");
   const isTenantRole = activeRole.includes("tenant");
   const isCommercial = activeRole.includes("commercial");
 
-  // Fetch owner's properties from API
+  // Fetch owner's properties from API - always fetch, user may have properties regardless of active role
   const { data: ownerProperties = [], isLoading: propertiesLoading } = useQuery<DashboardProperty[]>({
     queryKey: ["/api/owner/properties", user?.id],
     queryFn: async () => {
@@ -327,7 +327,7 @@ export default function DashboardPage() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!user?.id && isOwnerRole,
+    enabled: !!user?.id,
   });
 
   // Mutation for updating property status
@@ -538,7 +538,8 @@ export default function DashboardPage() {
         </div>
 
         <div className="container mx-auto px-4 py-8">
-          {isOwnerRole ? (
+          {/* Show owner dashboard if user has owner role or has any properties */}
+          {isOwnerRole || ownerProperties.length > 0 ? (
             <OwnerDashboard
               activeListings={activeListings}
               inactiveListings={inactiveListings}

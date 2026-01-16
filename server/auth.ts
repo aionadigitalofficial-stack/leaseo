@@ -21,6 +21,7 @@ export interface AuthUser {
   firstName: string | null;
   lastName: string | null;
   activeRoleId: string | null;
+  activeRoleName: string | null;
   isAdmin: boolean;
 }
 
@@ -55,13 +56,24 @@ export async function getAuthUser(userId: string): Promise<AuthUser | null> {
   if (!user) return null;
 
   const userRolesList = await db
-    .select({ roleId: userRoles.roleId })
+    .select({ roleId: userRoles.roleId, userRoleId: userRoles.id })
     .from(userRoles)
     .where(eq(userRoles.userId, userId));
 
   const adminRole = await db.select().from(roles).where(eq(roles.name, "admin"));
   const adminRoleId = adminRole[0]?.id;
   const isAdmin = userRolesList.some((r) => r.roleId === adminRoleId);
+
+  // Get the active role name
+  let activeRoleName: string | null = null;
+  if (user.activeRoleId) {
+    // activeRoleId references user_roles.id, need to get the role name
+    const activeUserRole = userRolesList.find(ur => ur.userRoleId === user.activeRoleId);
+    if (activeUserRole) {
+      const [role] = await db.select().from(roles).where(eq(roles.id, activeUserRole.roleId));
+      activeRoleName = role?.name || null;
+    }
+  }
 
   return {
     id: user.id,
@@ -70,6 +82,7 @@ export async function getAuthUser(userId: string): Promise<AuthUser | null> {
     firstName: user.firstName,
     lastName: user.lastName,
     activeRoleId: user.activeRoleId,
+    activeRoleName,
     isAdmin,
   };
 }
