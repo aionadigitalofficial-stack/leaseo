@@ -132,6 +132,7 @@ export default function PostPropertyPage() {
   const [isOtpLoading, setIsOtpLoading] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
+  const [featuredImageIndex, setFeaturedImageIndex] = useState(0);
 
   // Check if we're in edit mode
   const searchParams = new URLSearchParams(searchString);
@@ -307,6 +308,12 @@ export default function PostPropertyPage() {
       ...prev,
       images: prev.images.filter((_, i) => i !== index),
     }));
+    // Adjust featured image index when removing images
+    if (index === featuredImageIndex) {
+      setFeaturedImageIndex(0);
+    } else if (index < featuredImageIndex) {
+      setFeaturedImageIndex((prev) => prev - 1);
+    }
   };
 
   const handleSendOtp = async () => {
@@ -431,7 +438,13 @@ export default function PostPropertyPage() {
       setShowVerifyDialog(true);
       return;
     }
-    propertyMutation.mutate(formData);
+    // Reorder images so featured image is first
+    const reorderedImages = [...formData.images];
+    if (featuredImageIndex > 0 && featuredImageIndex < reorderedImages.length) {
+      const [featuredImage] = reorderedImages.splice(featuredImageIndex, 1);
+      reorderedImages.unshift(featuredImage);
+    }
+    propertyMutation.mutate({ ...formData, images: reorderedImages });
   };
 
   const renderStepContent = () => {
@@ -964,23 +977,32 @@ export default function PostPropertyPage() {
                 Upload Photos (Minimum 3, Maximum 10)
               </Label>
               <p className="text-sm text-muted-foreground mb-4">
-                Add clear photos of your property. First photo will be the cover image.
+                Add clear photos of your property. Click on any photo to set it as the cover image.
               </p>
 
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {imagePreviewUrls.map((url, index) => (
-                  <div key={index} className="relative aspect-square rounded-lg overflow-hidden group">
+                  <div 
+                    key={index} 
+                    className={`relative aspect-square rounded-lg overflow-hidden group cursor-pointer border-2 transition-all ${index === featuredImageIndex ? 'border-primary ring-2 ring-primary/30' : 'border-transparent hover:border-muted-foreground/30'}`}
+                    onClick={() => setFeaturedImageIndex(index)}
+                  >
                     <img src={url} alt={`Property ${index + 1}`} className="w-full h-full object-cover" />
                     <Button
                       size="icon"
                       variant="destructive"
                       className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => removeImage(index)}
+                      onClick={(e) => { e.stopPropagation(); removeImage(index); }}
                     >
                       <X className="h-4 w-4" />
                     </Button>
-                    {index === 0 && (
-                      <Badge className="absolute bottom-2 left-2 text-xs">Cover</Badge>
+                    {index === featuredImageIndex && (
+                      <Badge className="absolute bottom-2 left-2 text-xs bg-primary">Cover</Badge>
+                    )}
+                    {index !== featuredImageIndex && (
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                        <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 px-2 py-1 rounded">Click to set as cover</span>
+                      </div>
                     )}
                   </div>
                 ))}

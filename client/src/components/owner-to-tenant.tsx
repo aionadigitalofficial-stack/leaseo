@@ -50,13 +50,15 @@ export function OwnerToTenant() {
                 className="relative flex flex-col items-center text-center"
                 data-testid={`step-${index + 1}`}
               >
-                <div
-                  className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 relative z-10 ${step.color}`}
-                >
-                  <step.icon className="h-7 w-7" />
-                </div>
-                <div className="absolute -top-1 -left-1 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold md:left-1/2 md:-translate-x-1/2 md:-top-2">
-                  {index + 1}
+                <div className="relative mb-4">
+                  <div
+                    className={`w-16 h-16 rounded-full flex items-center justify-center relative z-10 ${step.color}`}
+                  >
+                    <step.icon className="h-7 w-7" />
+                  </div>
+                  <div className="absolute -top-2 -right-2 w-7 h-7 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold z-20 shadow-md">
+                    {index + 1}
+                  </div>
                 </div>
                 <h3 className="font-semibold mb-2">{step.title}</h3>
                 <p className="text-sm text-muted-foreground max-w-[220px]">
