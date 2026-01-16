@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { useUpload } from "@/hooks/use-upload";
 import {
   Building2,
   Home,
@@ -205,6 +206,9 @@ export default function PostPropertyPage() {
 
   const progress = (currentStep / STEPS.length) * 100;
 
+  const { uploadFile } = useUpload();
+  const [uploadProgress, setUploadProgress] = useState("");
+
   const propertyMutation = useMutation({
     mutationFn: async (data: PropertyFormData) => {
       const isForSale = data.listingType === "sale";
@@ -239,10 +243,42 @@ export default function PostPropertyPage() {
         availableFrom: data.availableFrom ? new Date(data.availableFrom) : undefined,
       };
       
+      let propertyId: string;
+      
       if (isEditMode && editPropertyId) {
-        return apiRequest("PATCH", `/api/properties/${editPropertyId}`, propertyData);
+        await apiRequest("PATCH", `/api/properties/${editPropertyId}`, propertyData);
+        propertyId = editPropertyId;
+      } else {
+        const response = await apiRequest("POST", "/api/properties", propertyData);
+        const createdProperty = await response.json();
+        propertyId = createdProperty.id;
       }
-      return apiRequest("POST", "/api/properties", propertyData);
+      
+      // Upload images if there are any
+      if (data.images.length > 0) {
+        setUploadProgress("Uploading images...");
+        for (let i = 0; i < data.images.length; i++) {
+          const file = data.images[i];
+          setUploadProgress(`Uploading image ${i + 1} of ${data.images.length}...`);
+          
+          try {
+            const uploadResponse = await uploadFile(file);
+            if (uploadResponse) {
+              // Link the image to the property
+              await apiRequest("POST", `/api/properties/${propertyId}/images`, {
+                url: uploadResponse.objectPath,
+                caption: file.name,
+                isPrimary: i === 0, // First image is the cover
+              });
+            }
+          } catch (error) {
+            console.error(`Failed to upload image ${i + 1}:`, error);
+          }
+        }
+        setUploadProgress("");
+      }
+      
+      return { success: true, propertyId };
     },
     onSuccess: () => {
       toast({
@@ -252,6 +288,7 @@ export default function PostPropertyPage() {
       setLocation("/dashboard");
     },
     onError: (error) => {
+      setUploadProgress("");
       toast({
         title: "Error",
         description: isEditMode ? "Failed to update property. Please try again." : "Failed to list property. Please try again.",
@@ -1251,7 +1288,7 @@ export default function PostPropertyPage() {
                     className="gap-2"
                     data-testid="button-submit-listing"
                   >
-                    {propertyMutation.isPending ? (isEditMode ? "Updating..." : "Submitting...") : (isEditMode ? "Update Property" : "Submit Listing")}
+                    {propertyMutation.isPending ? (uploadProgress || (isEditMode ? "Updating..." : "Submitting...")) : (isEditMode ? "Update Property" : "Submit Listing")}
                     <Check className="h-4 w-4" />
                   </Button>
                 ) : (

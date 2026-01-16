@@ -93,6 +93,7 @@ import {
   Building,
   UserX,
   FilePlus,
+  Star,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -849,6 +850,17 @@ export default function AdminPage() {
     },
     onError: () => {
       toast({ title: "Failed to delete image", variant: "destructive" });
+    },
+  });
+
+  const setPrimaryImageMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("PATCH", `/api/property-images/${id}/set-primary`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", editingProperty?.id, "images"] });
+      toast({ title: "Cover image set successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to set cover image", variant: "destructive" });
     },
   });
 
@@ -4874,18 +4886,40 @@ export default function AdminPage() {
                 ) : (
                   <div className="grid grid-cols-3 gap-3">
                     {propertyImages.map((image) => (
-                      <div key={image.id} className="relative group border rounded-md overflow-hidden" data-testid={`image-${image.id}`}>
+                      <div 
+                        key={image.id} 
+                        className={`relative group border rounded-md overflow-hidden ${image.isPrimary ? 'ring-2 ring-primary' : ''}`} 
+                        data-testid={`image-${image.id}`}
+                      >
                         <img 
                           src={image.url} 
                           alt={image.caption || "Property image"} 
                           className="w-full h-24 object-cover"
                         />
-                        <div className="absolute top-1 left-1">
+                        <div className="absolute top-1 left-1 flex gap-1">
+                          {image.isPrimary && (
+                            <Badge variant="default" className="text-xs bg-primary">
+                              Cover
+                            </Badge>
+                          )}
                           <Badge variant={image.isApproved ? "default" : "secondary"} className="text-xs">
                             {image.isApproved ? "Approved" : "Pending"}
                           </Badge>
                         </div>
                         <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {!image.isPrimary && (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="secondary"
+                              className="h-6 w-6"
+                              onClick={() => setPrimaryImageMutation.mutate(image.id)}
+                              title="Set as cover image"
+                              data-testid={`button-set-cover-${image.id}`}
+                            >
+                              <Star className="h-3 w-3" />
+                            </Button>
+                          )}
                           {!image.isApproved && (
                             <Button
                               type="button"

@@ -1695,12 +1695,27 @@ export async function registerRoutes(
     }
   });
 
-  // Upload image for property (returns URL - actual file handling would be done by Replit Object Storage)
-  app.post("/api/properties/:id/images", authMiddleware, adminMiddleware, async (req, res) => {
+  // Upload image for property (allows property owner or admin)
+  app.post("/api/properties/:id/images", authMiddleware, async (req, res) => {
     try {
       const { url, caption, isPrimary, isVideo, fileSize } = req.body;
       if (!url) {
         return res.status(400).json({ error: "Image URL is required" });
+      }
+
+      // Check if user is admin or property owner
+      const [property] = await db.select().from(properties)
+        .where(eq(properties.id, req.params.id));
+      
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+      
+      const isAdmin = req.user?.isAdmin;
+      const isOwner = property.ownerId === req.user?.id;
+      
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ error: "Not authorized to add images to this property" });
       }
 
       // Get next display order
@@ -1708,13 +1723,20 @@ export async function registerRoutes(
         .where(eq(propertyImages.propertyId, req.params.id));
       const displayOrder = existingImages.length;
 
+      // If this is the first image or isPrimary is true, reset other primary flags
+      if (isPrimary && existingImages.length > 0) {
+        await db.update(propertyImages)
+          .set({ isPrimary: false })
+          .where(eq(propertyImages.propertyId, req.params.id));
+      }
+
       const [image] = await db.insert(propertyImages).values({
         propertyId: req.params.id,
         url,
         caption: caption || null,
         displayOrder,
-        isPrimary: isPrimary || false,
-        isApproved: false,
+        isPrimary: isPrimary || (existingImages.length === 0), // First image is primary by default
+        isApproved: isAdmin ? true : false, // Admin uploads are auto-approved
         isVideo: isVideo || false,
         fileSize: fileSize || null,
       }).returning();
@@ -1742,6 +1764,35 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating image approval:", error);
       res.status(500).json({ error: "Failed to update image" });
+    }
+  });
+
+  // Set image as primary/cover (admin only)
+  app.patch("/api/property-images/:id/set-primary", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      // First get the image to find its propertyId
+      const [image] = await db.select().from(propertyImages)
+        .where(eq(propertyImages.id, req.params.id));
+      
+      if (!image) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+
+      // Reset all other images for this property to non-primary
+      await db.update(propertyImages)
+        .set({ isPrimary: false })
+        .where(eq(propertyImages.propertyId, image.propertyId));
+
+      // Set this image as primary
+      const [updated] = await db.update(propertyImages)
+        .set({ isPrimary: true })
+        .where(eq(propertyImages.id, req.params.id))
+        .returning();
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error setting primary image:", error);
+      res.status(500).json({ error: "Failed to set primary image" });
     }
   });
 
