@@ -79,7 +79,7 @@ export function Header() {
           <img 
             src={leaseoLogo} 
             alt="Leaseo" 
-            className="h-10 w-auto"
+            className="h-14 w-auto"
           />
         </Link>
 

@@ -5,36 +5,12 @@ import { Footer } from "@/components/footer";
 import { TrustSection } from "@/components/trust-section";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Link } from "wouter";
 import { ArrowRight, Target, Eye, Heart } from "lucide-react";
 import { EditableText } from "@/components/editable-text";
 import { EditableImage } from "@/components/editable-image";
 import { SEOHead } from "@/components/seo-head";
 import type { PageContent } from "@shared/schema";
-
-const teamMembers = [
-  {
-    name: "Alex Thompson",
-    role: "CEO & Founder",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop",
-  },
-  {
-    name: "Sarah Martinez",
-    role: "Head of Operations",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop",
-  },
-  {
-    name: "Michael Chen",
-    role: "Head of Technology",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop",
-  },
-  {
-    name: "Emily Rodriguez",
-    role: "Customer Success Lead",
-    avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&auto=format&fit=crop",
-  },
-];
 
 const values = [
   {
@@ -116,13 +92,6 @@ export default function AboutPage() {
           
           <div className="relative container mx-auto px-4">
             <div className="max-w-2xl">
-              <EditableImage
-                src={localContent.heroImage}
-                alt="Hero Background Preview"
-                onChange={updateContent("heroImage")}
-                className="rounded-md w-32 h-20 object-cover opacity-75 mb-4"
-                contentKey="about.heroImage"
-              />
               <EditableText
                 value={localContent.heroTitle}
                 onChange={updateContent("heroTitle")}
@@ -212,34 +181,6 @@ export default function AboutPage() {
                     </div>
                     <h3 className="text-xl font-semibold mb-3">{item.title}</h3>
                     <p className="text-muted-foreground">{item.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Team Section */}
-        <section className="py-16 md:py-24">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">Meet Our Team</h2>
-              <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                The passionate people behind Leaseo who work every day 
-                to make your rental experience better.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
-              {teamMembers.map((member) => (
-                <Card key={member.name} className="text-center">
-                  <CardContent className="p-6">
-                    <Avatar className="w-24 h-24 mx-auto mb-4">
-                      <AvatarImage src={member.avatar} alt={member.name} />
-                      <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <h3 className="font-semibold text-lg">{member.name}</h3>
-                    <p className="text-sm text-muted-foreground">{member.role}</p>
                   </CardContent>
                 </Card>
               ))}
