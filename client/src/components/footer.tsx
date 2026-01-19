@@ -120,18 +120,24 @@ export function Footer() {
           <div>
             <h4 className="font-semibold mb-4 text-white">Contact</h4>
             <ul className="space-y-3">
-              <li className="flex items-center gap-2 text-sm text-white/70">
-                <MapPin className="h-4 w-4 flex-shrink-0" />
-                <span>{settings.address}</span>
-              </li>
-              <li className="flex items-center gap-2 text-sm text-white/70">
-                <Phone className="h-4 w-4 flex-shrink-0" />
-                <span>{settings.phone}</span>
-              </li>
-              <li className="flex items-center gap-2 text-sm text-white/70">
-                <Mail className="h-4 w-4 flex-shrink-0" />
-                <span>{settings.email}</span>
-              </li>
+              {settings.address && (
+                <li className="flex items-center gap-2 text-sm text-white/70">
+                  <MapPin className="h-4 w-4 flex-shrink-0" />
+                  <span>{settings.address}</span>
+                </li>
+              )}
+              {settings.phone && (
+                <li className="flex items-center gap-2 text-sm text-white/70">
+                  <Phone className="h-4 w-4 flex-shrink-0" />
+                  <span>{settings.phone}</span>
+                </li>
+              )}
+              {settings.email && (
+                <li className="flex items-center gap-2 text-sm text-white/70">
+                  <Mail className="h-4 w-4 flex-shrink-0" />
+                  <span>{settings.email}</span>
+                </li>
+              )}
             </ul>
           </div>
         </div>
