@@ -17,10 +17,11 @@ interface FooterSettings {
 }
 
 const defaultFooterSettings: FooterSettings = {
-  description: "Find your perfect rental property. We connect renters directly with property owners for a seamless experience.",
-  address: "Pune, Maharashtra, India",
-  phone: "+91 1234567890",
-  email: "support@leaseo.in",
+  description:
+    "Find your perfect rental property. We connect renters directly with property owners for a seamless experience.",
+  address: "Mumbai",
+  phone: "",
+  email: "support@leaseo.in/business@leaseo.in",
   companyLinks: [
     { label: "About Us", href: "/about" },
     { label: "Careers", href: "#" },
@@ -51,7 +52,7 @@ export function Footer() {
   const settings = footerData || defaultFooterSettings;
 
   return (
-    <footer className="border-t" style={{ backgroundColor: '#0b2743' }}>
+    <footer className="border-t" style={{ backgroundColor: "#0b2743" }}>
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Brand & Newsletter */}
@@ -60,7 +61,9 @@ export function Footer() {
               {settings.description}
             </p>
             <div className="flex flex-col gap-2">
-              <p className="text-sm font-medium text-white">Subscribe to our newsletter</p>
+              <p className="text-sm font-medium text-white">
+                Subscribe to our newsletter
+              </p>
               <div className="flex gap-2 flex-wrap">
                 <Input
                   type="email"
@@ -68,7 +71,12 @@ export function Footer() {
                   className="max-w-[250px] bg-white/10 border-white/20 text-white placeholder:text-white/50"
                   data-testid="input-newsletter-email"
                 />
-                <Button className="bg-[#ff9a00] hover:bg-[#ff9a00]/90 text-white" data-testid="button-subscribe">Subscribe</Button>
+                <Button
+                  className="bg-[#ff9a00] hover:bg-[#ff9a00]/90 text-white"
+                  data-testid="button-subscribe"
+                >
+                  Subscribe
+                </Button>
               </div>
             </div>
           </div>
@@ -131,9 +139,7 @@ export function Footer() {
         <Separator className="my-8 bg-white/20" />
 
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-sm text-white/70">
-            {settings.copyrightText}
-          </p>
+          <p className="text-sm text-white/70">{settings.copyrightText}</p>
           <div className="flex gap-4 flex-wrap">
             {settings.legalLinks.map((link) => (
               <Link
