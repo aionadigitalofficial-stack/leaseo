@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "wouter";
-import { Home, Mail, Phone, MapPin, Loader2 } from "lucide-react";
+import { Mail, MapPin, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -112,27 +112,17 @@ export function SeoFooter() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8">
           <div className="col-span-2">
-            <Link href="/" className="flex items-center gap-2 mb-4" data-testid="footer-logo">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
-                <Home className="h-5 w-5 text-primary-foreground" />
-              </div>
-              <span className="font-semibold text-xl">Leaseo</span>
-            </Link>
             <p className="text-sm text-muted-foreground mb-4 max-w-sm">
               India's leading no-brokerage property rental platform. Connect directly with property owners and save on brokerage fees.
             </p>
             <ul className="space-y-2">
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <MapPin className="h-4 w-4 flex-shrink-0" />
-                <span>Pune, Maharashtra, India</span>
-              </li>
-              <li className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Phone className="h-4 w-4 flex-shrink-0" />
-                <span>+91 1234567890</span>
+                <span>Mumbai</span>
               </li>
               <li className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Mail className="h-4 w-4 flex-shrink-0" />
-                <span>support@leaseo.in</span>
+                <span>support@leaseo.in / business@leaseo.in</span>
               </li>
             </ul>
           </div>
@@ -206,7 +196,7 @@ export function SeoFooter() {
 
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-sm text-muted-foreground">
-            2024 Leaseo. All rights reserved.
+            2025 Leaseo. All rights reserved.
           </p>
           <p className="text-xs text-muted-foreground">
             Made with care in India

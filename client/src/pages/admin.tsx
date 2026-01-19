@@ -4247,10 +4247,10 @@ export default function AdminPage() {
 
   // Footer settings state
   const [footerDescription, setFooterDescription] = useState("Find your perfect rental property. We connect renters directly with property owners for a seamless experience.");
-  const [footerAddress, setFooterAddress] = useState("Pune, Maharashtra, India");
-  const [footerPhone, setFooterPhone] = useState("+91 1234567890");
-  const [footerEmail, setFooterEmail] = useState("support@leaseo.in");
-  const [footerCopyright, setFooterCopyright] = useState("2024 Leaseo. All rights reserved.");
+  const [footerAddress, setFooterAddress] = useState("Mumbai");
+  const [footerPhone, setFooterPhone] = useState("");
+  const [footerEmail, setFooterEmail] = useState("support@leaseo.in / business@leaseo.in");
+  const [footerCopyright, setFooterCopyright] = useState("2025 Leaseo. All rights reserved.");
   const [footerCompanyLinks, setFooterCompanyLinks] = useState<{label: string; href: string}[]>([
     { label: "About Us", href: "/about" },
     { label: "Careers", href: "#" },
