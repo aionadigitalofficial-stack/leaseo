@@ -9,6 +9,7 @@ import { db } from "./db";
 import DOMPurify from "isomorphic-dompurify";
 // Use local storage for VPS deployment (Replit object storage removed)
 import { registerLocalStorageRoutes } from "./local-storage";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
@@ -43,6 +44,10 @@ export async function registerRoutes(
 
   // Register local storage routes for file uploads (VPS compatible)
   registerLocalStorageRoutes(app);
+
+  // Register Replit object storage routes (for Replit environment)
+  // This serves existing images with /objects/ URLs
+  registerObjectStorageRoutes(app);
 
   // ==================== VPS DEPLOYMENT DOWNLOAD ====================
   // Serve the VPS deployment zip file for download

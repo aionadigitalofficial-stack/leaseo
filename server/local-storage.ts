@@ -197,6 +197,80 @@ export function registerLocalStorageRoutes(app: Router): void {
       res.status(500).json({ error: "Failed to generate upload URL" });
     }
   });
+
+  // Request URL for upload - compatible with useUpload hook
+  // This endpoint returns a direct upload URL that works with FormData
+  // Note: No auth required here to match Replit object storage behavior
+  app.post("/api/uploads/request-url", async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { name, size, contentType } = req.body;
+      
+      if (!name) {
+        res.status(400).json({ error: "Missing required field: name" });
+        return;
+      }
+
+      // Generate unique filename
+      const uniqueSuffix = crypto.randomBytes(8).toString("hex");
+      const ext = path.extname(name).toLowerCase();
+      const baseName = path.basename(name, ext).replace(/[^a-zA-Z0-9]/g, "_").substring(0, 50);
+      const filename = `${baseName}_${uniqueSuffix}${ext}`;
+      
+      // For local storage, upload URL points to our upload endpoint
+      const baseUrl = process.env.BASE_URL || "";
+      const uploadURL = `${baseUrl}/api/upload/direct?filename=${encodeURIComponent(filename)}`;
+      const objectPath = `/uploads/public/${filename}`;
+
+      res.json({
+        uploadURL,
+        objectPath,
+        metadata: { name, size, contentType },
+      });
+    } catch (error) {
+      console.error("Request URL error:", error);
+      res.status(500).json({ error: "Failed to generate upload URL" });
+    }
+  });
+
+  // Direct file upload with PUT method (for presigned URL flow compatibility)
+  // Note: No auth required since URL contains the unique filename
+  app.put("/api/upload/direct", (req: Request, res: Response): void => {
+    const filename = req.query.filename as string;
+    
+    if (!filename) {
+      res.status(400).json({ error: "Missing filename" });
+      return;
+    }
+
+    // Sanitize filename
+    const sanitizedFilename = sanitizeFilename(filename);
+    if (!sanitizedFilename) {
+      res.status(400).json({ error: "Invalid filename" });
+      return;
+    }
+
+    const filePath = path.join(PUBLIC_DIR, sanitizedFilename);
+    
+    // Verify path is within allowed directory
+    if (!isPathWithinDirectory(filePath, PUBLIC_DIR)) {
+      res.status(400).json({ error: "Invalid file path" });
+      return;
+    }
+
+    // Stream the request body directly to file
+    const writeStream = fs.createWriteStream(filePath);
+    
+    req.pipe(writeStream);
+    
+    writeStream.on("finish", () => {
+      res.status(200).json({ success: true });
+    });
+    
+    writeStream.on("error", (err) => {
+      console.error("Write error:", err);
+      res.status(500).json({ error: "Failed to save file" });
+    });
+  });
 }
 
 export { UPLOAD_DIR, PUBLIC_DIR, PRIVATE_DIR };
