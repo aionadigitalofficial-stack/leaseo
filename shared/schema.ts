@@ -45,7 +45,8 @@ export const otpPurposeEnum = pgEnum("otp_purpose", [
   "login",
   "verify_phone",
   "verify_email",
-  "password_reset"
+  "password_reset",
+  "contact_owner"
 ]);
 
 export const reportReasonEnum = pgEnum("report_reason", [
