@@ -120,6 +120,8 @@ export default function PropertyDetailPage() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [revealedPhone, setRevealedPhone] = useState<string | null>(null);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
 
   const { data: property, isLoading, error } = useQuery<ExtendedProperty>({
     queryKey: ["/api/properties", id],
@@ -132,11 +134,29 @@ export default function PropertyDetailPage() {
     enabled: !!cityParam && !!id,
   });
 
-  const handleSendOtp = () => {
-    if (verifyMethod === "phone" && phoneNumber.length >= 10) {
+  const handleSendOtp = async () => {
+    setOtpError(null);
+    setOtpLoading(true);
+    try {
+      const payload = verifyMethod === "phone" 
+        ? { phone: phoneNumber.startsWith("+91") ? phoneNumber : `+91${phoneNumber}`, purpose: "contact_owner" }
+        : { email, purpose: "contact_owner" };
+      
+      const response = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send OTP");
+      }
       setOtpSent(true);
-    } else if (verifyMethod === "email" && email.includes("@")) {
-      setOtpSent(true);
+    } catch (err: any) {
+      setOtpError(err.message || "Failed to send OTP. Please try again.");
+    } finally {
+      setOtpLoading(false);
     }
   };
 
@@ -144,11 +164,34 @@ export default function PropertyDetailPage() {
     ? phoneNumber.length >= 10 
     : email.includes("@") && email.includes(".");
 
-  const handleVerifyOtp = () => {
-    if (otp.length === 6) {
+  const handleVerifyOtp = async () => {
+    if (otp.length !== 6) return;
+    
+    setOtpError(null);
+    setOtpLoading(true);
+    try {
+      const payload = verifyMethod === "phone" 
+        ? { phone: phoneNumber.startsWith("+91") ? phoneNumber : `+91${phoneNumber}`, code: otp }
+        : { email, code: otp };
+      
+      const response = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Invalid OTP");
+      }
+      
       setOtpVerified(true);
       setRevealedPhone(property?.ownerPhone || "+91 98765 43210");
       setShowContactDialog(false);
+    } catch (err: any) {
+      setOtpError(err.message || "Invalid OTP. Please try again.");
+    } finally {
+      setOtpLoading(false);
     }
   };
 
@@ -638,7 +681,7 @@ export default function PropertyDetailPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             {!otpSent ? (
-              <Tabs value={verifyMethod} onValueChange={(v) => setVerifyMethod(v as "phone" | "email")} className="w-full">
+              <Tabs value={verifyMethod} onValueChange={(v) => { setVerifyMethod(v as "phone" | "email"); setOtpError(null); }} className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="phone" data-testid="tab-phone-verify">
                     <Phone className="h-4 w-4 mr-2" />
@@ -667,13 +710,16 @@ export default function PropertyDetailPage() {
                       />
                     </div>
                   </div>
+                  {otpError && (
+                    <p className="text-sm text-red-500">{otpError}</p>
+                  )}
                   <Button 
                     className="w-full" 
                     onClick={handleSendOtp}
-                    disabled={phoneNumber.length < 10}
+                    disabled={phoneNumber.length < 10 || otpLoading}
                     data-testid="button-send-otp-phone"
                   >
-                    Send OTP
+                    {otpLoading ? "Sending..." : "Send OTP"}
                   </Button>
                 </TabsContent>
                 <TabsContent value="email" className="mt-4 space-y-4">
@@ -688,13 +734,16 @@ export default function PropertyDetailPage() {
                       data-testid="input-email-verify"
                     />
                   </div>
+                  {otpError && (
+                    <p className="text-sm text-red-500">{otpError}</p>
+                  )}
                   <Button 
                     className="w-full" 
                     onClick={handleSendOtp}
-                    disabled={!email.includes("@") || !email.includes(".")}
+                    disabled={!email.includes("@") || !email.includes(".") || otpLoading}
                     data-testid="button-send-otp-email"
                   >
-                    Send OTP
+                    {otpLoading ? "Sending..." : "Send OTP"}
                   </Button>
                 </TabsContent>
               </Tabs>
@@ -715,13 +764,16 @@ export default function PropertyDetailPage() {
                     OTP sent to {verifyMethod === "phone" ? `+91 ${phoneNumber}` : email}
                   </p>
                 </div>
+                {otpError && (
+                  <p className="text-sm text-red-500">{otpError}</p>
+                )}
                 <Button 
                   className="w-full" 
                   onClick={handleVerifyOtp}
-                  disabled={otp.length < 6}
+                  disabled={otp.length < 6 || otpLoading}
                   data-testid="button-verify-otp"
                 >
-                  Verify & View Contact
+                  {otpLoading ? "Verifying..." : "Verify & View Contact"}
                 </Button>
                 <Button 
                   variant="ghost" 
