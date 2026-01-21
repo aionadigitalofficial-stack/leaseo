@@ -2,29 +2,14 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { ContactForm } from "@/components/contact-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, Phone, Mail, Clock, MessageSquare } from "lucide-react";
+import { Mail, MessageSquare } from "lucide-react";
 import { SEOHead } from "@/components/seo-head";
 
 const contactInfo = [
   {
-    icon: MapPin,
-    title: "Address",
-    details: ["123 Real Estate Avenue", "New York, NY 10001"],
-  },
-  {
-    icon: Phone,
-    title: "Phone",
-    details: ["(555) 123-4567", "(555) 987-6543"],
-  },
-  {
     icon: Mail,
     title: "Email",
-    details: ["info@directrentals.com", "support@directrentals.com"],
-  },
-  {
-    icon: Clock,
-    title: "Business Hours",
-    details: ["Mon - Fri: 9AM - 6PM", "Sat - Sun: 10AM - 4PM"],
+    details: ["support@leaseo.in", "business@leaseo.in"],
   },
 ];
 
@@ -137,15 +122,6 @@ export default function ContactPage() {
           </div>
         </section>
 
-        {/* Map Section Placeholder */}
-        <section className="h-[400px] bg-muted relative">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center">
-              <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">Map integration available</p>
-            </div>
-          </div>
-        </section>
       </main>
 
       <Footer />
