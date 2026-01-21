@@ -2,10 +2,15 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { ContactForm } from "@/components/contact-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, MessageSquare } from "lucide-react";
+import { Mail, MessageSquare, MapPin } from "lucide-react";
 import { SEOHead } from "@/components/seo-head";
 
 const contactInfo = [
+  {
+    icon: MapPin,
+    title: "Address",
+    details: ["Mumbai, Maharashtra, India"],
+  },
   {
     icon: Mail,
     title: "Email",
