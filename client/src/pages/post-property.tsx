@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useUpload } from "@/hooks/use-upload";
 import {
@@ -37,6 +37,18 @@ import {
   Phone,
 } from "lucide-react";
 import { INDIAN_CITIES, BHK_OPTIONS, FURNISHING_OPTIONS, PROPERTY_TYPES_RESIDENTIAL, PROPERTY_TYPES_COMMERCIAL, CITY_STATE_MAP } from "@/lib/constants";
+import { Star } from "lucide-react";
+
+interface PropertyImage {
+  id: string;
+  propertyId: string;
+  url: string;
+  caption: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+  isApproved: boolean;
+  createdAt: string;
+}
 
 const STEPS = [
   { id: 1, title: "Property Type", icon: Building2 },
@@ -151,6 +163,36 @@ export default function PostPropertyPage() {
     enabled: isEditMode,
   });
 
+  // Fetch existing property images for edit mode
+  const { data: existingImages = [], isLoading: isLoadingImages } = useQuery<PropertyImage[]>({
+    queryKey: ["/api/properties", editPropertyId, "images"],
+    enabled: isEditMode && !!editPropertyId,
+  });
+
+  // Set primary image mutation
+  const setPrimaryImageMutation = useMutation({
+    mutationFn: async (imageId: string) => apiRequest("PATCH", `/api/property-images/${imageId}/set-primary`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", editPropertyId, "images"] });
+      toast({ title: "Cover image updated", description: "The cover image has been changed successfully." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update cover image.", variant: "destructive" });
+    },
+  });
+
+  // Delete image mutation
+  const deleteImageMutation = useMutation({
+    mutationFn: async (imageId: string) => apiRequest("DELETE", `/api/property-images/${imageId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", editPropertyId, "images"] });
+      toast({ title: "Image deleted", description: "The image has been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete image.", variant: "destructive" });
+    },
+  });
+
   // Pre-populate form when editing
   useEffect(() => {
     if (existingProperty && isEditMode) {
@@ -257,6 +299,9 @@ export default function PostPropertyPage() {
       // Upload images if there are any
       if (data.images.length > 0) {
         setUploadProgress("Uploading images...");
+        // Check if any existing image is primary (edit mode)
+        const hasExistingPrimary = existingImages.some(img => img.isPrimary);
+        
         for (let i = 0; i < data.images.length; i++) {
           const file = data.images[i];
           setUploadProgress(`Uploading image ${i + 1} of ${data.images.length}...`);
@@ -264,11 +309,17 @@ export default function PostPropertyPage() {
           try {
             const uploadResponse = await uploadFile(file);
             if (uploadResponse) {
+              // In edit mode: only set primary if no existing primary AND this is the first new image
+              // In new mode: use featuredImageIndex to determine primary
+              const shouldBePrimary = isEditMode 
+                ? (!hasExistingPrimary && i === 0)
+                : (i === featuredImageIndex);
+              
               // Link the image to the property
               await apiRequest("POST", `/api/properties/${propertyId}/images`, {
                 url: uploadResponse.objectPath,
                 caption: file.name,
-                isPrimary: i === 0, // First image is the cover
+                isPrimary: shouldBePrimary,
               });
             }
           } catch (error) {
@@ -324,10 +375,11 @@ export default function PostPropertyPage() {
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length + formData.images.length > 10) {
+    const currentTotal = existingImages.length + formData.images.length;
+    if (files.length + currentTotal > 10) {
       toast({
         title: "Too many images",
-        description: "Maximum 10 images allowed",
+        description: `Maximum 10 images allowed. You can add ${10 - currentTotal} more.`,
         variant: "destructive",
       });
       return;
@@ -450,7 +502,7 @@ export default function PostPropertyPage() {
       case 5:
         return formData.listingType === "sale" || formData.preferredTenants.length > 0;
       case 6:
-        return formData.images.length >= 3;
+        return (existingImages.length + formData.images.length) >= 3;
       case 7:
         return isVerified;
       default:
@@ -475,13 +527,8 @@ export default function PostPropertyPage() {
       setShowVerifyDialog(true);
       return;
     }
-    // Reorder images so featured image is first
-    const reorderedImages = [...formData.images];
-    if (featuredImageIndex > 0 && featuredImageIndex < reorderedImages.length) {
-      const [featuredImage] = reorderedImages.splice(featuredImageIndex, 1);
-      reorderedImages.unshift(featuredImage);
-    }
-    propertyMutation.mutate({ ...formData, images: reorderedImages });
+    // Submit with images in original order - featuredImageIndex is used in mutation to set isPrimary
+    propertyMutation.mutate(formData);
   };
 
   const renderStepContent = () => {
@@ -1007,6 +1054,7 @@ export default function PostPropertyPage() {
         );
 
       case 6:
+        const totalImages = existingImages.length + formData.images.length;
         return (
           <div className="space-y-6">
             <div>
@@ -1018,33 +1066,75 @@ export default function PostPropertyPage() {
               </p>
 
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {imagePreviewUrls.map((url, index) => (
+                {/* Existing images from database (edit mode) */}
+                {isEditMode && existingImages.map((image) => (
                   <div 
-                    key={index} 
-                    className={`relative aspect-square rounded-lg overflow-hidden group cursor-pointer border-2 transition-all ${index === featuredImageIndex ? 'border-primary ring-2 ring-primary/30' : 'border-transparent hover:border-muted-foreground/30'}`}
-                    onClick={() => setFeaturedImageIndex(index)}
+                    key={image.id} 
+                    className={`relative aspect-square rounded-lg overflow-hidden group cursor-pointer border-2 transition-all ${image.isPrimary ? 'border-primary ring-2 ring-primary/30' : 'border-transparent hover:border-muted-foreground/30'}`}
+                    onClick={() => !image.isPrimary && setPrimaryImageMutation.mutate(image.id)}
                   >
-                    <img src={url} alt={`Property ${index + 1}`} className="w-full h-full object-cover" />
+                    <img 
+                      src={image.url.startsWith('/') ? image.url : `/${image.url}`} 
+                      alt={image.caption || "Property image"} 
+                      className="w-full h-full object-cover" 
+                    />
                     <Button
                       size="icon"
                       variant="destructive"
                       className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => { e.stopPropagation(); removeImage(index); }}
+                      onClick={(e) => { e.stopPropagation(); deleteImageMutation.mutate(image.id); }}
+                      disabled={deleteImageMutation.isPending}
                     >
                       <X className="h-4 w-4" />
                     </Button>
-                    {index === featuredImageIndex && (
+                    {image.isPrimary && (
                       <Badge className="absolute bottom-2 left-2 text-xs bg-primary">Cover</Badge>
                     )}
-                    {index !== featuredImageIndex && (
+                    {!image.isPrimary && (
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                        <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 px-2 py-1 rounded">Click to set as cover</span>
+                        <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 px-2 py-1 rounded">
+                          {setPrimaryImageMutation.isPending ? "Setting..." : "Click to set as cover"}
+                        </span>
                       </div>
                     )}
                   </div>
                 ))}
+
+                {/* New images being added */}
+                {imagePreviewUrls.map((url, index) => {
+                  const hasExistingPrimary = existingImages.some(img => img.isPrimary);
+                  const isNewImageCover = index === featuredImageIndex && (!isEditMode || !hasExistingPrimary);
+                  return (
+                    <div 
+                      key={`new-${index}`} 
+                      className={`relative aspect-square rounded-lg overflow-hidden group cursor-pointer border-2 transition-all ${isNewImageCover ? 'border-primary ring-2 ring-primary/30' : 'border-transparent hover:border-muted-foreground/30'}`}
+                      onClick={() => setFeaturedImageIndex(index)}
+                    >
+                      <img src={url} alt={`New Property ${index + 1}`} className="w-full h-full object-cover" />
+                      <Badge className="absolute top-2 left-2 text-xs bg-blue-500">New</Badge>
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => { e.stopPropagation(); removeImage(index); }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                      {isNewImageCover && (
+                        <Badge className="absolute bottom-2 left-2 text-xs bg-primary">Cover</Badge>
+                      )}
+                      {!isNewImageCover && (
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                          <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 px-2 py-1 rounded">
+                            {isEditMode && hasExistingPrimary ? "Cover set from existing images" : "Click to set as cover"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 
-                {formData.images.length < 10 && (
+                {totalImages < 10 && (
                   <label className="aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
                     <Upload className="h-8 w-8 text-muted-foreground mb-2" />
                     <span className="text-sm text-muted-foreground">Add Photo</span>
@@ -1060,9 +1150,9 @@ export default function PostPropertyPage() {
                 )}
               </div>
 
-              {formData.images.length < 3 && (
+              {totalImages < 3 && (
                 <p className="text-sm text-destructive mt-2">
-                  Please upload at least 3 photos
+                  Please upload at least 3 photos ({3 - totalImages} more needed)
                 </p>
               )}
             </div>
@@ -1142,14 +1232,19 @@ export default function PostPropertyPage() {
                 <Separator />
 
                 <div>
-                  <p className="text-muted-foreground text-sm mb-2">Photos ({formData.images.length})</p>
+                  <p className="text-muted-foreground text-sm mb-2">Photos ({existingImages.length + formData.images.length})</p>
                   <div className="flex gap-2 overflow-x-auto pb-2">
-                    {imagePreviewUrls.slice(0, 5).map((url, i) => (
-                      <img key={i} src={url} alt="" className="h-16 w-16 rounded object-cover shrink-0" />
+                    {/* Show existing images first */}
+                    {existingImages.slice(0, 3).map((img) => (
+                      <img key={img.id} src={img.url.startsWith('/') ? img.url : `/${img.url}`} alt="" className="h-16 w-16 rounded object-cover shrink-0" />
                     ))}
-                    {formData.images.length > 5 && (
+                    {/* Show new images */}
+                    {imagePreviewUrls.slice(0, Math.max(0, 5 - existingImages.length)).map((url, i) => (
+                      <img key={`new-${i}`} src={url} alt="" className="h-16 w-16 rounded object-cover shrink-0" />
+                    ))}
+                    {(existingImages.length + formData.images.length) > 5 && (
                       <div className="h-16 w-16 rounded bg-muted flex items-center justify-center shrink-0">
-                        <span className="text-sm text-muted-foreground">+{formData.images.length - 5}</span>
+                        <span className="text-sm text-muted-foreground">+{existingImages.length + formData.images.length - 5}</span>
                       </div>
                     )}
                   </div>
