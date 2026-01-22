@@ -151,7 +151,7 @@ export function adminMiddleware(req: Request, res: Response, next: NextFunction)
 
 export async function seedAdminUser() {
   const adminEmail = "admin@leaseo.in";
-  const adminPassword = "Leaseo@2024";
+  const adminPassword = "Admin@123";
 
   const [existingAdmin] = await db.select().from(users).where(eq(users.email, adminEmail));
   
@@ -160,10 +160,29 @@ export async function seedAdminUser() {
     return { email: adminEmail, password: adminPassword, exists: true };
   }
 
-  console.log("Admin user needs to be created via database seed.");
-  console.log("Expected credentials - Email:", adminEmail, "Password:", adminPassword);
+  // Create admin user if it doesn't exist
+  const hashedPassword = await hashPassword(adminPassword);
+  const [newAdmin] = await db.insert(users).values({
+    email: adminEmail,
+    passwordHash: hashedPassword,
+    firstName: "Super",
+    lastName: "Admin",
+    isActive: true,
+    profileCompleted: true
+  }).returning();
   
-  return { email: adminEmail, password: adminPassword, exists: false };
+  // Assign admin role
+  const [adminRole] = await db.select().from(roles).where(eq(roles.name, "admin"));
+  if (adminRole) {
+    await db.insert(userRoles).values({
+      userId: newAdmin.id,
+      roleId: adminRole.id
+    });
+    console.log("Admin role assigned to:", adminEmail);
+  }
+  
+  console.log("Admin user created:", adminEmail);
+  return { email: adminEmail, password: adminPassword, exists: false, created: true };
 }
 
 export async function seedTestUsers() {
