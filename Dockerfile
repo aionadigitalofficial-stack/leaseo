@@ -1,23 +1,22 @@
-# Base image
-FROM node:20-alpine
+# -------- Base image ----------
+FROM node:18-alpine
 
-# Set working directory
+# -------- Working directory ----------
 WORKDIR /app
 
-# Copy package files
+# -------- Copy package files ----------
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
 
-# Copy all project files
+# -------- Copy entire project ----------
 COPY . .
 
-# Build the project (IMPORTANT)
+# -------- Build frontend ----------
+WORKDIR /app/client
+RUN npm install
 RUN npm run build
 
-# Expose the port your app runs on
-EXPOSE 5000
-
-# Start the app
-CMD ["node", "dist/index.cjs"]
+# -------- Run backend ----------
+WORKDIR /app
+EXPOSE 3000
+CMD ["node", "server/index.js"]
