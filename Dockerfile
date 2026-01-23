@@ -1,22 +1,19 @@
-# -------- Base image ----------
 FROM node:18-alpine
 
-# -------- Working directory ----------
 WORKDIR /app
 
-# -------- Copy package files ----------
+# Copy package files
 COPY package*.json ./
 RUN npm install
 
-# -------- Copy entire project ----------
+# Copy full project
 COPY . .
 
-# -------- Build frontend ----------
-WORKDIR /app/client
-RUN npm install
+# Build project (Replit build)
 RUN npm run build
 
-# -------- Run backend ----------
-WORKDIR /app
+# Expose app port
 EXPOSE 3000
-CMD ["node", "server/index.js"]
+
+# Start production server
+CMD ["node", "dist/index.cjs"]
