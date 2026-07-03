@@ -11,7 +11,7 @@ import { SEOHead } from "@/components/seo-head";
 import type { PageContent } from "@shared/schema";
 
 const DEFAULT_CONTENT = {
-  heroTitle: "India's Largest <span style=\"color: #ff9a00\">Broker Free</span> Property Site",
+  heroTitle: "India's Largest <span style=\"color: #ff9a00\">Brokerage Free</span> Property Site",
   heroSubtitle: "Find your perfect rental home directly from verified owners. Broker free, no hidden fees.",
   stat1: "50,000+ Active Listings",
   stat2: "100% Verified Owners",
