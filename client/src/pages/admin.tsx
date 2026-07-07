@@ -355,7 +355,7 @@ export default function AdminPage() {
   const [editingCategory, setEditingCategory] = useState<PropertyCategory | null>(null);
   
   // Property filter states
-  const [propertySegment, setPropertySegment] = useState<"all" | "rent" | "buy" | "commercial">("all");
+  const [propertySegment, setPropertySegment] = useState<"all" | "pending" | "rent" | "buy" | "commercial">("all");
   const [propertySearch, setPropertySearch] = useState("");
   const [propertyFilterCity, setPropertyFilterCity] = useState<string>("");
   const [propertyFilterLocality, setPropertyFilterLocality] = useState<string>("");
@@ -1608,9 +1608,15 @@ export default function AdminPage() {
 
         {/* Property Tabs by Segment */}
         <Tabs value={propertySegment} onValueChange={(v) => { setPropertySegment(v as any); setPropertyPage(1); }} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="all" data-testid="tab-all-properties">
               All ({filteredProperties.length})
+            </TabsTrigger>
+            <TabsTrigger value="pending" data-testid="tab-pending-properties" className="relative">
+              Pending ({pendingProperties.length})
+              {pendingProperties.length > 0 && (
+                <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-amber-500" />
+              )}
             </TabsTrigger>
             <TabsTrigger value="rent" data-testid="tab-rent-properties">
               Rent ({rentProperties.length})
@@ -1622,6 +1628,25 @@ export default function AdminPage() {
               Commercial ({commercialProperties.length})
             </TabsTrigger>
           </TabsList>
+          
+          <TabsContent value="pending" className="mt-4">
+            <Card>
+              <CardContent className="pt-6">
+                {propertiesLoading ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+                  </div>
+                ) : pendingProperties.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Check className="h-12 w-12 text-green-600 mx-auto mb-4" />
+                    <p className="text-muted-foreground">No properties waiting for approval</p>
+                  </div>
+                ) : (
+                  renderPropertyTable(pendingProperties)
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
           
           <TabsContent value="all" className="mt-4">
             <Card>
@@ -4714,8 +4739,20 @@ export default function AdminPage() {
                 onClick={() => setActiveSection(item.id)}
                 data-testid={`nav-${item.id}`}
               >
-                <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? "text-primary" : ""}`} />
+                <div className="relative flex-shrink-0">
+                  <Icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
+                  {item.id === "properties" && pendingPropertyCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white">
+                      {pendingPropertyCount > 9 ? "9+" : pendingPropertyCount}
+                    </span>
+                  )}
+                </div>
                 {!sidebarCollapsed && <span className={isActive ? "font-medium" : ""}>{item.label}</span>}
+                {!sidebarCollapsed && item.id === "properties" && pendingPropertyCount > 0 && (
+                  <Badge variant="secondary" className="ml-auto bg-amber-100 text-amber-800 text-[10px] h-5 px-1.5">
+                    {pendingPropertyCount} pending
+                  </Badge>
+                )}
               </Button>
             );
           })}
