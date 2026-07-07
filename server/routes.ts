@@ -171,6 +171,19 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: get ALL properties regardless of status (active, pending, inactive, etc.)
+  // The public /api/properties endpoint only ever returns "active" listings, so
+  // the admin panel needs its own endpoint to see and approve pending submissions.
+  app.get("/api/admin/properties", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const allProperties = await storage.getPropertiesForAdmin();
+      res.json(allProperties);
+    } catch (error) {
+      console.error("Error fetching properties for admin:", error);
+      res.status(500).json({ error: "Failed to fetch properties" });
+    }
+  });
+
   // Get single property by ID
   app.get("/api/properties/:id", async (req, res) => {
     try {
@@ -197,7 +210,12 @@ export async function registerRoutes(
       // Always link property to authenticated user
       body.ownerId = req.user!.id;
       console.log(`[Property] Creating property for authenticated user: ${req.user!.id}`);
-      
+
+      // New listings from regular customers must be reviewed by an admin before
+      // they go live. Admins posting directly are published immediately.
+      const isAdminSubmission = req.user?.activeRoleId === "admin";
+      body.status = isAdminSubmission ? (body.status || "active") : "pending";
+
       const validationResult = insertPropertySchema.safeParse(body);
       if (!validationResult.success) {
         return res.status(400).json({ 
@@ -207,6 +225,28 @@ export async function registerRoutes(
       }
 
       const property = await storage.createProperty(validationResult.data);
+
+      // Notify the admin team that a new property is waiting for approval
+      if (!isAdminSubmission) {
+        try {
+          const owner = await storage.getUser(req.user!.id);
+          const ownerName = owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") : "";
+          const { sendNewPropertySubmissionEmail } = await import("./email");
+          const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || "admin@leaseo.in";
+          await sendNewPropertySubmissionEmail(
+            adminEmail,
+            ownerName,
+            owner?.email || "",
+            owner?.phone || "",
+            property.title,
+            property.id
+          );
+        } catch (emailError) {
+          console.error("Error sending new property submission email:", emailError);
+          // Don't fail property creation if the notification email fails
+        }
+      }
+
       res.status(201).json(property);
     } catch (error) {
       console.error("Error creating property:", error);
@@ -233,10 +273,48 @@ export async function registerRoutes(
       const { ownerId, ...updateData } = req.body;
       
       const property = await storage.updateProperty(req.params.id, updateData);
+
+      // If an admin is moving a listing out of "pending", let the owner know
+      // whether their property was approved or rejected.
+      if (isAdmin && existingProperty.status === "pending" && updateData.status && updateData.status !== "pending" && property) {
+        try {
+          if (property.ownerId) {
+            const owner = await storage.getUser(property.ownerId);
+            if (owner?.email) {
+              const ownerName = [owner.firstName, owner.lastName].filter(Boolean).join(" ");
+              if (updateData.status === "active") {
+                const { sendPropertyApprovedEmail } = await import("./email");
+                await sendPropertyApprovedEmail(owner.email, ownerName, property.title, property.id);
+              } else {
+                const { sendPropertyRejectedEmail } = await import("./email");
+                await sendPropertyRejectedEmail(owner.email, ownerName, property.title, updateData.rejectionReason || "");
+              }
+            }
+          }
+        } catch (emailError) {
+          console.error("Error sending property approval/rejection email:", emailError);
+          // Don't fail the update if the notification email fails
+        }
+      }
+
       res.json(property);
     } catch (error) {
       console.error("Error updating property:", error);
       res.status(500).json({ error: "Failed to update property" });
+    }
+  });
+
+  // Get count of properties pending admin approval (for sidebar/notification badge)
+  app.get("/api/admin/properties/pending-count", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(properties)
+        .where(eq(properties.status, "pending"));
+      res.json({ count: count || 0 });
+    } catch (error) {
+      console.error("Error fetching pending property count:", error);
+      res.status(500).json({ error: "Failed to fetch pending property count" });
     }
   });
 
