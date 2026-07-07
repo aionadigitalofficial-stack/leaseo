@@ -36,6 +36,7 @@ export interface IStorage {
 
   // Properties
   getProperties(filters?: PropertyFilters, sortBy?: string): Promise<Property[]>;
+  getPropertiesForAdmin(): Promise<(Property & { ownerEmail?: string; ownerPhone?: string })[]>;
   getProperty(id: string): Promise<Property | undefined>;
   getFeaturedProperties(limit?: number): Promise<Property[]>;
   getSimilarProperties(city: string, excludeId: string, limit?: number): Promise<Property[]>;
@@ -208,6 +209,45 @@ export class DatabaseStorage implements IStorage {
     }));
 
     return propertiesWithImages;
+  }
+
+  // Admin listing: returns properties of every status (active, pending, inactive, etc.)
+  // along with the owner's email/phone so the admin can review and contact them.
+  async getPropertiesForAdmin(): Promise<(PropertyWithImages & { ownerEmail?: string; ownerPhone?: string })[]> {
+    const result = await db
+      .select({
+        property: properties,
+        ownerEmail: users.email,
+        ownerPhone: users.phone,
+      })
+      .from(properties)
+      .leftJoin(users, eq(properties.ownerId, users.id))
+      .orderBy(desc(properties.createdAt));
+
+    if (result.length === 0) {
+      return [];
+    }
+
+    const propertyIds = result.map(r => r.property.id);
+    const allImages = await db
+      .select()
+      .from(propertyImages)
+      .where(sql`${propertyImages.propertyId} IN (${sql.join(propertyIds.map(id => sql`${id}`), sql`, `)})`)
+      .orderBy(sql`COALESCE(${propertyImages.isPrimary}, false) DESC`, propertyImages.displayOrder);
+
+    const imagesByPropertyId = new Map<string, string[]>();
+    for (const img of allImages) {
+      const existing = imagesByPropertyId.get(img.propertyId) || [];
+      existing.push(img.url);
+      imagesByPropertyId.set(img.propertyId, existing);
+    }
+
+    return result.map(({ property, ownerEmail, ownerPhone }) => ({
+      ...property,
+      images: imagesByPropertyId.get(property.id) || [],
+      ownerEmail: ownerEmail || undefined,
+      ownerPhone: ownerPhone || undefined,
+    }));
   }
 
   async getProperty(id: string): Promise<PropertyWithImages | undefined> {
