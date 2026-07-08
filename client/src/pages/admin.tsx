@@ -355,7 +355,7 @@ export default function AdminPage() {
   const [editingCategory, setEditingCategory] = useState<PropertyCategory | null>(null);
   
   // Property filter states
-  const [propertySegment, setPropertySegment] = useState<"all" | "pending" | "rent" | "buy" | "commercial">("all");
+  const [propertySegment, setPropertySegment] = useState<"all" | "rent" | "buy" | "commercial">("all");
   const [propertySearch, setPropertySearch] = useState("");
   const [propertyFilterCity, setPropertyFilterCity] = useState<string>("");
   const [propertyFilterLocality, setPropertyFilterLocality] = useState<string>("");
@@ -373,14 +373,8 @@ export default function AdminPage() {
   const ITEMS_PER_PAGE = 10;
 
   const { data: properties = [], isLoading: propertiesLoading } = useQuery<Property[]>({
-    queryKey: ["/api/admin/properties"],
+    queryKey: ["/api/properties"],
   });
-
-  const { data: pendingCountData } = useQuery<{ count: number }>({
-    queryKey: ["/api/admin/properties/pending-count"],
-    refetchInterval: 60000,
-  });
-  const pendingPropertyCount = pendingCountData?.count ?? properties.filter(p => p.status === "pending").length;
 
   const { data: enquiries = [], isLoading: enquiriesLoading } = useQuery<Enquiry[]>({
     queryKey: ["/api/enquiries"],
@@ -598,8 +592,6 @@ export default function AdminPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/properties"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/properties/pending-count"] });
       setIsAddPropertyOpen(false);
       propertyForm.reset();
       toast({ title: "Property created successfully" });
@@ -613,19 +605,11 @@ export default function AdminPage() {
     mutationFn: async ({ id, data }: { id: string; data: Partial<Property> }) => {
       return apiRequest("PATCH", `/api/properties/${id}`, data);
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/properties"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/properties/pending-count"] });
       setEditingProperty(null);
       propertyForm.reset();
-      if (variables?.data?.status === "active") {
-        toast({ title: "Property approved", description: "It's now live on the site." });
-      } else if (variables?.data?.status && variables.data.status !== "pending") {
-        toast({ title: "Property status updated" });
-      } else {
-        toast({ title: "Property updated successfully" });
-      }
+      toast({ title: "Property updated successfully" });
     },
     onError: () => {
       toast({ title: "Failed to update property", variant: "destructive" });
@@ -636,8 +620,6 @@ export default function AdminPage() {
     mutationFn: async (id: string) => apiRequest("DELETE", `/api/properties/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/properties"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/properties/pending-count"] });
       toast({ title: "Property deleted" });
     },
   });
@@ -1365,56 +1347,24 @@ export default function AdminPage() {
               </div>
             </TableCell>
             <TableCell>
-              {property.status === "pending" ? (
-                <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100">
-                  Awaiting Approval
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={property.status === "active"}
+                  onCheckedChange={(checked) => {
+                    updatePropertyMutation.mutate({
+                      id: property.id,
+                      data: { status: checked ? "active" : "inactive" } as any,
+                    });
+                  }}
+                  data-testid={`switch-property-status-${property.id}`}
+                />
+                <Badge variant={property.status === "active" ? "default" : "secondary"} className="text-xs">
+                  {property.status}
                 </Badge>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={property.status === "active"}
-                    onCheckedChange={(checked) => {
-                      updatePropertyMutation.mutate({
-                        id: property.id,
-                        data: { status: checked ? "active" : "inactive" } as any,
-                      });
-                    }}
-                    data-testid={`switch-property-status-${property.id}`}
-                  />
-                  <Badge variant={property.status === "active" ? "default" : "secondary"} className="text-xs">
-                    {property.status}
-                  </Badge>
-                </div>
-              )}
+              </div>
             </TableCell>
             <TableCell className="text-right">
               <div className="flex justify-end gap-1">
-                {property.status === "pending" && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="default"
-                      className="bg-green-600 hover:bg-green-700"
-                      onClick={() => updatePropertyMutation.mutate({ id: property.id, data: { status: "active" } as any })}
-                      disabled={updatePropertyMutation.isPending}
-                      data-testid={`button-approve-property-${property.id}`}
-                    >
-                      <Check className="h-4 w-4 mr-1" />
-                      Approve
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-destructive border-destructive hover:bg-destructive/10"
-                      onClick={() => updatePropertyMutation.mutate({ id: property.id, data: { status: "inactive" } as any })}
-                      disabled={updatePropertyMutation.isPending}
-                      data-testid={`button-reject-property-${property.id}`}
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      Reject
-                    </Button>
-                  </>
-                )}
                 <Button 
                   size="icon" 
                   variant="ghost"
@@ -1451,7 +1401,6 @@ export default function AdminPage() {
     const rentProperties = filteredProperties.filter(p => p.listingType === "rent" && !p.isCommercial);
     const buyProperties = filteredProperties.filter(p => p.listingType === "sale" && !p.isCommercial);
     const commercialProperties = filteredProperties.filter(p => p.isCommercial);
-    const pendingProperties = filteredProperties.filter(p => p.status === "pending");
     
     return (
       <div className="space-y-6">
@@ -1608,15 +1557,9 @@ export default function AdminPage() {
 
         {/* Property Tabs by Segment */}
         <Tabs value={propertySegment} onValueChange={(v) => { setPropertySegment(v as any); setPropertyPage(1); }} className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="all" data-testid="tab-all-properties">
               All ({filteredProperties.length})
-            </TabsTrigger>
-            <TabsTrigger value="pending" data-testid="tab-pending-properties" className="relative">
-              Pending ({pendingProperties.length})
-              {pendingProperties.length > 0 && (
-                <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-amber-500" />
-              )}
             </TabsTrigger>
             <TabsTrigger value="rent" data-testid="tab-rent-properties">
               Rent ({rentProperties.length})
@@ -1628,25 +1571,6 @@ export default function AdminPage() {
               Commercial ({commercialProperties.length})
             </TabsTrigger>
           </TabsList>
-          
-          <TabsContent value="pending" className="mt-4">
-            <Card>
-              <CardContent className="pt-6">
-                {propertiesLoading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
-                  </div>
-                ) : pendingProperties.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Check className="h-12 w-12 text-green-600 mx-auto mb-4" />
-                    <p className="text-muted-foreground">No properties waiting for approval</p>
-                  </div>
-                ) : (
-                  renderPropertyTable(pendingProperties)
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
           
           <TabsContent value="all" className="mt-4">
             <Card>
@@ -4739,20 +4663,8 @@ export default function AdminPage() {
                 onClick={() => setActiveSection(item.id)}
                 data-testid={`nav-${item.id}`}
               >
-                <div className="relative flex-shrink-0">
-                  <Icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
-                  {item.id === "properties" && pendingPropertyCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white">
-                      {pendingPropertyCount > 9 ? "9+" : pendingPropertyCount}
-                    </span>
-                  )}
-                </div>
+                <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? "text-primary" : ""}`} />
                 {!sidebarCollapsed && <span className={isActive ? "font-medium" : ""}>{item.label}</span>}
-                {!sidebarCollapsed && item.id === "properties" && pendingPropertyCount > 0 && (
-                  <Badge variant="secondary" className="ml-auto bg-amber-100 text-amber-800 text-[10px] h-5 px-1.5">
-                    {pendingPropertyCount} pending
-                  </Badge>
-                )}
               </Button>
             );
           })}
