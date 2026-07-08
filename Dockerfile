@@ -13,7 +13,7 @@ COPY . .
 RUN npm run build
 
 # Expose app port
-EXPOSE 3001
+EXPOSE 3000
 
 # Start production server
 CMD ["node", "dist/index.cjs"]
