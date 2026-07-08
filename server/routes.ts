@@ -213,7 +213,7 @@ export async function registerRoutes(
 
       // New listings from regular customers must be reviewed by an admin before
       // they go live. Admins posting directly are published immediately.
-      const isAdminSubmission = req.user?.activeRoleId === "admin";
+      const isAdminSubmission = req.user?.isAdmin === true;
       body.status = isAdminSubmission ? (body.status || "active") : "pending";
 
       const validationResult = insertPropertySchema.safeParse(body);
@@ -264,7 +264,7 @@ export async function registerRoutes(
       }
       
       // Verify ownership (unless admin)
-      const isAdmin = req.user?.activeRoleId === "admin";
+      const isAdmin = req.user?.isAdmin === true;
       if (!isAdmin && existingProperty.ownerId !== req.user?.id) {
         return res.status(403).json({ error: "You don't have permission to update this property" });
       }
