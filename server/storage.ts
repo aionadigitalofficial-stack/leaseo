@@ -2,10 +2,12 @@ import {
   users,
   properties,
   propertyImages,
+  propertyDocuments,
   enquiries,
   shortlists,
   reports,
   featureFlags,
+  listingAuditLogs,
   type User,
   type InsertUser,
   type Property,
@@ -19,9 +21,12 @@ import {
   type FeatureFlag,
   type InsertFeatureFlag,
   type PropertyFilters,
+  type ListingAuditLog,
+  type PropertyDocument,
+  type InsertPropertyDocument,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, ilike, sql, desc, asc, ne } from "drizzle-orm";
+import { eq, and, gte, lte, ilike, sql, desc, asc, ne, isNull, inArray } from "drizzle-orm";
 
 // Extended property type with images array
 export interface PropertyWithImages extends Property {
@@ -33,16 +38,41 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUserProfile(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
 
   // Properties
   getProperties(filters?: PropertyFilters, sortBy?: string): Promise<Property[]>;
-  getPropertiesForAdmin(): Promise<(Property & { ownerEmail?: string; ownerPhone?: string })[]>;
+  getPropertiesForAdmin(includeDeleted?: boolean): Promise<(Property & { ownerEmail?: string; ownerPhone?: string })[]>;
   getProperty(id: string): Promise<Property | undefined>;
   getFeaturedProperties(limit?: number): Promise<Property[]>;
   getSimilarProperties(city: string, excludeId: string, limit?: number): Promise<Property[]>;
-  createProperty(property: InsertProperty): Promise<Property>;
+  createProperty(property: InsertProperty & { submissionIp?: string | null; submissionUserAgent?: string | null }): Promise<Property>;
   updateProperty(id: string, property: Partial<InsertProperty>): Promise<Property | undefined>;
-  deleteProperty(id: string): Promise<boolean>;
+  // Listings are never hard-deleted (Issue #2) - this marks the listing
+  // inactive and records who deleted it, keeping every field intact.
+  softDeleteProperty(id: string, deletedBy: string, deletedByRole: "user" | "admin"): Promise<Property | undefined>;
+  restoreProperty(id: string): Promise<Property | undefined>;
+  countActiveListingsForOwner(ownerId: string): Promise<number>;
+
+  // Listing audit trail (Issue #2 / #4)
+  createListingAuditLog(entry: {
+    propertyId: string;
+    action: "created" | "updated" | "status_changed" | "deleted" | "restored" | "flagged";
+    actorId?: string | null;
+    actorRole: "user" | "admin" | "system";
+    snapshot?: unknown;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    notes?: string | null;
+  }): Promise<ListingAuditLog>;
+  getListingAuditLogs(propertyId: string): Promise<ListingAuditLog[]>;
+  getAllListingAuditLogs(limit?: number): Promise<ListingAuditLog[]>;
+
+  // Broker-abuse flagging (Issue #4)
+  getFlaggedUsers(): Promise<(User & { activeListingCount: number })[]>;
+  flagUser(userId: string, reason: string): Promise<void>;
+  clearUserFlag(userId: string): Promise<void>;
+  warnUser(userId: string): Promise<void>;
 
   // Enquiries
   getEnquiries(): Promise<Enquiry[]>;
@@ -50,8 +80,21 @@ export interface IStorage {
   createEnquiry(enquiry: InsertEnquiry): Promise<Enquiry>;
   updateEnquiryStatus(id: string, status: string): Promise<Enquiry | undefined>;
 
-  // Shortlists (Saved Properties)
-  getShortlists(userId: string): Promise<Shortlist[]>;
+  // Shortlists (Saved Properties) - enriched with property details
+  getShortlists(userId: string): Promise<(Shortlist & {
+    property: {
+      id: string;
+      title: string;
+      rent: string | null;
+      bedrooms: number | null;
+      bathrooms: string | null;
+      squareFeet: number | null;
+      furnishing: string | null;
+      city: string;
+      locality: string;
+      status: string;
+    };
+  })[]>;
   addToShortlist(data: InsertShortlist): Promise<Shortlist>;
   removeFromShortlist(userId: string, propertyId: string): Promise<boolean>;
 
@@ -63,13 +106,22 @@ export interface IStorage {
   // Owner Dashboard
   getOwnerProperties(ownerId: string): Promise<Property[]>;
   getOwnerEnquiries(ownerId: string): Promise<Enquiry[]>;
-  getTenantEnquiries(tenantId: string): Promise<Enquiry[]>;
+  getTenantEnquiries(tenantId: string): Promise<(Enquiry & {
+    propertyTitle: string;
+    ownerName: string;
+    ownerPhone: string | null;
+  })[]>;
 
   // Feature Flags
   getFeatureFlags(): Promise<FeatureFlag[]>;
   getFeatureFlag(name: string): Promise<FeatureFlag | undefined>;
   createFeatureFlag(flag: InsertFeatureFlag): Promise<FeatureFlag>;
   updateFeatureFlag(id: string, enabled: boolean): Promise<FeatureFlag | undefined>;
+
+  // Property Documents (optional supporting docs - never required to list)
+  addPropertyDocument(data: InsertPropertyDocument): Promise<PropertyDocument>;
+  getPropertyDocuments(propertyId: string): Promise<PropertyDocument[]>;
+  deletePropertyDocument(id: string): Promise<PropertyDocument | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -87,6 +139,15 @@ export class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async updateUserProfile(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
+    const [updated] = await db
+      .update(users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return updated || undefined;
   }
 
   // Properties
@@ -160,8 +221,10 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Add status = active by default
+    // Add status = active by default, and always exclude soft-deleted listings
+    // (Issue #2: a deleted listing must never reappear on the public site)
     conditions.push(eq(properties.status, "active"));
+    conditions.push(isNull(properties.deletedAt));
 
     let result;
     if (conditions.length > 0) {
@@ -213,16 +276,21 @@ export class DatabaseStorage implements IStorage {
 
   // Admin listing: returns properties of every status (active, pending, inactive, etc.)
   // along with the owner's email/phone so the admin can review and contact them.
-  async getPropertiesForAdmin(): Promise<(PropertyWithImages & { ownerEmail?: string; ownerPhone?: string })[]> {
-    const result = await db
+  // By default soft-deleted listings are excluded (they live in their own
+  // "Deleted" view - see includeDeleted=true) but are NEVER hard-removed.
+  async getPropertiesForAdmin(includeDeleted: boolean = false): Promise<(PropertyWithImages & { ownerEmail?: string; ownerPhone?: string })[]> {
+    const baseQuery = db
       .select({
         property: properties,
         ownerEmail: users.email,
         ownerPhone: users.phone,
       })
       .from(properties)
-      .leftJoin(users, eq(properties.ownerId, users.id))
-      .orderBy(desc(properties.createdAt));
+      .leftJoin(users, eq(properties.ownerId, users.id));
+
+    const result = includeDeleted
+      ? await baseQuery.orderBy(desc(properties.createdAt))
+      : await baseQuery.where(isNull(properties.deletedAt)).orderBy(desc(properties.createdAt));
 
     if (result.length === 0) {
       return [];
@@ -249,6 +317,7 @@ export class DatabaseStorage implements IStorage {
       ownerPhone: ownerPhone || undefined,
     }));
   }
+
 
   async getProperty(id: string): Promise<PropertyWithImages | undefined> {
     const [property] = await db.select().from(properties).where(eq(properties.id, id));
@@ -317,8 +386,8 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
-  async createProperty(property: InsertProperty): Promise<Property> {
-    const [newProperty] = await db.insert(properties).values(property).returning();
+  async createProperty(property: InsertProperty & { submissionIp?: string | null; submissionUserAgent?: string | null }): Promise<Property> {
+    const [newProperty] = await db.insert(properties).values(property as any).returning();
     return newProperty;
   }
 
@@ -331,9 +400,135 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
-  async deleteProperty(id: string): Promise<boolean> {
-    const result = await db.delete(properties).where(eq(properties.id, id)).returning();
-    return result.length > 0;
+  // Issue #2: never hard-delete a listing. Mark it inactive and record who
+  // deleted it and when; every field (title, description, pricing, owner
+  // link, etc.) stays exactly as it was, permanently, in this same row.
+  async softDeleteProperty(id: string, deletedBy: string, deletedByRole: "user" | "admin"): Promise<Property | undefined> {
+    const [updated] = await db
+      .update(properties)
+      .set({
+        status: "inactive",
+        deletedAt: new Date(),
+        deletedBy,
+        deletedByRole,
+        updatedAt: new Date(),
+      })
+      .where(eq(properties.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async restoreProperty(id: string): Promise<Property | undefined> {
+    const [updated] = await db
+      .update(properties)
+      .set({
+        status: "active",
+        deletedAt: null,
+        deletedBy: null,
+        deletedByRole: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(properties.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  // Issue #4: how many currently-live listings does this owner have right
+  // now - used to enforce the 2-active-listing cap per verified phone number.
+  async countActiveListingsForOwner(ownerId: string): Promise<number> {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(properties)
+      .where(
+        and(
+          eq(properties.ownerId, ownerId),
+          isNull(properties.deletedAt),
+          sql`${properties.status} IN ('active', 'pending')`
+        )
+      );
+    return count || 0;
+  }
+
+  // Listing audit trail (Issue #2 / #4) - permanent, never trimmed or deleted
+  async createListingAuditLog(entry: {
+    propertyId: string;
+    action: "created" | "updated" | "status_changed" | "deleted" | "restored" | "flagged";
+    actorId?: string | null;
+    actorRole: "user" | "admin" | "system";
+    snapshot?: unknown;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    notes?: string | null;
+  }): Promise<ListingAuditLog> {
+    const [log] = await db.insert(listingAuditLogs).values({
+      propertyId: entry.propertyId,
+      action: entry.action as any,
+      actorId: entry.actorId || null,
+      actorRole: entry.actorRole as any,
+      snapshot: entry.snapshot ?? null,
+      ipAddress: entry.ipAddress || null,
+      userAgent: entry.userAgent || null,
+      notes: entry.notes || null,
+    }).returning();
+    return log;
+  }
+
+  async getListingAuditLogs(propertyId: string): Promise<ListingAuditLog[]> {
+    return await db
+      .select()
+      .from(listingAuditLogs)
+      .where(eq(listingAuditLogs.propertyId, propertyId))
+      .orderBy(desc(listingAuditLogs.createdAt));
+  }
+
+  async getAllListingAuditLogs(limit: number = 200): Promise<ListingAuditLog[]> {
+    return await db
+      .select()
+      .from(listingAuditLogs)
+      .orderBy(desc(listingAuditLogs.createdAt))
+      .limit(limit);
+  }
+
+  // Broker-abuse flagging (Issue #4)
+  async getFlaggedUsers(): Promise<(User & { activeListingCount: number })[]> {
+    const flaggedUsers = await db.select().from(users).where(eq(users.isFlagged, true));
+    if (flaggedUsers.length === 0) return [];
+
+    const counts = await db
+      .select({
+        ownerId: properties.ownerId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(properties)
+      .where(
+        and(
+          isNull(properties.deletedAt),
+          sql`${properties.status} IN ('active', 'pending')`,
+          inArray(properties.ownerId, flaggedUsers.map(u => u.id))
+        )
+      )
+      .groupBy(properties.ownerId);
+
+    const countByOwner = new Map(counts.map(c => [c.ownerId, c.count]));
+    return flaggedUsers.map(u => ({ ...u, activeListingCount: countByOwner.get(u.id) || 0 }));
+  }
+
+  async flagUser(userId: string, reason: string): Promise<void> {
+    await db.update(users)
+      .set({ isFlagged: true, flaggedAt: new Date(), flagReason: reason })
+      .where(eq(users.id, userId));
+  }
+
+  async clearUserFlag(userId: string): Promise<void> {
+    await db.update(users)
+      .set({ isFlagged: false, flaggedAt: null, flagReason: null })
+      .where(eq(users.id, userId));
+  }
+
+  async warnUser(userId: string): Promise<void> {
+    await db.update(users)
+      .set({ warnedAt: new Date() })
+      .where(eq(users.id, userId));
   }
 
   // Enquiries
@@ -360,12 +555,47 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
-  // Shortlists
-  async getShortlists(userId: string): Promise<Shortlist[]> {
-    return await db
-      .select()
+  // Shortlists - enriched with the property's core details so the tenant
+  // dashboard can render a real card without a second round-trip per item.
+  async getShortlists(userId: string): Promise<(Shortlist & {
+    property: {
+      id: string;
+      title: string;
+      rent: string | null;
+      bedrooms: number | null;
+      bathrooms: string | null;
+      squareFeet: number | null;
+      furnishing: string | null;
+      city: string;
+      locality: string;
+      status: string;
+    };
+  })[]> {
+    const rows = await db
+      .select({
+        shortlist: shortlists,
+        property: properties,
+      })
       .from(shortlists)
-      .where(eq(shortlists.userId, userId));
+      .innerJoin(properties, eq(shortlists.propertyId, properties.id))
+      .where(eq(shortlists.userId, userId))
+      .orderBy(desc(shortlists.createdAt));
+
+    return rows.map(({ shortlist, property }) => ({
+      ...shortlist,
+      property: {
+        id: property.id,
+        title: property.title,
+        rent: property.rent,
+        bedrooms: property.bedrooms,
+        bathrooms: property.bathrooms,
+        squareFeet: property.squareFeet,
+        furnishing: property.furnishing,
+        city: property.city,
+        locality: property.address?.split(",")[0]?.trim() || property.city,
+        status: property.status,
+      },
+    }));
   }
 
   async addToShortlist(data: InsertShortlist): Promise<Shortlist> {
@@ -456,16 +686,59 @@ export class DatabaseStorage implements IStorage {
     const propertyIds = ownerProperties.map(p => p.id);
     if (propertyIds.length === 0) return [];
 
-    const allEnquiries = await db.select().from(enquiries).orderBy(desc(enquiries.createdAt));
-    return allEnquiries.filter(e => propertyIds.includes(e.propertyId));
-  }
-
-  async getTenantEnquiries(tenantId: string): Promise<Enquiry[]> {
     return await db
       .select()
       .from(enquiries)
+      .where(inArray(enquiries.propertyId, propertyIds))
+      .orderBy(desc(enquiries.createdAt));
+  }
+
+  // Enriched with property title + owner contact so the tenant dashboard
+  // can show real enquiry history instead of the previous hardcoded mocks.
+  async getTenantEnquiries(tenantId: string): Promise<(Enquiry & {
+    propertyTitle: string;
+    ownerName: string;
+    ownerPhone: string | null;
+  })[]> {
+    const rows = await db
+      .select({
+        enquiry: enquiries,
+        propertyTitle: properties.title,
+        ownerFirstName: users.firstName,
+        ownerLastName: users.lastName,
+        ownerPhone: users.phone,
+      })
+      .from(enquiries)
+      .leftJoin(properties, eq(enquiries.propertyId, properties.id))
+      .leftJoin(users, eq(properties.ownerId, users.id))
       .where(eq(enquiries.userId, tenantId))
       .orderBy(desc(enquiries.createdAt));
+
+    return rows.map(({ enquiry, propertyTitle, ownerFirstName, ownerLastName, ownerPhone }) => ({
+      ...enquiry,
+      propertyTitle: propertyTitle || "Property",
+      ownerName: [ownerFirstName, ownerLastName].filter(Boolean).join(" ") || "Property Owner",
+      ownerPhone,
+    }));
+  }
+
+  // Property Documents (optional supporting docs - never required to list)
+  async addPropertyDocument(data: InsertPropertyDocument): Promise<PropertyDocument> {
+    const [doc] = await db.insert(propertyDocuments).values(data).returning();
+    return doc;
+  }
+
+  async getPropertyDocuments(propertyId: string): Promise<PropertyDocument[]> {
+    return await db
+      .select()
+      .from(propertyDocuments)
+      .where(eq(propertyDocuments.propertyId, propertyId))
+      .orderBy(desc(propertyDocuments.createdAt));
+  }
+
+  async deletePropertyDocument(id: string): Promise<PropertyDocument | undefined> {
+    const [deleted] = await db.delete(propertyDocuments).where(eq(propertyDocuments.id, id)).returning();
+    return deleted || undefined;
   }
 
   // Initialize default feature flags

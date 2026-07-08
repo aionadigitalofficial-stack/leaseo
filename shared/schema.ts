@@ -55,7 +55,32 @@ export const reportReasonEnum = pgEnum("report_reason", [
   "already_rented",
   "scam",
   "inappropriate_content",
+  "broker_listing",
   "other"
+]);
+
+// Who/what performed a listing action - used by the audit trail (Issue #2 / #4)
+export const actorRoleEnum = pgEnum("actor_role", [
+  "user",
+  "admin",
+  "system"
+]);
+
+// Every mutation a listing goes through - used by the audit trail (Issue #2 / #4)
+export const listingAuditActionEnum = pgEnum("listing_audit_action", [
+  "created",
+  "updated",
+  "status_changed",
+  "deleted",
+  "restored",
+  "flagged"
+]);
+
+// The three user types captured during mandatory profile completion (Issue #3)
+export const userTypeEnum = pgEnum("user_type", [
+  "owner",
+  "tenant",
+  "builder_developer"
 ]);
 
 export const reportStatusEnum = pgEnum("report_status", [
@@ -150,7 +175,19 @@ export const users = pgTable("users", {
   // Status
   isActive: boolean("is_active").default(true),
   profileCompleted: boolean("profile_completed").default(false),
-  
+
+  // Mandatory profile field (Issue #3): what kind of user this is.
+  // Required, along with a verified email + phone, before the user is
+  // allowed to post a listing - see isProfileReadyToList() in server/routes.ts
+  userType: userTypeEnum("user_type"),
+
+  // Broker-abuse flagging (Issue #4): set automatically when a phone/email
+  // is associated with more listings than allowed, reviewed by an admin.
+  isFlagged: boolean("is_flagged").default(false),
+  flaggedAt: timestamp("flagged_at"),
+  flagReason: text("flag_reason"),
+  warnedAt: timestamp("warned_at"),
+
   // Metadata
   metadata: jsonb("metadata"),
   lastLoginAt: timestamp("last_login_at"),
@@ -159,6 +196,7 @@ export const users = pgTable("users", {
 }, (table) => [
   index("users_phone_idx").on(table.phone),
   index("users_email_idx").on(table.email),
+  index("users_flagged_idx").on(table.isFlagged),
 ]);
 
 // ==================== USER ROLES (JOIN TABLE) ====================
@@ -264,6 +302,23 @@ export const properties = pgTable("properties", {
   expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+
+  // ---- Soft delete (Issue #2) ----
+  // A listing is NEVER hard-deleted from the database. Deleting sets these
+  // fields and flips status to "inactive" instead of removing the row, so
+  // the data (and the full audit trail in listing_audit_logs) is retained.
+  deletedAt: timestamp("deleted_at"),
+  deletedBy: varchar("deleted_by").references(() => users.id),
+  deletedByRole: text("deleted_by_role"), // 'user' | 'admin'
+
+  // ---- Broker declaration (Issue #4) ----
+  // Mandatory "I am the owner, not a broker" checkbox captured at submission.
+  brokerDeclarationConfirmed: boolean("broker_declaration_confirmed").default(false),
+  brokerDeclarationAt: timestamp("broker_declaration_at"),
+
+  // ---- Submission metadata for the audit trail (Issue #4) ----
+  submissionIp: text("submission_ip"),
+  submissionUserAgent: text("submission_user_agent"),
 }, (table) => [
   index("properties_city_idx").on(table.cityId),
   index("properties_locality_idx").on(table.localityId),
@@ -272,6 +327,7 @@ export const properties = pgTable("properties", {
   index("properties_commercial_idx").on(table.isCommercial),
   index("properties_status_idx").on(table.status),
   index("properties_owner_idx").on(table.ownerId),
+  index("properties_deleted_idx").on(table.deletedAt),
 ]);
 
 // ==================== PROPERTY IMAGES TABLE ====================
@@ -289,6 +345,64 @@ export const propertyImages = pgTable("property_images", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("property_images_property_idx").on(table.propertyId),
+]);
+
+// ==================== LISTING AUDIT LOGS TABLE ====================
+// Full, permanent audit trail for every listing action (Issue #2 & #4).
+// Rows here are NEVER deleted, including for listings that were later
+// soft-deleted - this is what "we have zero visibility into our own
+// platform activity" (Issue #2) and the broker audit-trail requirement
+// (Issue #4) are solved with.
+
+export const listingAuditLogs = pgTable("listing_audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id").references(() => properties.id).notNull(),
+  action: listingAuditActionEnum("action").notNull(),
+
+  // Who did it
+  actorId: varchar("actor_id").references(() => users.id),
+  actorRole: actorRoleEnum("actor_role").notNull().default("user"),
+
+  // A point-in-time copy of the listing + poster contact details, so this
+  // remains readable even after the listing itself is edited or deleted.
+  snapshot: jsonb("snapshot"),
+
+  // Request metadata captured at the time of the action
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("listing_audit_property_idx").on(table.propertyId),
+  index("listing_audit_actor_idx").on(table.actorId),
+  index("listing_audit_action_idx").on(table.action),
+  index("listing_audit_created_idx").on(table.createdAt),
+]);
+
+// ==================== PROPERTY DOCUMENTS TABLE ====================
+// Optional supporting documents (ownership proof, tax receipt, society NOC,
+// etc.) an owner can attach to a listing to help admins verify it faster.
+// Never required to submit a listing - purely optional, per request.
+
+export const propertyDocumentTypeEnum = pgEnum("property_document_type", [
+  "ownership_proof",
+  "tax_receipt",
+  "noc",
+  "identity_proof",
+  "other",
+]);
+
+export const propertyDocuments = pgTable("property_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id").references(() => properties.id).notNull(),
+  documentType: propertyDocumentTypeEnum("document_type").notNull().default("other"),
+  fileName: text("file_name").notNull(),
+  url: text("url").notNull(),
+  uploadedBy: varchar("uploaded_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("property_documents_property_idx").on(table.propertyId),
 ]);
 
 // ==================== PROPERTY CATEGORIES TABLE ====================
@@ -674,16 +788,40 @@ export const propertiesRelations = relations(properties, ({ one, many }) => ({
     references: [localities.id],
   }),
   images: many(propertyImages),
+  documents: many(propertyDocuments),
   enquiries: many(enquiries),
   shortlistedBy: many(shortlists),
   reports: many(reports),
   boosts: many(listingBoosts),
+  auditLogs: many(listingAuditLogs),
 }));
 
 export const propertyImagesRelations = relations(propertyImages, ({ one }) => ({
   property: one(properties, {
     fields: [propertyImages.propertyId],
     references: [properties.id],
+  }),
+}));
+
+export const propertyDocumentsRelations = relations(propertyDocuments, ({ one }) => ({
+  property: one(properties, {
+    fields: [propertyDocuments.propertyId],
+    references: [properties.id],
+  }),
+  uploader: one(users, {
+    fields: [propertyDocuments.uploadedBy],
+    references: [users.id],
+  }),
+}));
+
+export const listingAuditLogsRelations = relations(listingAuditLogs, ({ one }) => ({
+  property: one(properties, {
+    fields: [listingAuditLogs.propertyId],
+    references: [properties.id],
+  }),
+  actor: one(users, {
+    fields: [listingAuditLogs.actorId],
+    references: [users.id],
   }),
 }));
 
@@ -785,6 +923,10 @@ export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+  isFlagged: true,
+  flaggedAt: true,
+  flagReason: true,
+  warnedAt: true,
 });
 
 export const insertUserRoleSchema = createInsertSchema(userRoles).omit({
@@ -807,9 +949,26 @@ export const insertPropertySchema = createInsertSchema(properties).omit({
   createdAt: true,
   updatedAt: true,
   viewCount: true,
+  // Soft-delete state and submission metadata are set by the server, never
+  // taken directly from client input - see server/routes.ts
+  deletedAt: true,
+  deletedBy: true,
+  deletedByRole: true,
+  submissionIp: true,
+  submissionUserAgent: true,
+});
+
+export const insertListingAuditLogSchema = createInsertSchema(listingAuditLogs).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertPropertyImageSchema = createInsertSchema(propertyImages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPropertyDocumentSchema = createInsertSchema(propertyDocuments).omit({
   id: true,
   createdAt: true,
 });
@@ -894,8 +1053,14 @@ export type Locality = typeof localities.$inferSelect;
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type Property = typeof properties.$inferSelect;
 
+export type InsertListingAuditLog = z.infer<typeof insertListingAuditLogSchema>;
+export type ListingAuditLog = typeof listingAuditLogs.$inferSelect;
+
 export type InsertPropertyImage = z.infer<typeof insertPropertyImageSchema>;
 export type PropertyImage = typeof propertyImages.$inferSelect;
+
+export type InsertPropertyDocument = z.infer<typeof insertPropertyDocumentSchema>;
+export type PropertyDocument = typeof propertyDocuments.$inferSelect;
 
 export type InsertEnquiry = z.infer<typeof insertEnquirySchema>;
 export type Enquiry = typeof enquiries.$inferSelect;

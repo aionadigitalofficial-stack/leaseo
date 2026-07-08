@@ -1,10 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, permissions, rolePermissions, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyCategories, listingBoosts, payments, enquiries, paymentProviders, notificationProviders, siteSettings } from "@shared/schema";
-import { and, gt, eq, desc, asc, sql, isNotNull } from "drizzle-orm";
+import { insertPropertySchema, insertEnquirySchema, users, roles, userRoles, permissions, rolePermissions, blogPosts, pageContents, pageVersions, otpRequests, cities, localities, properties, propertyImages, propertyDocuments, propertyCategories, listingBoosts, payments, enquiries, paymentProviders, notificationProviders, siteSettings } from "@shared/schema";
+import { and, gt, eq, desc, asc, sql, isNotNull, isNull, inArray } from "drizzle-orm";
 import type { PropertyFilters } from "@shared/schema";
-import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedAdminUser, seedTestUsers } from "./auth";
+import { hashPassword, verifyPassword, generateToken, getAuthUser, authMiddleware, adminMiddleware, optionalAuthMiddleware, verifyToken, seedRoles, seedAdminUser, seedTestUsers } from "./auth";
 import { db } from "./db";
 import DOMPurify from "isomorphic-dompurify";
 // Use local storage for VPS deployment (Replit object storage removed)
@@ -16,6 +16,36 @@ const sanitizeHtml = (html: string): string => {
     ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'a', 'br', 'p', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li'],
     ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style'],
   });
+};
+
+// Best-effort client IP, used only for the listing audit trail (Issue #4).
+// Not a security control by itself - req.ip already respects Express's
+// "trust proxy" setting for X-Forwarded-For.
+const getClientIp = (req: any): string => {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.length > 0) {
+    return forwarded.split(",")[0].trim();
+  }
+  return req.ip || req.socket?.remoteAddress || "unknown";
+};
+
+// Issue #3: the mandatory-profile-completion check used before a listing
+// can be posted. Requires a name, a user type, and BOTH email + phone
+// verified via OTP - not just filled in.
+const isProfileReadyToList = (user: {
+  firstName: string | null;
+  lastName: string | null;
+  userType: string | null;
+  emailVerifiedAt: Date | null;
+  phoneVerifiedAt: Date | null;
+  phone: string | null;
+}): { ready: boolean; missing: string[] } => {
+  const missing: string[] = [];
+  if (!user.firstName || !user.lastName) missing.push("name");
+  if (!user.userType) missing.push("userType");
+  if (!user.phone || !user.phoneVerifiedAt) missing.push("phoneVerification");
+  if (!user.emailVerifiedAt) missing.push("emailVerification");
+  return { ready: missing.length === 0, missing };
 };
 
 const sanitizePageContent = (content: unknown): unknown => {
@@ -50,8 +80,9 @@ export async function registerRoutes(
   registerObjectStorageRoutes(app);
 
   // ==================== VPS DEPLOYMENT DOWNLOAD ====================
-  // Serve the VPS deployment zip file for download
-  app.get("/api/download/vps-deploy", async (req, res) => {
+  // Serve the VPS deployment zip file for download (admin only - this
+  // archive contains the full source tree and must not be public)
+  app.get("/api/download/vps-deploy", authMiddleware, adminMiddleware, async (req, res) => {
     const { join } = await import("path");
     const { existsSync, createReadStream } = await import("fs");
     const zipPath = join(process.cwd(), "leaseo-vps-deploy.zip");
@@ -174,9 +205,11 @@ export async function registerRoutes(
   // Admin: get ALL properties regardless of status (active, pending, inactive, etc.)
   // The public /api/properties endpoint only ever returns "active" listings, so
   // the admin panel needs its own endpoint to see and approve pending submissions.
+  // Pass ?includeDeleted=true to also see soft-deleted listings (Issue #2).
   app.get("/api/admin/properties", authMiddleware, adminMiddleware, async (req, res) => {
     try {
-      const allProperties = await storage.getPropertiesForAdmin();
+      const includeDeleted = req.query.includeDeleted === "true";
+      const allProperties = await storage.getPropertiesForAdmin(includeDeleted);
       res.json(allProperties);
     } catch (error) {
       console.error("Error fetching properties for admin:", error);
@@ -198,23 +231,75 @@ export async function registerRoutes(
     }
   });
 
-  // Create new property - requires authentication
+  // Create new property - requires authentication, a completed & verified
+  // profile, the broker declaration checkbox, and stays under the active-
+  // listing cap (Issues #1, #3, #4)
   app.post("/api/properties", authMiddleware, async (req, res) => {
     try {
+      // NOTE: req.user.activeRoleId is a UUID, never the literal string
+      // "admin" - the previous check here (`activeRoleId === "admin"`)
+      // could never be true, so admin submissions were incorrectly treated
+      // as regular customer submissions. req.user.isAdmin is the correct,
+      // already-computed boolean for this.
+      const isAdminSubmission = !!req.user!.isAdmin;
+
+      if (!isAdminSubmission) {
+        const currentUser = await storage.getUser(req.user!.id);
+        if (!currentUser) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        // Issue #3: profile must be complete (name, user type) and both
+        // email + phone must be OTP-verified before a listing can be posted.
+        const { ready, missing } = isProfileReadyToList(currentUser);
+        if (!ready) {
+          return res.status(403).json({
+            error: "PROFILE_INCOMPLETE",
+            message: "Please complete your profile before posting a listing.",
+            missing,
+            redirectTo: "/profile/complete",
+          });
+        }
+
+        // Issue #4: mandatory "I am the owner, not a broker" declaration
+        if (req.body.brokerDeclarationConfirmed !== true) {
+          return res.status(400).json({
+            error: "DECLARATION_REQUIRED",
+            message: "You must confirm that you are the direct owner of this property and are not acting as a broker or agent.",
+          });
+        }
+
+        // Issue #4: a single verified account/phone number may not have
+        // more than 2 active listings at a time
+        const activeCount = await storage.countActiveListingsForOwner(req.user!.id);
+        if (activeCount >= 2) {
+          return res.status(403).json({
+            error: "LISTING_LIMIT_REACHED",
+            message: "You have reached the maximum number of active listings for this account. Please contact us if you believe this is an error.",
+          });
+        }
+      }
+
       // Preprocess: convert date strings to Date objects
       const body = { ...req.body };
       if (body.availableFrom && typeof body.availableFrom === "string") {
         body.availableFrom = new Date(body.availableFrom);
       }
-      
+
       // Always link property to authenticated user
       body.ownerId = req.user!.id;
       console.log(`[Property] Creating property for authenticated user: ${req.user!.id}`);
 
-      // New listings from regular customers must be reviewed by an admin before
-      // they go live. Admins posting directly are published immediately.
-      const isAdminSubmission = req.user?.isAdmin === true;
-      body.status = isAdminSubmission ? (body.status || "active") : "pending";
+      // Issue #1: a listing goes live immediately for every user - it must
+      // never be silently hidden behind a "pending" status the poster was
+      // never told about. Admins may still explicitly set another status.
+      body.status = isAdminSubmission && body.status ? body.status : "active";
+
+      // Issue #4: record the declaration + when it was made (admins
+      // posting directly on the platform's behalf aren't brokers by
+      // definition, so this is auto-confirmed for admin submissions)
+      body.brokerDeclarationConfirmed = isAdminSubmission ? !!body.brokerDeclarationConfirmed : true;
+      body.brokerDeclarationAt = new Date();
 
       const validationResult = insertPropertySchema.safeParse(body);
       if (!validationResult.success) {
@@ -224,27 +309,66 @@ export async function registerRoutes(
         });
       }
 
-      const property = await storage.createProperty(validationResult.data);
+      // submissionIp/submissionUserAgent are intentionally omitted from
+      // insertPropertySchema (never trust client input for these) and are
+      // always derived from the request itself.
+      const property = await storage.createProperty({
+        ...validationResult.data,
+        submissionIp: getClientIp(req),
+        submissionUserAgent: (req.headers["user-agent"] as string) || null,
+      });
 
-      // Notify the admin team that a new property is waiting for approval
+      // Issue #2 / #4: permanent, append-only audit trail entry
+      const creator = await storage.getUser(req.user!.id);
+      await storage.createListingAuditLog({
+        propertyId: property.id,
+        action: "created",
+        actorId: req.user!.id,
+        actorRole: isAdminSubmission ? "admin" : "user",
+        ipAddress: getClientIp(req),
+        userAgent: (req.headers["user-agent"] as string) || null,
+        snapshot: {
+          title: property.title,
+          status: property.status,
+          posterName: creator ? [creator.firstName, creator.lastName].filter(Boolean).join(" ") : null,
+          posterEmail: creator?.email || null,
+          posterPhone: creator?.phone || null,
+          brokerDeclarationConfirmed: property.brokerDeclarationConfirmed,
+        },
+      });
+
+      // Issue #4: safety-net flag in case the cap was somehow exceeded
+      // (e.g. an admin created an extra listing on this user's behalf)
       if (!isAdminSubmission) {
-        try {
-          const owner = await storage.getUser(req.user!.id);
-          const ownerName = owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") : "";
-          const { sendNewPropertySubmissionEmail } = await import("./email");
-          const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || "admin@leaseo.in";
-          await sendNewPropertySubmissionEmail(
-            adminEmail,
-            ownerName,
-            owner?.email || "",
-            owner?.phone || "",
-            property.title,
-            property.id
+        const activeCountAfter = await storage.countActiveListingsForOwner(req.user!.id);
+        if (activeCountAfter > 2) {
+          await storage.flagUser(
+            req.user!.id,
+            `More than 2 active listings (${activeCountAfter}) linked to phone ${req.user!.phone || "unknown"}`
           );
-        } catch (emailError) {
-          console.error("Error sending new property submission email:", emailError);
-          // Don't fail property creation if the notification email fails
         }
+      }
+
+      // Every new listing (not just customer ones, now that nothing is
+      // gated pre-publish) notifies the admin team so they can review it
+      // after the fact - moderation moved from "block before it's live" to
+      // "flag/report after it's live", per the brief.
+      try {
+        const owner = creator;
+        const ownerName = owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") : "";
+        const { sendNewPropertySubmissionEmail } = await import("./email");
+        const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || "admin@leaseo.in";
+        await sendNewPropertySubmissionEmail(
+          adminEmail,
+          ownerName,
+          owner?.email || "",
+          owner?.phone || "",
+          property.title,
+          property.id
+        );
+      } catch (emailError) {
+        console.error("Error sending new property submission email:", emailError);
+        // Don't fail property creation if the notification email fails
       }
 
       res.status(201).json(property);
@@ -263,16 +387,42 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Property not found" });
       }
       
-      // Verify ownership (unless admin)
-      const isAdmin = req.user?.isAdmin === true;
+      // Verify ownership (unless admin). NOTE: req.user.activeRoleId is a
+      // UUID, not the string "admin" - the old check here could never be
+      // true, so this endpoint was effectively "owner only" even for admins
+      // (who happened to still pass because adminMiddleware isn't applied
+      // here - this bug just silently skipped the approval-email branch).
+      const isAdmin = !!req.user?.isAdmin;
       if (!isAdmin && existingProperty.ownerId !== req.user?.id) {
         return res.status(403).json({ error: "You don't have permission to update this property" });
       }
       
-      // Don't allow changing ownerId
-      const { ownerId, ...updateData } = req.body;
+      // Don't allow changing ownerId or any of the server-managed
+      // soft-delete / submission-audit fields directly through this route
+      const {
+        ownerId,
+        deletedAt,
+        deletedBy,
+        deletedByRole,
+        submissionIp,
+        submissionUserAgent,
+        ...updateData
+      } = req.body;
       
       const property = await storage.updateProperty(req.params.id, updateData);
+
+      // Issue #2: permanent audit trail entry for every edit
+      if (property) {
+        await storage.createListingAuditLog({
+          propertyId: property.id,
+          action: "updated",
+          actorId: req.user?.id || null,
+          actorRole: isAdmin ? "admin" : "user",
+          ipAddress: getClientIp(req),
+          userAgent: (req.headers["user-agent"] as string) || null,
+          snapshot: { changedFields: Object.keys(updateData) },
+        });
+      }
 
       // If an admin is moving a listing out of "pending", let the owner know
       // whether their property was approved or rejected.
@@ -318,17 +468,146 @@ export async function registerRoutes(
     }
   });
 
-  // Delete property
-  app.delete("/api/properties/:id", async (req, res) => {
+  // Delete property (soft delete only - Issue #2). Requires authentication
+  // and ownership (or admin). Nothing is ever hard-removed from the
+  // database; the listing is marked inactive and the deletion is recorded
+  // permanently in the audit trail.
+  app.delete("/api/properties/:id", authMiddleware, async (req, res) => {
     try {
-      const deleted = await storage.deleteProperty(req.params.id);
+      const existingProperty = await storage.getProperty(req.params.id);
+      if (!existingProperty) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+
+      const isAdmin = !!req.user?.isAdmin;
+      if (!isAdmin && existingProperty.ownerId !== req.user?.id) {
+        return res.status(403).json({ error: "You don't have permission to delete this property" });
+      }
+
+      const deleter = await storage.getUser(req.user!.id);
+      const deleted = await storage.softDeleteProperty(req.params.id, req.user!.id, isAdmin ? "admin" : "user");
       if (!deleted) {
         return res.status(404).json({ error: "Property not found" });
       }
+
+      // Issue #2: permanent record of who deleted it, when, and a full
+      // snapshot of the listing + poster contact details at the time
+      await storage.createListingAuditLog({
+        propertyId: req.params.id,
+        action: "deleted",
+        actorId: req.user!.id,
+        actorRole: isAdmin ? "admin" : "user",
+        ipAddress: getClientIp(req),
+        userAgent: (req.headers["user-agent"] as string) || null,
+        snapshot: {
+          title: existingProperty.title,
+          address: existingProperty.address,
+          city: existingProperty.city,
+          rent: existingProperty.rent,
+          price: existingProperty.price,
+          deletedByName: deleter ? [deleter.firstName, deleter.lastName].filter(Boolean).join(" ") : null,
+          deletedByEmail: deleter?.email || null,
+          deletedByPhone: deleter?.phone || null,
+        },
+      });
+
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting property:", error);
       res.status(500).json({ error: "Failed to delete property" });
+    }
+  });
+
+  // Restore a soft-deleted property (admin only) - Issue #2
+  app.patch("/api/admin/properties/:id/restore", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const restored = await storage.restoreProperty(req.params.id);
+      if (!restored) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+
+      await storage.createListingAuditLog({
+        propertyId: req.params.id,
+        action: "restored",
+        actorId: req.user!.id,
+        actorRole: "admin",
+        ipAddress: getClientIp(req),
+        userAgent: (req.headers["user-agent"] as string) || null,
+      });
+
+      res.json(restored);
+    } catch (error) {
+      console.error("Error restoring property:", error);
+      res.status(500).json({ error: "Failed to restore property" });
+    }
+  });
+
+  // Full audit trail for a single listing (admin only) - Issue #2 / #4.
+  // Works for deleted listings too, since nothing is ever hard-removed.
+  app.get("/api/admin/properties/:id/audit-log", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const logs = await storage.getListingAuditLogs(req.params.id);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching listing audit log:", error);
+      res.status(500).json({ error: "Failed to fetch audit log" });
+    }
+  });
+
+  // Full platform-wide audit feed (admin only) - Issue #2
+  app.get("/api/admin/audit-log", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 200;
+      const logs = await storage.getAllListingAuditLogs(limit);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching audit log:", error);
+      res.status(500).json({ error: "Failed to fetch audit log" });
+    }
+  });
+
+  // ==================== ADMIN: FLAGGED ACCOUNTS (Issue #4) ====================
+  // Accounts auto-flagged for exceeding the active-listing cap, or reported
+  // as a suspected broker, land here for an admin to review and act on.
+
+  app.get("/api/admin/flagged-users", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const flaggedUsers = await storage.getFlaggedUsers();
+      // Never send password hashes to the client
+      res.json(flaggedUsers.map(({ passwordHash, ...u }) => u));
+    } catch (error) {
+      console.error("Error fetching flagged users:", error);
+      res.status(500).json({ error: "Failed to fetch flagged users" });
+    }
+  });
+
+  // action: "approve" clears the flag, "warn" logs a warning without
+  // clearing it, "deactivate" disables the account entirely
+  app.patch("/api/admin/flagged-users/:id", authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+      const { action } = req.body;
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (action === "approve") {
+        await storage.clearUserFlag(req.params.id);
+      } else if (action === "warn") {
+        await storage.warnUser(req.params.id);
+      } else if (action === "deactivate") {
+        await storage.updateUserProfile(req.params.id, { isActive: false });
+        await storage.clearUserFlag(req.params.id);
+      } else {
+        return res.status(400).json({ error: "Invalid action. Use 'approve', 'warn', or 'deactivate'." });
+      }
+
+      const updated = await storage.getUser(req.params.id);
+      const { passwordHash, ...safeUser } = updated || ({} as any);
+      res.json({ success: true, user: safeUser });
+    } catch (error) {
+      console.error("Error updating flagged user:", error);
+      res.status(500).json({ error: "Failed to update flagged user" });
     }
   });
 
@@ -417,12 +696,16 @@ export async function registerRoutes(
 
   // ==================== SHORTLISTS ====================
 
-  // Get user's shortlisted properties
-  app.get("/api/shortlists", async (req, res) => {
+  // Get user's shortlisted properties - requires auth; you may only view
+  // your own shortlist (or an admin may view anyone's)
+  app.get("/api/shortlists", authMiddleware, async (req, res) => {
     try {
       const userId = req.query.userId as string;
       if (!userId) {
         return res.status(400).json({ error: "User ID is required" });
+      }
+      if (!req.user!.isAdmin && req.user!.id !== userId) {
+        return res.status(403).json({ error: "You can only view your own shortlist" });
       }
       const shortlists = await storage.getShortlists(userId);
       res.json(shortlists);
@@ -432,14 +715,15 @@ export async function registerRoutes(
     }
   });
 
-  // Add to shortlist
-  app.post("/api/shortlists", async (req, res) => {
+  // Add to shortlist - always saved against the authenticated user, never
+  // a client-supplied userId, so you can't add properties to someone else's list
+  app.post("/api/shortlists", authMiddleware, async (req, res) => {
     try {
-      const { userId, propertyId, notes } = req.body;
-      if (!userId || !propertyId) {
-        return res.status(400).json({ error: "User ID and Property ID are required" });
+      const { propertyId, notes } = req.body;
+      if (!propertyId) {
+        return res.status(400).json({ error: "Property ID is required" });
       }
-      const shortlist = await storage.addToShortlist({ userId, propertyId, notes });
+      const shortlist = await storage.addToShortlist({ userId: req.user!.id, propertyId, notes });
       res.status(201).json(shortlist);
     } catch (error) {
       console.error("Error adding to shortlist:", error);
@@ -447,10 +731,13 @@ export async function registerRoutes(
     }
   });
 
-  // Remove from shortlist
-  app.delete("/api/shortlists/:userId/:propertyId", async (req, res) => {
+  // Remove from shortlist - requires auth; you may only remove your own entries
+  app.delete("/api/shortlists/:userId/:propertyId", authMiddleware, async (req, res) => {
     try {
       const { userId, propertyId } = req.params;
+      if (!req.user!.isAdmin && req.user!.id !== userId) {
+        return res.status(403).json({ error: "You can only modify your own shortlist" });
+      }
       const deleted = await storage.removeFromShortlist(userId, propertyId);
       if (!deleted) {
         return res.status(404).json({ error: "Shortlist entry not found" });
@@ -463,9 +750,11 @@ export async function registerRoutes(
   });
 
   // ==================== REPORTS ====================
+  // Issue #4: "Report this listing" - includes a dedicated "broker_listing"
+  // reason so tenants can flag suspected brokers directly from the listing page.
 
   // Get reports (admin only)
-  app.get("/api/reports", async (req, res) => {
+  app.get("/api/reports", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const reports = await storage.getReports();
       res.json(reports);
@@ -475,14 +764,34 @@ export async function registerRoutes(
     }
   });
 
-  // Submit a report
-  app.post("/api/reports", async (req, res) => {
+  // Submit a report - requires auth; reporterId always comes from the
+  // authenticated session, never trusted from the request body
+  app.post("/api/reports", authMiddleware, async (req, res) => {
     try {
-      const { propertyId, reporterId, reason, description } = req.body;
-      if (!propertyId || !reporterId || !reason) {
-        return res.status(400).json({ error: "Property ID, Reporter ID, and Reason are required" });
+      const { propertyId, reason, description } = req.body;
+      if (!propertyId || !reason) {
+        return res.status(400).json({ error: "Property ID and reason are required" });
       }
-      const report = await storage.createReport({ propertyId, reporterId, reason, description });
+      const report = await storage.createReport({
+        propertyId,
+        reporterId: req.user!.id,
+        reason,
+        description,
+      });
+
+      // If this looks like a broker report, flag the listing owner's
+      // account for admin review (Issue #4)
+      if (reason === "broker_listing") {
+        try {
+          const property = await storage.getProperty(propertyId);
+          if (property?.ownerId) {
+            await storage.flagUser(property.ownerId, `Reported as a suspected broker listing (report ${report.id})`);
+          }
+        } catch (flagError) {
+          console.error("Error flagging owner after broker report:", flagError);
+        }
+      }
+
       res.status(201).json(report);
     } catch (error) {
       console.error("Error creating report:", error);
@@ -491,10 +800,10 @@ export async function registerRoutes(
   });
 
   // Update report status (admin only)
-  app.patch("/api/reports/:id", async (req, res) => {
+  app.patch("/api/reports/:id", authMiddleware, adminMiddleware, async (req, res) => {
     try {
-      const { status, reviewedBy, resolution } = req.body;
-      const report = await storage.updateReportStatus(req.params.id, { status, reviewedBy, resolution });
+      const { status, resolution } = req.body;
+      const report = await storage.updateReportStatus(req.params.id, { status, reviewedBy: req.user!.id, resolution });
       if (!report) {
         return res.status(404).json({ error: "Report not found" });
       }
@@ -507,12 +816,16 @@ export async function registerRoutes(
 
   // ==================== OWNER DASHBOARD ====================
 
-  // Get owner's properties with stats
-  app.get("/api/owner/properties", async (req, res) => {
+  // Get owner's properties with stats - requires auth; you may only view
+  // your own properties (or an admin may view anyone's)
+  app.get("/api/owner/properties", authMiddleware, async (req, res) => {
     try {
       const ownerId = req.query.ownerId as string;
       if (!ownerId) {
         return res.status(400).json({ error: "Owner ID is required" });
+      }
+      if (!req.user!.isAdmin && req.user!.id !== ownerId) {
+        return res.status(403).json({ error: "You can only view your own properties" });
       }
       const properties = await storage.getOwnerProperties(ownerId);
       res.json(properties);
@@ -522,12 +835,17 @@ export async function registerRoutes(
     }
   });
 
-  // Get enquiries for owner's properties
-  app.get("/api/owner/enquiries", async (req, res) => {
+  // Get enquiries for owner's properties - requires auth + ownership.
+  // Enquiries contain the enquirer's name/email/phone, so this must not be
+  // reachable with an arbitrary ownerId.
+  app.get("/api/owner/enquiries", authMiddleware, async (req, res) => {
     try {
       const ownerId = req.query.ownerId as string;
       if (!ownerId) {
         return res.status(400).json({ error: "Owner ID is required" });
+      }
+      if (!req.user!.isAdmin && req.user!.id !== ownerId) {
+        return res.status(403).json({ error: "You can only view your own enquiries" });
       }
       const enquiries = await storage.getOwnerEnquiries(ownerId);
       res.json(enquiries);
@@ -539,12 +857,15 @@ export async function registerRoutes(
 
   // ==================== TENANT DASHBOARD ====================
 
-  // Get tenant's enquiries
-  app.get("/api/tenant/enquiries", async (req, res) => {
+  // Get tenant's enquiries - requires auth + ownership
+  app.get("/api/tenant/enquiries", authMiddleware, async (req, res) => {
     try {
       const tenantId = req.query.tenantId as string;
       if (!tenantId) {
         return res.status(400).json({ error: "Tenant ID is required" });
+      }
+      if (!req.user!.isAdmin && req.user!.id !== tenantId) {
+        return res.status(403).json({ error: "You can only view your own enquiries" });
       }
       const enquiries = await storage.getTenantEnquiries(tenantId);
       res.json(enquiries);
@@ -557,8 +878,19 @@ export async function registerRoutes(
   // ==================== AUTHENTICATION ====================
 
   // Seed admin and test users on startup
+  await seedRoles();
   await seedAdminUser();
   await seedTestUsers();
+
+  // Shared password strength rule, used for both registration and reset-password
+  // so a password that's rejected in one place can't be created in the other.
+  const validatePasswordStrength = (password: string): string | null => {
+    if (!password || password.length < 8) return "Password must be at least 8 characters";
+    if (!/\d/.test(password)) return "Password must contain at least one number";
+    if (!/[A-Z]/.test(password)) return "Password must contain at least one uppercase letter";
+    if (!/[a-z]/.test(password)) return "Password must contain at least one lowercase letter";
+    return null;
+  };
 
   // Register new user
   app.post("/api/auth/register", async (req, res) => {
@@ -567,6 +899,14 @@ export async function registerRoutes(
 
       if (!email || !password) {
         return res.status(400).json({ error: "Email and password are required" });
+      }
+
+      // Previously only enforced client-side (and only on password *reset*,
+      // never on registration) - anyone calling this API directly could
+      // create an account with a 1-character password.
+      const passwordError = validatePasswordStrength(password);
+      if (passwordError) {
+        return res.status(400).json({ error: passwordError });
       }
 
       const [existingUser] = await db.select().from(users).where(eq(users.email, email));
@@ -608,6 +948,14 @@ export async function registerRoutes(
         email: newUser.email,
         isAdmin: false,
       });
+
+      try {
+        const { sendWelcomeEmail } = await import("./email");
+        await sendWelcomeEmail(newUser.email!, [newUser.firstName, newUser.lastName].filter(Boolean).join(" ") || "there");
+      } catch (emailError) {
+        console.error("Error sending welcome email:", emailError);
+        // Don't fail registration if the welcome email fails
+      }
 
       res.status(201).json({
         user: authUser,
@@ -671,6 +1019,54 @@ export async function registerRoutes(
     }
   });
 
+  // Complete profile (Issue #3). Requires that the caller has already
+  // OTP-verified both their email and phone (via /api/auth/otp/verify)
+  // before this will mark the profile complete - filling in the form
+  // fields alone is not enough.
+  app.patch("/api/auth/profile", authMiddleware, async (req, res) => {
+    try {
+      const { firstName, lastName, userType } = req.body;
+
+      if (!firstName || !lastName) {
+        return res.status(400).json({ error: "First name and last name are required" });
+      }
+
+      const validUserTypes = ["owner", "tenant", "builder_developer"];
+      if (!userType || !validUserTypes.includes(userType)) {
+        return res.status(400).json({ error: "Please select whether you are an Owner, Tenant, or Builder/Developer" });
+      }
+
+      const currentUser = await storage.getUser(req.user!.id);
+      if (!currentUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (!currentUser.emailVerifiedAt) {
+        return res.status(400).json({ error: "Please verify your email address first", missing: "emailVerification" });
+      }
+      if (!currentUser.phone || !currentUser.phoneVerifiedAt) {
+        return res.status(400).json({ error: "Please verify your phone number first", missing: "phoneVerification" });
+      }
+
+      const updated = await storage.updateUserProfile(req.user!.id, {
+        firstName,
+        lastName,
+        userType: userType as any,
+        profileCompleted: true,
+      });
+
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const authUser = await getAuthUser(req.user!.id);
+      res.json({ user: authUser });
+    } catch (error) {
+      console.error("Error completing profile:", error);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
   // Reset password (authenticated user)
   app.post("/api/auth/reset-password", authMiddleware, async (req, res) => {
     try {
@@ -685,20 +1081,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Current password and new password are required" });
       }
 
-      if (newPassword.length < 8) {
-        return res.status(400).json({ error: "New password must be at least 8 characters" });
-      }
-
-      if (!/\d/.test(newPassword)) {
-        return res.status(400).json({ error: "New password must contain at least one number" });
-      }
-
-      if (!/[A-Z]/.test(newPassword)) {
-        return res.status(400).json({ error: "New password must contain at least one uppercase letter" });
-      }
-
-      if (!/[a-z]/.test(newPassword)) {
-        return res.status(400).json({ error: "New password must contain at least one lowercase letter" });
+      const passwordError = validatePasswordStrength(newPassword);
+      if (passwordError) {
+        return res.status(400).json({ error: passwordError });
       }
 
       const [user] = await db.select().from(users).where(eq(users.id, userId));
@@ -796,10 +1181,13 @@ export async function registerRoutes(
     }
   });
 
-  // Verify OTP - also creates/logs in user for property listing flow
-  app.post("/api/auth/otp/verify", async (req, res) => {
+  // Verify OTP - also creates/logs in user for property listing flow.
+  // optionalAuthMiddleware lets us attach verification to the CURRENTLY
+  // logged-in user's own account when there is one (Issue #3 profile
+  // completion), while still supporting the anonymous contact-owner flow.
+  app.post("/api/auth/otp/verify", optionalAuthMiddleware, async (req, res) => {
     try {
-      const { email, phone, code, segment, createAccount } = req.body;
+      const { email, phone, code, segment, createAccount, propertyId } = req.body;
 
       if (!email && !phone) {
         return res.status(400).json({ error: "Email or phone is required" });
@@ -934,53 +1322,76 @@ export async function registerRoutes(
       }
 
       // Standard OTP verification (no account creation)
-      // If verifying for an existing user, update their verified status
-      if (email) {
-        await db.update(users)
-          .set({ emailVerifiedAt: new Date() })
-          .where(eq(users.email, email));
+      if (req.user) {
+        // Authenticated caller (e.g. completing their profile - Issue #3):
+        // attach the now-verified channel to THEIR account. Previously this
+        // updated `WHERE email/phone = <value>`, which silently did nothing
+        // when the value wasn't saved to any user row yet.
+        const updateData: any = {};
+        if (email) {
+          const [emailOwner] = await db.select().from(users).where(eq(users.email, email));
+          if (emailOwner && emailOwner.id !== req.user.id) {
+            return res.status(400).json({ error: "This email is already associated with another account" });
+          }
+          updateData.email = email;
+          updateData.emailVerifiedAt = new Date();
+        }
+        if (phone) {
+          const [phoneOwner] = await db.select().from(users).where(eq(users.phone, phone));
+          if (phoneOwner && phoneOwner.id !== req.user.id) {
+            return res.status(400).json({ error: "This phone number is already associated with another account" });
+          }
+          updateData.phone = phone;
+          updateData.phoneVerifiedAt = new Date();
+        }
+        if (Object.keys(updateData).length > 0) {
+          await db.update(users).set(updateData).where(eq(users.id, req.user.id));
+        }
+      } else {
+        // Not authenticated (e.g. the public "reveal owner phone" flow on
+        // a listing page) - update by value match as before.
+        if (email) {
+          await db.update(users)
+            .set({ emailVerifiedAt: new Date() })
+            .where(eq(users.email, email));
+        }
+        if (phone) {
+          await db.update(users)
+            .set({ phoneVerifiedAt: new Date() })
+            .where(eq(users.phone, phone));
+        }
       }
-      if (phone) {
-        await db.update(users)
-          .set({ phoneVerifiedAt: new Date() })
-          .where(eq(users.phone, phone));
+
+      // Issue: the property detail page used to fall back to a hardcoded
+      // fake phone number whenever ownerPhone wasn't already on the
+      // property payload - which was always, since the public listing
+      // endpoint never includes it (for good reason: it must stay hidden
+      // until the visitor proves they're a real person via OTP). This is
+      // that reveal step - only returned once the code above has been
+      // verified, and only for the specific listing being viewed.
+      let ownerContact: { ownerName?: string; ownerPhone?: string } | undefined;
+      if (propertyId) {
+        const property = await storage.getProperty(propertyId);
+        if (property?.ownerId) {
+          const owner = await storage.getUser(property.ownerId);
+          if (owner) {
+            ownerContact = {
+              ownerName: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || undefined,
+              ownerPhone: owner.phone || undefined,
+            };
+          }
+        }
       }
 
       res.json({ 
         success: true, 
         message: "Verification successful",
-        verified: true
+        verified: true,
+        ...ownerContact,
       });
     } catch (error) {
       console.error("Error verifying OTP:", error);
       res.status(500).json({ error: "Failed to verify code" });
-    }
-  });
-
-  // Check verification status
-  app.get("/api/auth/verification-status", async (req, res) => {
-    try {
-      const { email, phone } = req.query;
-
-      if (!email && !phone) {
-        return res.status(400).json({ error: "Email or phone is required" });
-      }
-
-      const [user] = await db.select().from(users).where(
-        email ? eq(users.email, email as string) : eq(users.phone, phone as string)
-      );
-
-      if (!user) {
-        return res.json({ emailVerified: false, phoneVerified: false });
-      }
-
-      res.json({
-        emailVerified: !!user.emailVerifiedAt,
-        phoneVerified: !!user.phoneVerifiedAt,
-      });
-    } catch (error) {
-      console.error("Error checking verification status:", error);
-      res.status(500).json({ error: "Failed to check verification status" });
     }
   });
 
@@ -997,8 +1408,8 @@ export async function registerRoutes(
     }
   });
 
-  // Update feature flag
-  app.patch("/api/feature-flags/:id", async (req, res) => {
+  // Update feature flag (admin only - this was completely unauthenticated)
+  app.patch("/api/feature-flags/:id", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const { enabled } = req.body;
       if (typeof enabled !== "boolean") {
@@ -1061,16 +1472,16 @@ export async function registerRoutes(
       const postSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       
       const [post] = await db.insert(blogPosts).values({
-        title,
+        title: sanitizeHtml(title),
         slug: postSlug,
-        excerpt: excerpt || null,
-        content,
+        excerpt: excerpt ? sanitizeHtml(excerpt) : null,
+        content: sanitizeHtml(content),
         featuredImage: featuredImage || null,
         authorId: req.user!.id,
         status: status || "draft",
         tags: tags || [],
-        metaTitle: metaTitle || null,
-        metaDescription: metaDescription || null,
+        metaTitle: metaTitle ? sanitizeHtml(metaTitle) : null,
+        metaDescription: metaDescription ? sanitizeHtml(metaDescription) : null,
         publishedAt: status === "published" ? new Date() : null,
       }).returning();
 
@@ -1087,18 +1498,18 @@ export async function registerRoutes(
       const { title, slug, excerpt, content, featuredImage, status, tags, metaTitle, metaDescription } = req.body;
       
       const updateData: any = { updatedAt: new Date() };
-      if (title !== undefined) updateData.title = title;
+      if (title !== undefined) updateData.title = sanitizeHtml(title);
       if (slug !== undefined) updateData.slug = slug;
-      if (excerpt !== undefined) updateData.excerpt = excerpt;
-      if (content !== undefined) updateData.content = content;
+      if (excerpt !== undefined) updateData.excerpt = excerpt ? sanitizeHtml(excerpt) : null;
+      if (content !== undefined) updateData.content = sanitizeHtml(content);
       if (featuredImage !== undefined) updateData.featuredImage = featuredImage;
       if (status !== undefined) {
         updateData.status = status;
         if (status === "published") updateData.publishedAt = new Date();
       }
       if (tags !== undefined) updateData.tags = tags;
-      if (metaTitle !== undefined) updateData.metaTitle = metaTitle;
-      if (metaDescription !== undefined) updateData.metaDescription = metaDescription;
+      if (metaTitle !== undefined) updateData.metaTitle = metaTitle ? sanitizeHtml(metaTitle) : null;
+      if (metaDescription !== undefined) updateData.metaDescription = metaDescription ? sanitizeHtml(metaDescription) : null;
 
       const [post] = await db.update(blogPosts).set(updateData).where(eq(blogPosts.id, req.params.id)).returning();
       if (!post) {
@@ -1291,47 +1702,11 @@ export async function registerRoutes(
     }
   });
 
-  // Update blog post (legacy route - kept for backwards compatibility)
-  app.patch("/api/blog/:id", async (req, res) => {
-    try {
-      const { title, slug, excerpt, content, status, metaTitle, metaDescription } = req.body;
-      
-      const updateData: any = { updatedAt: new Date() };
-      if (title !== undefined) updateData.title = title;
-      if (slug !== undefined) updateData.slug = slug;
-      if (excerpt !== undefined) updateData.excerpt = excerpt;
-      if (content !== undefined) updateData.content = content;
-      if (status !== undefined) {
-        updateData.status = status;
-        if (status === "published") updateData.publishedAt = new Date();
-      }
-      if (metaTitle !== undefined) updateData.metaTitle = metaTitle;
-      if (metaDescription !== undefined) updateData.metaDescription = metaDescription;
-
-      const [post] = await db.update(blogPosts).set(updateData).where(eq(blogPosts.id, req.params.id)).returning();
-      if (!post) {
-        return res.status(404).json({ error: "Blog post not found" });
-      }
-      res.json(post);
-    } catch (error) {
-      console.error("Error updating blog post:", error);
-      res.status(500).json({ error: "Failed to update blog post" });
-    }
-  });
-
-  // Delete blog post (admin only)
-  app.delete("/api/blog/:id", authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-      const [deleted] = await db.delete(blogPosts).where(eq(blogPosts.id, req.params.id)).returning();
-      if (!deleted) {
-        return res.status(404).json({ error: "Blog post not found" });
-      }
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error deleting blog post:", error);
-      res.status(500).json({ error: "Failed to delete blog post" });
-    }
-  });
+  // NOTE: a "legacy" PATCH /api/blog/:id route used to live here with NO
+  // authentication at all - anyone could rewrite any blog post's content
+  // without logging in. It was never called by the client (the admin panel
+  // uses /api/admin/blog/:id, which is properly protected above), so it has
+  // been removed entirely rather than patched.
 
   // ==================== EMPLOYEES (Admin) ====================
 
@@ -1857,6 +2232,82 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== PROPERTY DOCUMENTS (optional) ====================
+  // Supporting documents (ownership proof, tax receipt, society NOC, etc.)
+  // an owner can optionally attach to help admins verify a listing faster.
+  // Never required to create or edit a listing. Private to the owner/admin
+  // (unlike photos, these can contain sensitive ID/ownership info).
+
+  // List documents for a property (owner or admin only)
+  app.get("/api/properties/:id/documents", authMiddleware, async (req, res) => {
+    try {
+      const [property] = await db.select().from(properties).where(eq(properties.id, req.params.id));
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+      if (!req.user?.isAdmin && property.ownerId !== req.user?.id) {
+        return res.status(403).json({ error: "Not authorized to view documents for this property" });
+      }
+      const documents = await storage.getPropertyDocuments(req.params.id);
+      res.json(documents);
+    } catch (error) {
+      console.error("Error fetching property documents:", error);
+      res.status(500).json({ error: "Failed to fetch documents" });
+    }
+  });
+
+  // Attach a document (owner or admin only) - purely optional, not part of
+  // the listing submission requirements
+  app.post("/api/properties/:id/documents", authMiddleware, async (req, res) => {
+    try {
+      const { url, fileName, documentType } = req.body;
+      if (!url || !fileName) {
+        return res.status(400).json({ error: "File URL and file name are required" });
+      }
+
+      const [property] = await db.select().from(properties).where(eq(properties.id, req.params.id));
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+      if (!req.user?.isAdmin && property.ownerId !== req.user?.id) {
+        return res.status(403).json({ error: "Not authorized to add documents to this property" });
+      }
+
+      const validTypes = ["ownership_proof", "tax_receipt", "noc", "identity_proof", "other"];
+      const doc = await storage.addPropertyDocument({
+        propertyId: req.params.id,
+        url,
+        fileName,
+        documentType: (validTypes.includes(documentType) ? documentType : "other") as any,
+        uploadedBy: req.user!.id,
+      });
+
+      res.status(201).json(doc);
+    } catch (error) {
+      console.error("Error adding property document:", error);
+      res.status(500).json({ error: "Failed to add document" });
+    }
+  });
+
+  // Remove a document (owner or admin only)
+  app.delete("/api/property-documents/:id", authMiddleware, async (req, res) => {
+    try {
+      const [doc] = await db.select().from(propertyDocuments).where(eq(propertyDocuments.id, req.params.id));
+      if (!doc) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      const [property] = await db.select().from(properties).where(eq(properties.id, doc.propertyId));
+      if (property && !req.user?.isAdmin && property.ownerId !== req.user?.id) {
+        return res.status(403).json({ error: "Not authorized to remove this document" });
+      }
+      await storage.deletePropertyDocument(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting property document:", error);
+      res.status(500).json({ error: "Failed to delete document" });
+    }
+  });
+
   // Approve/reject image (admin only)
   app.patch("/api/property-images/:id/approve", authMiddleware, adminMiddleware, async (req, res) => {
     try {
@@ -1876,8 +2327,10 @@ export async function registerRoutes(
     }
   });
 
-  // Set image as primary/cover (admin only)
-  app.patch("/api/property-images/:id/set-primary", authMiddleware, adminMiddleware, async (req, res) => {
+  // Set image as primary/cover (property owner or admin - this used to be
+  // admin-only, which silently 403'd real owners trying to manage the
+  // photos on their own listing edit page)
+  app.patch("/api/property-images/:id/set-primary", authMiddleware, async (req, res) => {
     try {
       // First get the image to find its propertyId
       const [image] = await db.select().from(propertyImages)
@@ -1885,6 +2338,14 @@ export async function registerRoutes(
       
       if (!image) {
         return res.status(404).json({ error: "Image not found" });
+      }
+
+      const [property] = await db.select().from(properties).where(eq(properties.id, image.propertyId));
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+      if (!req.user?.isAdmin && property.ownerId !== req.user?.id) {
+        return res.status(403).json({ error: "Not authorized to manage images for this property" });
       }
 
       // Reset all other images for this property to non-primary
@@ -1905,9 +2366,23 @@ export async function registerRoutes(
     }
   });
 
-  // Delete image (admin only)
-  app.delete("/api/property-images/:id", authMiddleware, adminMiddleware, async (req, res) => {
+  // Delete image (property owner or admin - see note above)
+  app.delete("/api/property-images/:id", authMiddleware, async (req, res) => {
     try {
+      const [image] = await db.select().from(propertyImages)
+        .where(eq(propertyImages.id, req.params.id));
+      if (!image) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+
+      const [property] = await db.select().from(properties).where(eq(properties.id, image.propertyId));
+      if (!property) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+      if (!req.user?.isAdmin && property.ownerId !== req.user?.id) {
+        return res.status(403).json({ error: "Not authorized to manage images for this property" });
+      }
+
       const [deleted] = await db.delete(propertyImages)
         .where(eq(propertyImages.id, req.params.id))
         .returning();
@@ -3051,10 +3526,60 @@ export async function registerRoutes(
     urgent: 299,
   };
 
+  // Reads active Instamojo credentials from the admin-configured
+  // "Payment Gateway" settings (paymentProviders table) first, falling back
+  // to environment variables. Previously this whole admin settings screen
+  // had zero effect - every payment call read raw env vars only, so
+  // whatever an admin configured in the UI was silently ignored.
+  async function getInstamojoCredentials(): Promise<{ apiKey: string; authToken: string; endpoint: string } | null> {
+    const [provider] = await db.select().from(paymentProviders).where(eq(paymentProviders.providerName, "instamojo"));
+    if (provider && provider.isActive) {
+      const isLive = provider.mode === "live";
+      const apiKey = isLive ? provider.apiKey : provider.sandboxApiKey;
+      const authToken = isLive ? provider.authToken : provider.sandboxAuthToken;
+      if (apiKey && authToken) {
+        return { apiKey, authToken, endpoint: isLive ? "https://www.instamojo.com" : "https://test.instamojo.com" };
+      }
+    }
+    // Fall back to environment variables so existing deployments keep working
+    const apiKey = process.env.INSTAMOJO_API_KEY;
+    const authToken = process.env.INSTAMOJO_AUTH_TOKEN;
+    if (apiKey && authToken) {
+      return { apiKey, authToken, endpoint: process.env.INSTAMOJO_ENDPOINT || "https://test.instamojo.com" };
+    }
+    return null;
+  }
+
+  // Confirms a payment's status directly with Instamojo's API instead of
+  // trusting `payment_status` / `status` from the callback redirect or
+  // webhook body - both are attacker-controlled. Without this, anyone could
+  // visit /api/boosts/payment-callback?payment_status=Credit&payment_request_id=<id>
+  // by hand and get a boost marked "paid" without ever paying.
+  async function verifyInstamojoPaymentRequest(paymentRequestId: string): Promise<{ paid: boolean; transactionId?: string } | null> {
+    const creds = await getInstamojoCredentials();
+    if (!creds || !paymentRequestId) return null;
+    try {
+      const response = await fetch(`${creds.endpoint}/api/1.1/payment-requests/${paymentRequestId}/`, {
+        headers: { "X-Api-Key": creds.apiKey, "X-Auth-Token": creds.authToken },
+      });
+      const data = await response.json();
+      if (!data.success) return null;
+      const completedPayment = (data.payment_request?.payments || []).find((p: any) => p.status === "Credit");
+      return { paid: !!completedPayment, transactionId: completedPayment?.payment_id };
+    } catch (err) {
+      console.error("Error verifying Instamojo payment:", err);
+      return null;
+    }
+  }
+
   // Create boost and initiate payment
   app.post("/api/boosts/create", authMiddleware, async (req, res) => {
     try {
-      const userId = (req as any).userId;
+      // NOTE: this used to read `(req as any).userId`, which authMiddleware
+      // never sets (it sets req.user) - so userId was always undefined and
+      // every real request here 403'd with "not owned by user". Boosting a
+      // listing was completely broken.
+      const userId = req.user!.id;
       const { propertyId, boostType } = req.body;
 
       if (!propertyId || !boostType) {
@@ -3078,12 +3603,10 @@ export async function registerRoutes(
         return res.status(404).json({ error: "User not found" });
       }
 
-      // Check for Instamojo credentials
-      const apiKey = process.env.INSTAMOJO_API_KEY;
-      const authToken = process.env.INSTAMOJO_AUTH_TOKEN;
-      const endpoint = process.env.INSTAMOJO_ENDPOINT || "https://test.instamojo.com";
+      // Check for Instamojo credentials (admin panel first, env vars as fallback)
+      const credentials = await getInstamojoCredentials();
 
-      if (!apiKey || !authToken) {
+      if (!credentials) {
         // For demo/dev: Create boost without payment gateway
         const [boost] = await db.insert(listingBoosts).values({
           propertyId,
@@ -3115,6 +3638,7 @@ export async function registerRoutes(
           demoMode: true,
         });
       }
+      const { apiKey, authToken, endpoint } = credentials;
 
       // Create boost record with pending_payment status
       const [boost] = await db.insert(listingBoosts).values({
@@ -3193,20 +3717,29 @@ export async function registerRoutes(
     }
   });
 
-  // Payment callback (redirect after payment)
+  // Payment callback (redirect after payment). NOTE: payment_status here is
+  // a query param on a URL the user's browser is redirected to - it is NOT
+  // trustworthy on its own. Previously this endpoint marked a payment
+  // "completed" purely because the query string said so, which meant anyone
+  // could visit this URL by hand with their own pending payment_request_id
+  // and get a boost approved for free. We now re-check the real status with
+  // Instamojo's API before crediting anything.
   app.get("/api/boosts/payment-callback", async (req, res) => {
     try {
-      const { payment_id, payment_status, payment_request_id } = req.query;
+      const { payment_request_id } = req.query;
 
-      if (payment_status === "Credit") {
-        // Payment successful - update records
+      const verification = payment_request_id
+        ? await verifyInstamojoPaymentRequest(payment_request_id as string)
+        : null;
+
+      if (verification?.paid) {
         const [payment] = await db.select().from(payments)
           .where(eq(payments.paymentRequestId, payment_request_id as string));
 
-        if (payment) {
+        if (payment && payment.status !== "completed") {
           await db.update(payments).set({
             status: "completed",
-            transactionId: payment_id as string,
+            transactionId: verification.transactionId || null,
             paidAt: new Date(),
           }).where(eq(payments.id, payment.id));
 
@@ -3217,10 +3750,8 @@ export async function registerRoutes(
           }
         }
 
-        // Redirect to success page
         res.redirect("/dashboard?boost=success");
       } else {
-        // Payment failed
         res.redirect("/dashboard?boost=failed");
       }
     } catch (error) {
@@ -3229,19 +3760,25 @@ export async function registerRoutes(
     }
   });
 
-  // Instamojo webhook
+  // Instamojo webhook. Same trust issue as the callback above: `status` in
+  // the POST body is attacker-controlled, so we independently verify with
+  // Instamojo before marking anything paid.
   app.post("/api/boosts/webhook", async (req, res) => {
     try {
-      const { payment_id, payment_request_id, status, amount } = req.body;
+      const { payment_request_id } = req.body;
 
-      if (status === "Credit") {
+      const verification = payment_request_id
+        ? await verifyInstamojoPaymentRequest(payment_request_id)
+        : null;
+
+      if (verification?.paid) {
         const [payment] = await db.select().from(payments)
           .where(eq(payments.paymentRequestId, payment_request_id));
 
-        if (payment) {
+        if (payment && payment.status !== "completed") {
           await db.update(payments).set({
             status: "completed",
-            transactionId: payment_id,
+            transactionId: verification.transactionId || null,
             paidAt: new Date(),
             gatewayResponse: req.body,
           }).where(eq(payments.id, payment.id));
@@ -3264,7 +3801,9 @@ export async function registerRoutes(
   // Get user's boosts
   app.get("/api/my-boosts", authMiddleware, async (req, res) => {
     try {
-      const userId = (req as any).userId;
+      // Same bug as /api/boosts/create had - (req as any).userId is never
+      // set by authMiddleware, only req.user is.
+      const userId = req.user!.id;
 
       const boostsList = await db.select({
         id: listingBoosts.id,
@@ -3439,11 +3978,26 @@ export async function registerRoutes(
         .where(eq(newsletterSubscribers.isActive, true))
         .orderBy(newsletterSubscribers.email);
 
+      // Proper CSV field escaping - the old version only quoted `name` and
+      // never escaped embedded commas/quotes in any field, so a comma in an
+      // email or source value silently corrupted the CSV. This also guards
+      // against formula injection (a field starting with =, +, -, or @)
+      // when the file is opened in Excel.
+      const escapeCsvField = (value: string): string => {
+        let field = value ?? "";
+        if (/^[=+\-@]/.test(field)) field = `'${field}`;
+        if (/[",\n]/.test(field)) field = `"${field.replace(/"/g, '""')}"`;
+        return field;
+      };
+
       const csv = [
         "Email,Name,Subscribed At,Source",
-        ...subscribers.map(s => 
-          `${s.email},"${s.name || ""}",${s.subscribedAt?.toISOString() || ""},${s.source || ""}`
-        )
+        ...subscribers.map(s => [
+          escapeCsvField(s.email),
+          escapeCsvField(s.name || ""),
+          escapeCsvField(s.subscribedAt?.toISOString() || ""),
+          escapeCsvField(s.source || ""),
+        ].join(","))
       ].join("\n");
 
       res.setHeader("Content-Type", "text/csv");

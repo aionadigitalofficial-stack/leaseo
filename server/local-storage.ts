@@ -16,6 +16,18 @@ const PRIVATE_DIR = path.join(UPLOAD_DIR, "private");
   }
 });
 
+// Tracks filenames issued by /api/uploads/request-url so the unauthenticated
+// PUT /api/upload/direct step can verify a request-url call actually
+// happened (and was made by a logged-in user) before accepting bytes.
+// Entries expire after 10 minutes and are removed once used.
+const pendingDirectUploads = new Map<string, { userId: string; token: string; contentType?: string; expiresAt: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of Array.from(pendingDirectUploads.entries())) {
+    if (value.expiresAt < now) pendingDirectUploads.delete(key);
+  }
+}, 5 * 60 * 1000).unref();
+
 // Sanitize filename to prevent directory traversal attacks
 function sanitizeFilename(filename: string): string | null {
   // Remove any path separators and parent directory references
@@ -200,8 +212,14 @@ export function registerLocalStorageRoutes(app: Router): void {
 
   // Request URL for upload - compatible with useUpload hook
   // This endpoint returns a direct upload URL that works with FormData
-  // Note: No auth required here to match Replit object storage behavior
-  app.post("/api/uploads/request-url", async (req: Request, res: Response): Promise<void> => {
+  //
+  // SECURITY FIX: this used to be unauthenticated ("to match Replit object
+  // storage behavior") and paired with an equally unauthenticated PUT
+  // endpoint below with no file-type or size restriction at all - meaning
+  // literally anyone, logged in or not, could upload any file of any size
+  // to the public server. This is the flow the app's own image uploader
+  // actually uses for every property photo, so it was not dead code.
+  app.post("/api/uploads/request-url", authMiddleware, async (req: Request, res: Response): Promise<void> => {
     try {
       const { name, size, contentType } = req.body;
       
@@ -210,15 +228,37 @@ export function registerLocalStorageRoutes(app: Router): void {
         return;
       }
 
+      const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
+      if (contentType && !allowedTypes.includes(contentType)) {
+        res.status(400).json({ error: "Invalid file type. Only images and PDFs are allowed." });
+        return;
+      }
+
+      const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB, same limit as /api/upload
+      if (typeof size === "number" && size > MAX_UPLOAD_BYTES) {
+        res.status(400).json({ error: "File is too large. Maximum size is 10MB." });
+        return;
+      }
+
       // Generate unique filename
       const uniqueSuffix = crypto.randomBytes(8).toString("hex");
       const ext = path.extname(name).toLowerCase();
+      const allowedExtensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf"];
+      if (!allowedExtensions.includes(ext)) {
+        res.status(400).json({ error: "Invalid file extension" });
+        return;
+      }
       const baseName = path.basename(name, ext).replace(/[^a-zA-Z0-9]/g, "_").substring(0, 50);
       const filename = `${baseName}_${uniqueSuffix}${ext}`;
       
-      // For local storage, upload URL points to our upload endpoint
+      // For local storage, upload URL points to our upload endpoint. The
+      // upload token ties this specific filename to the user who requested
+      // it, so the PUT below can verify it rather than accepting anything.
+      const uploadToken = crypto.randomBytes(16).toString("hex");
+      pendingDirectUploads.set(filename, { userId: req.user!.id, token: uploadToken, contentType, expiresAt: Date.now() + 10 * 60 * 1000 });
+
       const baseUrl = process.env.BASE_URL || "";
-      const uploadURL = `${baseUrl}/api/upload/direct?filename=${encodeURIComponent(filename)}`;
+      const uploadURL = `${baseUrl}/api/upload/direct?filename=${encodeURIComponent(filename)}&token=${uploadToken}`;
       const objectPath = `/uploads/public/${filename}`;
 
       res.json({
@@ -233,12 +273,25 @@ export function registerLocalStorageRoutes(app: Router): void {
   });
 
   // Direct file upload with PUT method (for presigned URL flow compatibility)
-  // Note: No auth required since URL contains the unique filename
+  //
+  // SECURITY FIX: requires the filename to be one that was just issued by
+  // /api/uploads/request-url to an authenticated user, and enforces the
+  // same 10MB size limit as the regular multipart upload endpoint. Excess
+  // bytes abort the upload and delete the partial file instead of writing
+  // an unbounded stream to disk.
   app.put("/api/upload/direct", (req: Request, res: Response): void => {
     const filename = req.query.filename as string;
+    const token = req.query.token as string;
     
     if (!filename) {
       res.status(400).json({ error: "Missing filename" });
+      return;
+    }
+
+    const pending = pendingDirectUploads.get(filename);
+    if (!pending || pending.expiresAt < Date.now() || pending.token !== token) {
+      pendingDirectUploads.delete(filename);
+      res.status(403).json({ error: "No pending upload for this file. Request a new upload URL." });
       return;
     }
 
@@ -257,16 +310,33 @@ export function registerLocalStorageRoutes(app: Router): void {
       return;
     }
 
-    // Stream the request body directly to file
+    const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB
+    let receivedBytes = 0;
+    let aborted = false;
     const writeStream = fs.createWriteStream(filePath);
-    
+
+    req.on("data", (chunk: Buffer) => {
+      receivedBytes += chunk.length;
+      if (receivedBytes > MAX_UPLOAD_BYTES && !aborted) {
+        aborted = true;
+        req.unpipe(writeStream);
+        writeStream.destroy();
+        fs.unlink(filePath, () => {});
+        pendingDirectUploads.delete(filename);
+        res.status(413).json({ error: "File is too large. Maximum size is 10MB." });
+      }
+    });
+
     req.pipe(writeStream);
     
     writeStream.on("finish", () => {
+      if (aborted) return;
+      pendingDirectUploads.delete(filename);
       res.status(200).json({ success: true });
     });
     
     writeStream.on("error", (err) => {
+      if (aborted) return;
       console.error("Write error:", err);
       res.status(500).json({ error: "Failed to save file" });
     });
