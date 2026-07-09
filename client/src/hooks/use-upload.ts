@@ -62,11 +62,25 @@ export function useUpload(options: UseUploadOptions = {}) {
    */
   const requestUploadUrl = useCallback(
     async (file: File): Promise<UploadResponse> => {
+      // BUG FIX: this request hits /api/uploads/request-url, which is
+      // protected by authMiddleware and requires a Bearer token - exactly
+      // like every other authenticated call made via apiRequest(). This
+      // fetch previously omitted the Authorization header entirely, so it
+      // always got a 401, which was silently swallowed by the calling
+      // code's try/catch in post-property.tsx - properties were created
+      // successfully but ended up with zero images every time, silently.
+      const token = localStorage.getItem("token");
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const response = await fetch("/api/uploads/request-url", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
+        credentials: "include",
         body: JSON.stringify({
           name: file.name,
           size: file.size,
@@ -162,11 +176,20 @@ export function useUpload(options: UseUploadOptions = {}) {
       headers?: Record<string, string>;
     }> => {
       // Use the actual file properties to request a per-file presigned URL
+      // (same auth fix as requestUploadUrl above - this endpoint requires
+      // a Bearer token)
+      const token = localStorage.getItem("token");
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const response = await fetch("/api/uploads/request-url", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
+        credentials: "include",
         body: JSON.stringify({
           name: file.name,
           size: file.size,
