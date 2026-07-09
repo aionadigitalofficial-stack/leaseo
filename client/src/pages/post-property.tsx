@@ -407,10 +407,10 @@ export default function PostPropertyPage() {
     },
     onSuccess: () => {
       toast({
-        title: isEditMode ? "Property Updated Successfully!" : "Property Listed Successfully!",
-        // Listings now go live immediately (Issue #1) instead of sitting in
-        // a hidden "pending" queue, so this copy no longer says "for review".
-        description: isEditMode ? "Your changes have been saved." : "Your property is now live on Leaseo.",
+        title: isEditMode ? "Property Updated Successfully!" : "Property Submitted Successfully!",
+        description: isEditMode
+          ? "Your changes have been saved."
+          : "Your property has been submitted and is pending admin approval. We'll notify you by email once it's reviewed.",
       });
       setLocation("/dashboard");
     },
