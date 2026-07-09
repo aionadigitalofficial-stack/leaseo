@@ -18,6 +18,7 @@ import BlogPage from "@/pages/blog";
 import BlogDetailPage from "@/pages/blog-detail";
 import AdminPage from "@/pages/admin";
 import LoginPage from "@/pages/login";
+import ForgotPasswordPage from "@/pages/forgot-password";
 import RegisterPage from "@/pages/register";
 import ProfileCompletePage from "@/pages/profile-complete";
 import DashboardPage from "@/pages/dashboard";
@@ -41,6 +42,7 @@ function Router() {
       <Route path="/blog" component={BlogPage} />
       <Route path="/blog/:slug" component={BlogDetailPage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/register" component={RegisterPage} />
       <Route path="/profile/complete" component={ProfileCompletePage} />
       <Route path="/dashboard" component={DashboardPage} />
@@ -69,7 +71,7 @@ function AppContent() {
     
     const savedPageKeys: string[] = [];
     
-    for (const [pageKey, contentChanges] of changesByPage) {
+    for (const [pageKey, contentChanges] of Array.from(changesByPage)) {
       try {
         const response = await fetch(`/api/pages/${pageKey}`);
         let currentContent = {};
