@@ -206,8 +206,23 @@ async function sendViaBhashSms(
 
     console.log(`[SMS] BhashSMS response: ${result}`);
 
-    if (result.toLowerCase().includes('success') || result.match(/^\d+$/)) {
-      console.log(`[SMS] OTP sent successfully to ${formattedPhone}`);
+    // BhashSMS returns a tracking/message ID on successful submission, in one
+    // of a few formats depending on account/route config:
+    //   - a plain numeric ID, e.g. "123456789"
+    //   - a message containing the word "success"
+    //   - an "S.xxxxxx" prefixed ID, e.g. "S.899842" - confirmed via direct
+    //     curl testing to be a SUCCESS response (a submission/tracking id),
+    //     not an error, even though it looks error-like. This was previously
+    //     misclassified as a failure, causing every real BhashSMS send to be
+    //     logged (and treated) as failed despite the SMS actually arriving.
+    const trimmed = result.trim();
+    const isSuccess =
+      trimmed.toLowerCase().includes('success') ||
+      /^\d+$/.test(trimmed) ||
+      /^S\.\d+$/i.test(trimmed);
+
+    if (isSuccess) {
+      console.log(`[SMS] OTP sent successfully to ${formattedPhone} (ref: ${trimmed})`);
       return true;
     } else {
       console.error(`[SMS] Failed to send OTP: ${result}`);
