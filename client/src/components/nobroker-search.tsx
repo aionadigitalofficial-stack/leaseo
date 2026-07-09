@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Search, ChevronDown, Check, Building2, Home, Users, Bed } from "lucide-react";
+import { Search, ChevronDown, Building2, Home, Users, Bed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,7 +22,6 @@ import {
   INDIAN_CITIES,
   BHK_OPTIONS,
   PROPERTY_TYPES_COMMERCIAL,
-  RENT_RANGES,
 } from "@/lib/constants";
 import type { FeatureFlag } from "@shared/schema";
 
@@ -40,9 +39,11 @@ export function NoBrokerSearch() {
   const [city, setCity] = useState("Mumbai");
   const [locality, setLocality] = useState("");
   const [residentialType, setResidentialType] = useState("full-house");
-  const [selectedBhks, setSelectedBhks] = useState<string[]>([]);
+  const [bhk, setBhk] = useState("");
+  const [commercialListingType, setCommercialListingType] = useState<"rent" | "buy">("rent");
   const [selectedCommercialTypes, setSelectedCommercialTypes] = useState<string[]>([]);
-  const [rentRange, setRentRange] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
 
   const { data: featureFlags = [] } = useQuery<FeatureFlag[]>({
     queryKey: ["/api/feature-flags"],
@@ -55,45 +56,27 @@ export function NoBrokerSearch() {
   const handleSearch = () => {
     const citySlug = city.toLowerCase().replace(/\s+/g, "-");
     const localitySlug = locality.trim() ? locality.toLowerCase().replace(/\s+/g, "-") : "";
-    
+
     const params = new URLSearchParams();
     if (activeTab === "commercial") {
       params.set("type", "commercial");
+      params.set("listingType", commercialListingType === "buy" ? "sale" : "rent");
       if (selectedCommercialTypes.length > 0) {
         params.set("propertyType", selectedCommercialTypes.join(","));
       }
     } else if (activeTab === "buy") {
       params.set("listingType", "sale");
-      if (selectedBhks.length > 0) {
-        params.set("bhk", selectedBhks.join(","));
-      }
+      if (bhk) params.set("bhk", bhk);
     } else {
-      if (selectedBhks.length > 0) {
-        params.set("bhk", selectedBhks.join(","));
-      }
+      if (bhk) params.set("bhk", bhk);
     }
-    if (rentRange) {
-      if (rentRange.endsWith("+")) {
-        const min = rentRange.replace("+", "");
-        params.set("rentMin", min);
-        params.set("rentMax", "999999");
-      } else {
-        const [min, max] = rentRange.split("-");
-        if (min) params.set("rentMin", min);
-        if (max) params.set("rentMax", max);
-      }
-    }
-    
-    const listingPath = activeTab === "buy" ? "buy" : "rent";
+    if (minPrice) params.set("rentMin", minPrice);
+    if (maxPrice) params.set("rentMax", maxPrice);
+
+    const listingPath = (activeTab === "buy" || (activeTab === "commercial" && commercialListingType === "buy")) ? "buy" : "rent";
     const basePath = localitySlug ? `/${listingPath}/${citySlug}/${localitySlug}` : `/${listingPath}/${citySlug}`;
     const queryString = params.toString();
     setLocation(queryString ? `${basePath}?${queryString}` : basePath);
-  };
-
-  const toggleBhk = (bhkId: string) => {
-    setSelectedBhks(prev =>
-      prev.includes(bhkId) ? prev.filter(b => b !== bhkId) : [...prev, bhkId]
-    );
   };
 
   const toggleCommercialType = (typeId: string) => {
@@ -190,6 +173,33 @@ export function NoBrokerSearch() {
 
           {activeTab === "commercial" ? (
             <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="commercial-listing-type"
+                    checked={commercialListingType === "rent"}
+                    onChange={() => setCommercialListingType("rent")}
+                    className="w-4 h-4 text-primary"
+                    data-testid="radio-commercial-rent"
+                  />
+                  <span className="text-sm">Rent</span>
+                </label>
+                {showBuyTab && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="commercial-listing-type"
+                      checked={commercialListingType === "buy"}
+                      onChange={() => setCommercialListingType("buy")}
+                      className="w-4 h-4 text-primary"
+                      data-testid="radio-commercial-buy"
+                    />
+                    <span className="text-sm">Buy</span>
+                  </label>
+                )}
+              </div>
+
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -223,18 +233,22 @@ export function NoBrokerSearch() {
                 </PopoverContent>
               </Popover>
 
-              <Select value={rentRange} onValueChange={setRentRange}>
-                <SelectTrigger className="w-40 h-9" data-testid="select-rent-range-commercial">
-                  <SelectValue placeholder="Rent Range" />
-                </SelectTrigger>
-                <SelectContent>
-                  {RENT_RANGES.map((range) => (
-                    <SelectItem key={range.value} value={range.value}>
-                      {range.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                type="number"
+                placeholder="Min ₹"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                className="w-28 h-9"
+                data-testid="input-min-price-commercial"
+              />
+              <Input
+                type="number"
+                placeholder="Max ₹"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                className="w-28 h-9"
+                data-testid="input-max-price-commercial"
+              />
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-4">
@@ -268,43 +282,57 @@ export function NoBrokerSearch() {
                     data-testid="button-bhk-type"
                   >
                     <Bed className="h-4 w-4" />
-                    {selectedBhks.length > 0
-                      ? `${selectedBhks.length} BHK Selected`
-                      : "BHK Type"}
+                    {bhk || "BHK Type"}
                     <ChevronDown className="h-4 w-4" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-48 p-2" align="start">
-                  <div className="space-y-2">
-                    {BHK_OPTIONS.map((bhk) => (
+                  <div className="space-y-1">
+                    {BHK_OPTIONS.map((option) => (
                       <label
-                        key={bhk}
+                        key={option}
                         className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-muted"
                       >
-                        <Checkbox
-                          checked={selectedBhks.includes(bhk)}
-                          onCheckedChange={() => toggleBhk(bhk)}
-                          data-testid={`checkbox-bhk-${bhk.toLowerCase().replace(/\s+/g, "-")}`}
+                        <input
+                          type="radio"
+                          name="bhk-type"
+                          checked={bhk === option}
+                          onChange={() => setBhk(option)}
+                          className="w-4 h-4 text-primary"
+                          data-testid={`radio-bhk-${option.toLowerCase().replace(/\s+/g, "-")}`}
                         />
-                        <span className="text-sm">{bhk}</span>
+                        <span className="text-sm">{option}</span>
                       </label>
                     ))}
+                    {bhk && (
+                      <button
+                        onClick={() => setBhk("")}
+                        className="text-xs text-muted-foreground hover:text-foreground pl-2 pt-1"
+                        data-testid="button-clear-bhk"
+                      >
+                        Clear selection
+                      </button>
+                    )}
                   </div>
                 </PopoverContent>
               </Popover>
 
-              <Select value={rentRange} onValueChange={setRentRange}>
-                <SelectTrigger className="w-40 h-9" data-testid="select-price-range">
-                  <SelectValue placeholder={activeTab === "buy" ? "Price Range" : "Rent Range"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {RENT_RANGES.map((range) => (
-                    <SelectItem key={range.value} value={range.value}>
-                      {range.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                type="number"
+                placeholder="Min ₹"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                className="w-28 h-9"
+                data-testid="input-min-price"
+              />
+              <Input
+                type="number"
+                placeholder="Max ₹"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                className="w-28 h-9"
+                data-testid="input-max-price"
+              />
             </div>
           )}
         </div>

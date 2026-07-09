@@ -39,15 +39,6 @@ const buyCategories = [
   { href: "/properties?segment=buy&propertyType=penthouse", label: "Penthouse", icon: Building2 },
 ];
 
-const commercialCategories = [
-  { href: "/properties?segment=commercial&propertyType=office", label: "Office Space", icon: Briefcase },
-  { href: "/properties?segment=commercial&propertyType=shop", label: "Shop/Showroom", icon: Store },
-  { href: "/properties?segment=commercial&propertyType=warehouse", label: "Warehouse", icon: Warehouse },
-  { href: "/properties?segment=commercial&propertyType=coworking", label: "Co-working", icon: Building2 },
-  { href: "/properties?segment=commercial&propertyType=industrial", label: "Industrial", icon: Factory },
-  { href: "/properties?segment=commercial&propertyType=land", label: "Commercial Land", icon: MapPin },
-];
-
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
@@ -152,22 +143,21 @@ export function Header() {
                 Commercial <ChevronDown className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuContent align="start" className="w-48">
               <DropdownMenuItem asChild>
-                <Link href="/properties?segment=commercial" className="flex items-center gap-2 cursor-pointer">
-                  <Briefcase className="h-4 w-4" />
-                  All Commercial
+                <Link href="/properties?segment=commercial&listingType=rent" className="flex items-center gap-2 cursor-pointer">
+                  <Home className="h-4 w-4" />
+                  Rent
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {commercialCategories.map((cat) => (
-                <DropdownMenuItem key={cat.href} asChild>
-                  <Link href={cat.href} className="flex items-center gap-2 cursor-pointer">
-                    <cat.icon className="h-4 w-4" />
-                    {cat.label}
+              {showBuyTab && (
+                <DropdownMenuItem asChild>
+                  <Link href="/properties?segment=commercial&listingType=sale" className="flex items-center gap-2 cursor-pointer">
+                    <Briefcase className="h-4 w-4" />
+                    Buy
                   </Link>
                 </DropdownMenuItem>
-              ))}
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -178,6 +168,16 @@ export function Header() {
               data-testid="nav-about"
             >
               About
+            </Button>
+          </Link>
+
+          <Link href="/blog">
+            <Button
+              variant="ghost"
+              className={`text-sm text-white hover:text-white hover:bg-white/10 ${location === "/blog" ? "bg-[#ff9a00] hover:bg-[#ff9a00]/90" : ""}`}
+              data-testid="nav-blog"
+            >
+              Blog
             </Button>
           </Link>
           <Link href="/contact">
@@ -329,23 +329,23 @@ export function Header() {
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-muted-foreground px-4 pt-4">Commercial</p>
                   <SheetClose asChild>
-                    <Link href="/properties?segment=commercial">
-                      <Button variant="ghost" className="w-full justify-start" data-testid="mobile-nav-all-commercial">
-                        <Briefcase className="h-4 w-4 mr-2" />
-                        All Commercial
+                    <Link href="/properties?segment=commercial&listingType=rent">
+                      <Button variant="ghost" className="w-full justify-start pl-8 text-sm" data-testid="mobile-nav-commercial-rent">
+                        <Home className="h-4 w-4 mr-2" />
+                        Rent
                       </Button>
                     </Link>
                   </SheetClose>
-                  {commercialCategories.map((cat) => (
-                    <SheetClose asChild key={cat.href}>
-                      <Link href={cat.href}>
-                        <Button variant="ghost" className="w-full justify-start pl-8 text-sm" data-testid={`mobile-nav-commercial-${cat.label.toLowerCase()}`}>
-                          <cat.icon className="h-4 w-4 mr-2" />
-                          {cat.label}
+                  {showBuyTab && (
+                    <SheetClose asChild>
+                      <Link href="/properties?segment=commercial&listingType=sale">
+                        <Button variant="ghost" className="w-full justify-start pl-8 text-sm" data-testid="mobile-nav-commercial-buy">
+                          <Briefcase className="h-4 w-4 mr-2" />
+                          Buy
                         </Button>
                       </Link>
                     </SheetClose>
-                  ))}
+                  )}
                 </div>
 
                 <div className="border-t pt-4 mt-4 space-y-2">
@@ -353,6 +353,13 @@ export function Header() {
                     <Link href="/about">
                       <Button variant="ghost" className="w-full justify-start" data-testid="mobile-nav-about">
                         About
+                      </Button>
+                    </Link>
+                  </SheetClose>
+                  <SheetClose asChild>
+                    <Link href="/blog">
+                      <Button variant="ghost" className="w-full justify-start" data-testid="mobile-nav-blog">
+                        Blog
                       </Button>
                     </Link>
                   </SheetClose>
