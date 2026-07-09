@@ -898,14 +898,6 @@ function OwnerPropertyCard({ property, onAction, onBoost }: OwnerPropertyCardPro
                     View Listing
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem 
-                  onClick={() => onAction(property.id, "delete")} 
-                  className="gap-2 text-destructive"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete Listing
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
