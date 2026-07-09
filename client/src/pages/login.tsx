@@ -41,7 +41,7 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: `+91${phoneNumber}`,
+          phone: phoneNumber,
           purpose: "login",
         }),
       });
@@ -103,7 +103,7 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: `+91${phoneNumber}`,
+          phone: phoneNumber,
           code: otp,
           createAccount: true,
         }),
