@@ -19,6 +19,24 @@ async function getActiveSmsProvider() {
   return provider || null;
 }
 
+// Used to decide whether mandatory phone-OTP verification is actually
+// possible right now. Without this, if nobody has configured SMS delivery
+// yet, every user gets permanently stuck on the phone-verification step of
+// profile completion (no real SMS arrives, and the production build
+// correctly no longer leaks the code as a fallback) - which blocks posting
+// a listing for everyone, not just some users.
+export async function isSmsDeliveryConfigured(): Promise<boolean> {
+  const activeProvider = await getActiveSmsProvider();
+  if (activeProvider) {
+    const isLive = activeProvider.mode === "live";
+    const hasCreds = isLive
+      ? !!(activeProvider.accountSid || activeProvider.apiKey) && !!(activeProvider.authToken || activeProvider.apiKey)
+      : !!(activeProvider.sandboxAccountSid || activeProvider.sandboxApiKey) && !!(activeProvider.sandboxAuthToken || activeProvider.sandboxApiKey);
+    if (hasCreds) return true;
+  }
+  return !!(process.env.BHASHSMS_USER && process.env.BHASHSMS_PASSWORD);
+}
+
 function formatIndianPhone(phone: string): string | null {
   let formatted = phone.replace(/\D/g, "");
   if (formatted.startsWith("91") && formatted.length === 12) {

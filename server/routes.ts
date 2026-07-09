@@ -30,20 +30,29 @@ const getClientIp = (req: any): string => {
 };
 
 // Issue #3: the mandatory-profile-completion check used before a listing
-// can be posted. Requires a name, a user type, and BOTH email + phone
-// verified via OTP - not just filled in.
-const isProfileReadyToList = (user: {
-  firstName: string | null;
-  lastName: string | null;
-  userType: string | null;
-  emailVerifiedAt: Date | null;
-  phoneVerifiedAt: Date | null;
-  phone: string | null;
-}): { ready: boolean; missing: string[] } => {
+// can be posted. Requires a name, a user type, a verified email, and a
+// phone NUMBER on file always - but only requires that phone number be
+// OTP-VERIFIED when SMS delivery is actually configured. Without this
+// carve-out, if nobody has set up an SMS provider yet, every single user
+// gets permanently stuck (no SMS ever arrives, and production correctly no
+// longer shows the code as a fallback), which blocks posting a listing
+// platform-wide rather than just affecting phone verification specifically.
+const isProfileReadyToList = (
+  user: {
+    firstName: string | null;
+    lastName: string | null;
+    userType: string | null;
+    emailVerifiedAt: Date | null;
+    phoneVerifiedAt: Date | null;
+    phone: string | null;
+  },
+  smsConfigured: boolean
+): { ready: boolean; missing: string[] } => {
   const missing: string[] = [];
   if (!user.firstName || !user.lastName) missing.push("name");
   if (!user.userType) missing.push("userType");
-  if (!user.phone || !user.phoneVerifiedAt) missing.push("phoneVerification");
+  if (!user.phone) missing.push("phone");
+  else if (smsConfigured && !user.phoneVerifiedAt) missing.push("phoneVerification");
   if (!user.emailVerifiedAt) missing.push("emailVerification");
   return { ready: missing.length === 0, missing };
 };
@@ -249,9 +258,12 @@ export async function registerRoutes(
           return res.status(404).json({ error: "User not found" });
         }
 
-        // Issue #3: profile must be complete (name, user type) and both
-        // email + phone must be OTP-verified before a listing can be posted.
-        const { ready, missing } = isProfileReadyToList(currentUser);
+        // Issue #3: profile must be complete (name, user type) and email
+        // must be verified; phone verification is also required, but only
+        // when SMS delivery is actually configured (see isProfileReadyToList).
+        const { isSmsDeliveryConfigured } = await import("./sms");
+        const smsConfigured = await isSmsDeliveryConfigured();
+        const { ready, missing } = isProfileReadyToList(currentUser, smsConfigured);
         if (!ready) {
           return res.status(403).json({
             error: "PROFILE_INCOMPLETE",
@@ -1025,7 +1037,7 @@ export async function registerRoutes(
   // fields alone is not enough.
   app.patch("/api/auth/profile", authMiddleware, async (req, res) => {
     try {
-      const { firstName, lastName, userType } = req.body;
+      const { firstName, lastName, userType, phone } = req.body;
 
       if (!firstName || !lastName) {
         return res.status(400).json({ error: "First name and last name are required" });
@@ -1044,7 +1056,31 @@ export async function registerRoutes(
       if (!currentUser.emailVerifiedAt) {
         return res.status(400).json({ error: "Please verify your email address first", missing: "emailVerification" });
       }
-      if (!currentUser.phone || !currentUser.phoneVerifiedAt) {
+
+      const { isSmsDeliveryConfigured } = await import("./sms");
+      const smsConfigured = await isSmsDeliveryConfigured();
+
+      // If SMS isn't configured, phone verification is skipped (see below),
+      // which means a typed-but-never-verified number was never attached to
+      // the account by the OTP flow. Save it directly here in that case.
+      let phoneToUse = currentUser.phone;
+      if (!smsConfigured && phone && phone !== currentUser.phone) {
+        const [existingPhoneOwner] = await db.select().from(users).where(eq(users.phone, phone));
+        if (existingPhoneOwner && existingPhoneOwner.id !== currentUser.id) {
+          return res.status(400).json({ error: "This phone number is already associated with another account" });
+        }
+        await db.update(users).set({ phone }).where(eq(users.id, currentUser.id));
+        phoneToUse = phone;
+      }
+
+      if (!phoneToUse) {
+        return res.status(400).json({ error: "Please add a phone number first", missing: "phone" });
+      }
+      // Phone must be OTP-verified, UNLESS SMS delivery isn't actually
+      // configured yet - in that case we don't trap every user behind a
+      // verification step that can never succeed. The phone number is
+      // still captured either way; it's flagged as unverified for admins.
+      if (smsConfigured && !currentUser.phoneVerifiedAt) {
         return res.status(400).json({ error: "Please verify your phone number first", missing: "phoneVerification" });
       }
 
@@ -1515,6 +1551,21 @@ export async function registerRoutes(
   // ==================== FEATURE FLAGS ====================
 
   // Get all feature flags
+  // Lets the client know whether phone OTP verification is actually
+  // possible right now, so it can skip forcing users through a
+  // verification step that has no way to succeed while SMS delivery is
+  // unconfigured (see isProfileReadyToList).
+  app.get("/api/system/sms-status", async (req, res) => {
+    try {
+      const { isSmsDeliveryConfigured } = await import("./sms");
+      const configured = await isSmsDeliveryConfigured();
+      res.json({ configured });
+    } catch (error) {
+      console.error("Error checking SMS status:", error);
+      res.json({ configured: false });
+    }
+  });
+
   app.get("/api/feature-flags", async (req, res) => {
     try {
       const flags = await storage.getFeatureFlags();
