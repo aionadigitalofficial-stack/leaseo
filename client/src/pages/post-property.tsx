@@ -95,6 +95,9 @@ interface PropertyFormData {
   preferredTenants: string[];
   description: string;
   images: File[];
+  // Optional supporting documents (ownership proof, tax receipt, etc.) -
+  // never required to submit a listing, purely to help admin verification.
+  documents: File[];
   videoUrl: string;
 }
 
@@ -125,6 +128,7 @@ const initialFormData: PropertyFormData = {
   preferredTenants: ["Any"],
   description: "",
   images: [],
+  documents: [],
   videoUrl: "",
 };
 
@@ -132,7 +136,7 @@ export default function PostPropertyPage() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const { toast } = useToast();
-  const { user, isAuthenticated, login } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, login } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<PropertyFormData>(initialFormData);
   const [showVerifyDialog, setShowVerifyDialog] = useState(false);
@@ -144,6 +148,8 @@ export default function PostPropertyPage() {
   const [isVerified, setIsVerified] = useState(false);
   const [isOtpLoading, setIsOtpLoading] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
+  // Issue #4: mandatory "I am the owner, not a broker" declaration checkbox
+  const [brokerDeclarationConfirmed, setBrokerDeclarationConfirmed] = useState(false);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [featuredImageIndex, setFeaturedImageIndex] = useState(0);
 
@@ -193,6 +199,24 @@ export default function PostPropertyPage() {
     },
   });
 
+  // Issue #3 / bug report #4: posting a listing requires a completed,
+  // verified profile server-side. Previously a user could fill out the
+  // entire multi-step form, pass this page's own (separate, single-channel)
+  // "Verify Your Identity" step, see "Ready to Publish", and only then
+  // discover at the final Submit that the server blocks them - a confusing
+  // dead end. Catch this immediately on page load instead, before they've
+  // invested any time in the form.
+  useEffect(() => {
+    if (authLoading || isEditMode) return;
+    if (isAuthenticated && user && !user.profileCompleted) {
+      toast({
+        title: "Complete your profile first",
+        description: "We need your name, user type, and a verified email + phone before you can post a listing.",
+      });
+      setLocation(`/profile/complete?redirect=${encodeURIComponent("/post-property")}`);
+    }
+  }, [authLoading, isAuthenticated, user, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Pre-populate form when editing
   useEffect(() => {
     if (existingProperty && isEditMode) {
@@ -226,6 +250,7 @@ export default function PostPropertyPage() {
         preferredTenants: existingProperty.preferredTenants || ["Any"],
         description: existingProperty.description || "",
         images: [],
+        documents: [],
         videoUrl: existingProperty.videoUrl || "",
       });
       // In edit mode, skip verification since user is editing their own property
@@ -233,7 +258,10 @@ export default function PostPropertyPage() {
     }
   }, [existingProperty, isEditMode]);
 
-  const isOwnerRole = user?.activeRoleId?.includes("owner") || false;
+  // Was `user?.activeRoleId?.includes("owner")` - activeRoleId is a UUID,
+  // never a string containing "owner", so this check could basically never
+  // be true. activeRoleName is the actual role name (e.g. "residential_owner").
+  const isOwnerRole = user?.activeRoleName?.includes("owner") || false;
 
   useEffect(() => {
     if (isAuthenticated && isOwnerRole) {
@@ -250,6 +278,26 @@ export default function PostPropertyPage() {
 
   const { uploadFile } = useUpload();
   const [uploadProgress, setUploadProgress] = useState("");
+
+  // Parses the {error, message, redirectTo} JSON body apiRequest's thrown
+  // Error wraps as "STATUS: <raw body>", so the specific error codes from
+  // the server (PROFILE_INCOMPLETE, DECLARATION_REQUIRED, LISTING_LIMIT_REACHED)
+  // can be told apart instead of showing one generic failure toast.
+  const parseApiError = (error: unknown): { message: string; code?: string; redirectTo?: string } => {
+    if (error instanceof Error) {
+      const match = error.message.match(/^\d+:\s*([\s\S]*)$/);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          return { message: parsed.message || parsed.error || error.message, code: parsed.error, redirectTo: parsed.redirectTo };
+        } catch {
+          // Not JSON - fall through to the raw message
+        }
+      }
+      return { message: error.message };
+    }
+    return { message: "Something went wrong" };
+  };
 
   const propertyMutation = useMutation({
     mutationFn: async (data: PropertyFormData) => {
@@ -283,6 +331,10 @@ export default function PostPropertyPage() {
         furnishing: data.furnishing,
         amenities: data.amenities,
         availableFrom: data.availableFrom ? new Date(data.availableFrom) : undefined,
+        // Issue #4: mandatory "I'm the owner, not a broker" declaration.
+        // Only relevant on new listings - an existing listing was already
+        // declared when it was first created.
+        ...(!isEditMode ? { brokerDeclarationConfirmed } : {}),
       };
       
       let propertyId: string;
@@ -328,18 +380,58 @@ export default function PostPropertyPage() {
         }
         setUploadProgress("");
       }
+
+      // Optional supporting documents (ownership proof, tax receipt, etc.)
+      if (data.documents.length > 0) {
+        setUploadProgress("Uploading documents...");
+        for (let i = 0; i < data.documents.length; i++) {
+          const file = data.documents[i];
+          setUploadProgress(`Uploading document ${i + 1} of ${data.documents.length}...`);
+          try {
+            const uploadResponse = await uploadFile(file);
+            if (uploadResponse) {
+              await apiRequest("POST", `/api/properties/${propertyId}/documents`, {
+                url: uploadResponse.objectPath,
+                fileName: file.name,
+                documentType: "other",
+              });
+            }
+          } catch (error) {
+            console.error(`Failed to upload document ${i + 1}:`, error);
+          }
+        }
+        setUploadProgress("");
+      }
       
       return { success: true, propertyId };
     },
     onSuccess: () => {
       toast({
         title: isEditMode ? "Property Updated Successfully!" : "Property Listed Successfully!",
-        description: isEditMode ? "Your changes have been saved." : "Your property has been submitted for review.",
+        // Listings now go live immediately (Issue #1) instead of sitting in
+        // a hidden "pending" queue, so this copy no longer says "for review".
+        description: isEditMode ? "Your changes have been saved." : "Your property is now live on Leaseo.",
       });
       setLocation("/dashboard");
     },
     onError: (error) => {
       setUploadProgress("");
+      const { message, code, redirectTo } = parseApiError(error);
+
+      if (code === "PROFILE_INCOMPLETE") {
+        toast({ title: "Complete your profile first", description: message, variant: "destructive" });
+        setLocation(`${redirectTo || "/profile/complete"}?redirect=${encodeURIComponent("/post-property")}`);
+        return;
+      }
+      if (code === "LISTING_LIMIT_REACHED") {
+        toast({ title: "Listing limit reached", description: message, variant: "destructive" });
+        return;
+      }
+      if (code === "DECLARATION_REQUIRED") {
+        toast({ title: "Declaration required", description: message, variant: "destructive" });
+        return;
+      }
+
       toast({
         title: "Error",
         description: isEditMode ? "Failed to update property. Please try again." : "Failed to list property. Please try again.",
@@ -403,6 +495,27 @@ export default function PostPropertyPage() {
     } else if (index < featuredImageIndex) {
       setFeaturedImageIndex((prev) => prev - 1);
     }
+  };
+
+  // Optional supporting documents - never required to submit a listing
+  const handleDocumentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length + formData.documents.length > 5) {
+      toast({
+        title: "Too many documents",
+        description: "You can attach up to 5 supporting documents.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setFormData((prev) => ({ ...prev, documents: [...prev.documents, ...files] }));
+  };
+
+  const removeDocument = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      documents: prev.documents.filter((_, i) => i !== index),
+    }));
   };
 
   const handleSendOtp = async () => {
@@ -504,7 +617,7 @@ export default function PostPropertyPage() {
       case 6:
         return (existingImages.length + formData.images.length) >= 3;
       case 7:
-        return isVerified;
+        return isVerified && (isEditMode || brokerDeclarationConfirmed);
       default:
         return true;
     }
@@ -1171,6 +1284,55 @@ export default function PostPropertyPage() {
                 Properties with videos get 40% more views
               </p>
             </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div>
+                <Label className="text-base font-medium">Supporting Documents (Optional)</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Not required to list your property - but attaching ownership proof, a property tax
+                  receipt, or a society NOC can help our team verify your listing faster.
+                </p>
+              </div>
+
+              {formData.documents.length > 0 && (
+                <div className="space-y-2">
+                  {formData.documents.map((file, index) => (
+                    <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 p-2 border rounded-md bg-muted/30">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileCheck className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm truncate">{file.name}</span>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => removeDocument(index)}
+                        data-testid={`button-remove-document-${index}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {formData.documents.length < 5 && (
+                <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-lg py-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                  <Upload className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Attach a document (PDF or image)</span>
+                  <input
+                    type="file"
+                    accept=".pdf,image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleDocumentUpload}
+                    data-testid="input-documents"
+                  />
+                </label>
+              )}
+            </div>
           </div>
         );
 
@@ -1251,6 +1413,21 @@ export default function PostPropertyPage() {
                 </div>
 
                 <Separator />
+
+                {!isEditMode && (
+                  <div className="flex items-start gap-3 p-4 border rounded-lg">
+                    <Checkbox
+                      id="broker-declaration"
+                      checked={brokerDeclarationConfirmed}
+                      onCheckedChange={(checked) => setBrokerDeclarationConfirmed(checked === true)}
+                      data-testid="checkbox-broker-declaration"
+                      className="mt-0.5"
+                    />
+                    <Label htmlFor="broker-declaration" className="text-sm font-normal leading-relaxed cursor-pointer">
+                      I confirm that I am the direct owner of this property and am not acting as a broker or agent.
+                    </Label>
+                  </div>
+                )}
 
                 {isVerified ? (
                   <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">

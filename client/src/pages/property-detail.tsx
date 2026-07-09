@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useParams, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useParams, Link, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { SEOHead } from "@/components/seo-head";
@@ -11,10 +11,15 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/queryClient";
 import {
   BedDouble,
   Bath,
@@ -42,9 +47,22 @@ import {
   Clock,
   Users,
   X,
+  Flag,
 } from "lucide-react";
 import { SiWhatsapp } from "react-icons/si";
 import type { Property } from "@shared/schema";
+
+// Issue #4: reasons a visitor can report a listing for, including a
+// dedicated "posted by a broker" option per the brief.
+const REPORT_REASONS = [
+  { value: "broker_listing", label: "Posted by a broker/agent, not the owner" },
+  { value: "fake_listing", label: "Fake Listing" },
+  { value: "incorrect_info", label: "Incorrect Information" },
+  { value: "already_rented", label: "Already Rented/Sold" },
+  { value: "scam", label: "Suspected Scam" },
+  { value: "inappropriate_content", label: "Inappropriate Content" },
+  { value: "other", label: "Other" },
+];
 
 function formatINR(amount: string | number | null | undefined): string {
   if (!amount) return "";
@@ -82,15 +100,6 @@ function getBhkLabel(bedrooms: number | null | undefined, propertyType: string):
   return `${bedrooms} BHK`;
 }
 
-function maskPhoneNumber(phone: string): string {
-  if (!phone) return "+91 XXXXXX1234";
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length >= 10) {
-    return `+91 XXXXXX${digits.slice(-4)}`;
-  }
-  return "+91 XXXXXX1234";
-}
-
 const PLACEHOLDER_IMAGES = [
   "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1200&auto=format&fit=crop",
   "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1200&auto=format&fit=crop",
@@ -109,6 +118,9 @@ interface ExtendedProperty extends Property {
 
 export default function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const { isAuthenticated } = useAuth();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFavorited, setIsFavorited] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
@@ -123,10 +135,58 @@ export default function PropertyDetailPage() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
 
+  // Issue #4: "Report this listing" - visible on every public listing page
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDescription, setReportDescription] = useState("");
+
   const { data: property, isLoading, error } = useQuery<ExtendedProperty>({
     queryKey: ["/api/properties", id],
     enabled: !!id,
   });
+
+  const reportMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/reports", {
+        propertyId: id,
+        reason: reportReason,
+        description: reportDescription,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Report submitted",
+        description: "Thank you - our team will review this listing.",
+      });
+      setShowReportDialog(false);
+      setReportReason("");
+      setReportDescription("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't submit report",
+        description: err.message?.includes("401") ? "Please log in to report a listing." : "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleReportClick = () => {
+    if (!isAuthenticated) {
+      toast({ title: "Please log in", description: "You need an account to report a listing." });
+      navigate(`/login?redirect=${encodeURIComponent(`/properties/${id}`)}`);
+      return;
+    }
+    setShowReportDialog(true);
+  };
+
+  const handleSubmitReport = () => {
+    if (!reportReason) {
+      toast({ title: "Please select a reason", variant: "destructive" });
+      return;
+    }
+    reportMutation.mutate();
+  };
 
   const cityParam = property?.cityId || "";
   const { data: similarProperties = [] } = useQuery<ExtendedProperty[]>({
@@ -139,8 +199,8 @@ export default function PropertyDetailPage() {
     setOtpLoading(true);
     try {
       const payload = verifyMethod === "phone" 
-        ? { phone: phoneNumber.startsWith("+91") ? phoneNumber : `+91${phoneNumber}`, purpose: "contact_owner" }
-        : { email, purpose: "contact_owner" };
+        ? { phone: phoneNumber.startsWith("+91") ? phoneNumber : `+91${phoneNumber}`, purpose: "contact_owner", propertyId: id }
+        : { email, purpose: "contact_owner", propertyId: id };
       
       const response = await fetch("/api/auth/otp/send", {
         method: "POST",
@@ -171,8 +231,8 @@ export default function PropertyDetailPage() {
     setOtpLoading(true);
     try {
       const payload = verifyMethod === "phone" 
-        ? { phone: phoneNumber.startsWith("+91") ? phoneNumber : `+91${phoneNumber}`, code: otp }
-        : { email, code: otp };
+        ? { phone: phoneNumber.startsWith("+91") ? phoneNumber : `+91${phoneNumber}`, code: otp, propertyId: id }
+        : { email, code: otp, propertyId: id };
       
       const response = await fetch("/api/auth/otp/verify", {
         method: "POST",
@@ -186,7 +246,13 @@ export default function PropertyDetailPage() {
       }
       
       setOtpVerified(true);
-      setRevealedPhone(property?.ownerPhone || "+91 98765 43210");
+      // The server only returns ownerPhone once verification for THIS
+      // listing succeeds - there is no client-side fallback number anymore.
+      if (data.ownerPhone) {
+        setRevealedPhone(data.ownerPhone);
+      } else {
+        setOtpError("This owner hasn't added a contact number yet. Please use the enquiry form instead.");
+      }
       setShowContactDialog(false);
     } catch (err: any) {
       setOtpError(err.message || "Invalid OTP. Please try again.");
@@ -396,6 +462,15 @@ export default function PropertyDetailPage() {
                   </Button>
                   <Button variant="outline" size="icon" data-testid="button-share">
                     <Share2 className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleReportClick}
+                    title="Report this listing"
+                    data-testid="button-report-listing"
+                  >
+                    <Flag className="h-5 w-5" />
                   </Button>
                 </div>
               </div>
@@ -616,7 +691,7 @@ export default function PropertyDetailPage() {
                       data-testid="button-call-owner"
                     >
                       <Phone className="h-4 w-4" />
-                      {otpVerified ? "Call Owner" : maskPhoneNumber(property.ownerPhone || "")}
+                      {otpVerified ? "Call Owner" : "Show Phone Number"}
                     </Button>
                     
                     <Button 
@@ -827,6 +902,61 @@ export default function PropertyDetailPage() {
               <Badge variant="secondary">{currentImageIndex + 1} / {images.length}</Badge>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Report Listing dialog - Issue #4 */}
+      <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flag className="w-5 h-5 text-destructive" />
+              Report this listing
+            </DialogTitle>
+            <DialogDescription>
+              Help us keep Leaseo brokerage-free by flagging suspicious or incorrect listings.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Reason for reporting</Label>
+              <Select value={reportReason} onValueChange={setReportReason}>
+                <SelectTrigger data-testid="select-report-reason">
+                  <SelectValue placeholder="Select a reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REPORT_REASONS.map((reason) => (
+                    <SelectItem key={reason.value} value={reason.value}>
+                      {reason.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Additional details (optional)</Label>
+              <Textarea
+                placeholder={reportReason === "broker_listing" ? "What made you think this was posted by a broker?" : "Provide more details about the issue..."}
+                value={reportDescription}
+                onChange={(e) => setReportDescription(e.target.value)}
+                rows={3}
+                data-testid="input-report-description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReportDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleSubmitReport}
+              disabled={reportMutation.isPending}
+              data-testid="button-submit-report"
+            >
+              {reportMutation.isPending ? "Submitting..." : "Submit Report"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
