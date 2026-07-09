@@ -164,6 +164,12 @@ async function sendViaBhashSms(
   const user = creds?.user || process.env.BHASHSMS_USER;
   const password = creds?.password || process.env.BHASHSMS_PASSWORD;
   const sender = creds?.sender || process.env.BHASHSMS_SENDER || "LEASEO";
+  // Required for DLT scrubbing on Indian transactional routes - without these,
+  // and without the message text matching the approved template EXACTLY,
+  // BhashSMS silently rejects the send (this was the actual bug: the message
+  // text below did not match the DLT-approved template at all).
+  const entityId = process.env.BHASHSMS_ENTITY_ID || "1101535650000092179";
+  const templateId = process.env.BHASHSMS_TEMPLATE_ID || "1107177121574211829";
 
   if (!user || !password) {
     console.log("[SMS] BhashSMS credentials not configured");
@@ -177,7 +183,10 @@ async function sendViaBhashSms(
       return false;
     }
 
-    const message = `Your Leaseo verification code is: ${code}. Valid for 10 minutes. Do not share this code with anyone.`;
+    // MUST match the DLT-approved template text exactly (character for
+    // character, including punctuation and the "- LEASEO" signature), only
+    // substituting the {#numeric#} placeholder with the actual code.
+    const message = `Your LEASEO OTP is ${code}. Do not share this code with anyone. - LEASEO`;
 
     const url = new URL("http://bhashsms.com/api/sendmsg.php");
     url.searchParams.append("user", user);
@@ -187,6 +196,8 @@ async function sendViaBhashSms(
     url.searchParams.append("text", message);
     url.searchParams.append("priority", "ndnd");
     url.searchParams.append("stype", "normal");
+    url.searchParams.append("entityid", entityId);
+    url.searchParams.append("tempid", templateId);
 
     console.log(`[SMS] Sending OTP to ${formattedPhone} via BhashSMS...`);
 
