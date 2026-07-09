@@ -31,14 +31,30 @@ export default function LoginPage() {
     }
 
     setIsLoading(true);
-    
-    // Simulate API call - will be replaced with actual implementation
-    setTimeout(() => {
+
+    // BUG FIX: this previously never called the backend at all - it just
+    // faked success with a setTimeout, so no OTP was ever actually sent
+    // via BhashSMS (or any provider). This wires it up to the real
+    // /api/auth/otp/send endpoint, same as every other OTP flow in the app.
+    try {
+      const response = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: `+91${phoneNumber}`,
+          purpose: "login",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send OTP");
+      }
+
       setOtpSent(true);
-      setIsLoading(false);
       setCountdown(30);
-      
-      // Start countdown
+
       const timer = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
@@ -48,12 +64,20 @@ export default function LoginPage() {
           return prev - 1;
         });
       }, 1000);
-      
+
       toast({
         title: "OTP Sent",
         description: `A verification code has been sent to +91 ${phoneNumber}`,
       });
-    }, 1500);
+    } catch (error: any) {
+      toast({
+        title: "Failed to Send OTP",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleVerifyOtp = async () => {
@@ -67,17 +91,58 @@ export default function LoginPage() {
     }
 
     setIsLoading(true);
-    
-    // Simulate API call - will be replaced with actual implementation
-    setTimeout(() => {
-      setIsLoading(false);
+
+    // BUG FIX: this previously never called the backend either - it just
+    // faked success and redirected, without ever storing a real auth
+    // token. The user LOOKED logged in (toast + redirect) but had no
+    // actual session. createAccount:true tells the verify endpoint to
+    // find-or-create a user for this phone number, so this same flow
+    // handles both phone login and phone-based signup.
+    try {
+      const response = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: `+91${phoneNumber}`,
+          code: otp,
+          createAccount: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Invalid OTP");
+      }
+
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+      }
+      if (data.user) {
+        localStorage.setItem("user", JSON.stringify(data.user));
+      }
+
       toast({
         title: "Login Successful",
         description: "Welcome to Leaseo!",
       });
-      // Redirect to profile completion or dashboard
-      window.location.href = "/profile/complete";
-    }, 1500);
+
+      if (data.user?.isAdmin) {
+        window.location.href = "/admin";
+      } else if (!data.user?.profileCompleted) {
+        window.location.href = "/profile/complete";
+      } else {
+        window.location.href = "/dashboard";
+      }
+    } catch (error: any) {
+      toast({
+        title: "Verification Failed",
+        description: error.message || "Invalid OTP. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleEmailLogin = async () => {
