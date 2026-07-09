@@ -87,6 +87,8 @@ import {
   Key as KeyIcon,
   Filter as FilterIcon,
   Shield,
+  ShieldAlert,
+  Flag,
   MessageCircle,
   LogOut,
   Upload,
@@ -94,12 +96,14 @@ import {
   UserX,
   FilePlus,
   Star,
+  RotateCcw,
+  History,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization" | "footer";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization" | "footer" | "reports" | "flagged";
 
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -310,6 +314,8 @@ function SmsProviderCard({ provider, displayName, description, providerData, isL
 const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "properties", label: "Properties", icon: Building2 },
+  { id: "reports", label: "Reports", icon: Flag },
+  { id: "flagged", label: "Flagged Accounts", icon: ShieldAlert },
   { id: "enquiries", label: "Enquiries", icon: MessageSquare },
   { id: "owners", label: "Property Owners", icon: Home },
   { id: "users", label: "Login Users", icon: UserCheck },
@@ -355,7 +361,7 @@ export default function AdminPage() {
   const [editingCategory, setEditingCategory] = useState<PropertyCategory | null>(null);
   
   // Property filter states
-  const [propertySegment, setPropertySegment] = useState<"all" | "pending" | "rent" | "buy" | "commercial">("all");
+  const [propertySegment, setPropertySegment] = useState<"all" | "pending" | "rent" | "buy" | "commercial" | "deleted">("all");
   const [propertySearch, setPropertySearch] = useState("");
   const [propertyFilterCity, setPropertyFilterCity] = useState<string>("");
   const [propertyFilterLocality, setPropertyFilterLocality] = useState<string>("");
@@ -384,6 +390,75 @@ export default function AdminPage() {
 
   const { data: enquiries = [], isLoading: enquiriesLoading } = useQuery<Enquiry[]>({
     queryKey: ["/api/enquiries"],
+  });
+
+  // ==================== REPORTS (Issue #4) ====================
+  const { data: reports = [], isLoading: reportsLoading } = useQuery<any[]>({
+    queryKey: ["/api/reports"],
+    enabled: activeSection === "reports",
+  });
+
+  const updateReportMutation = useMutation({
+    mutationFn: async ({ id, status, resolution }: { id: string; status: string; resolution?: string }) =>
+      apiRequest("PATCH", `/api/reports/${id}`, { status, resolution }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      toast({ title: "Report updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update report", variant: "destructive" });
+    },
+  });
+
+  // ==================== FLAGGED ACCOUNTS (Issue #4) ====================
+  const { data: flaggedUsers = [], isLoading: flaggedUsersLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/flagged-users"],
+    enabled: activeSection === "flagged",
+  });
+
+  const flaggedUserActionMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: "approve" | "warn" | "deactivate" }) =>
+      apiRequest("PATCH", `/api/admin/flagged-users/${id}`, { action }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/flagged-users"] });
+      const messages = {
+        approve: "Flag cleared - account is back in good standing",
+        warn: "Warning logged for this account",
+        deactivate: "Account has been deactivated",
+      };
+      toast({ title: "Done", description: messages[variables.action] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update account", variant: "destructive" });
+    },
+  });
+
+  // ==================== DELETED LISTINGS (Issue #2) ====================
+  const { data: allPropertiesIncludingDeleted = [], isLoading: deletedPropertiesLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/properties", "includeDeleted"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/properties?includeDeleted=true");
+      return res.json();
+    },
+    enabled: propertySegment === "deleted",
+  });
+  const deletedProperties = allPropertiesIncludingDeleted.filter((p: any) => !!p.deletedAt);
+
+  const restorePropertyMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("PATCH", `/api/admin/properties/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/properties"] });
+      toast({ title: "Listing restored", description: "It's visible on the site again." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to restore listing", variant: "destructive" });
+    },
+  });
+
+  const [viewingAuditLogFor, setViewingAuditLogFor] = useState<{ id: string; title: string } | null>(null);
+  const { data: auditLogEntries = [], isLoading: auditLogLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/properties", viewingAuditLogFor?.id, "audit-log"],
+    enabled: !!viewingAuditLogFor,
   });
 
   const { data: featureFlags = [], isLoading: flagsLoading } = useQuery<FeatureFlag[]>({
@@ -437,6 +512,20 @@ export default function AdminPage() {
   const { data: propertyImages = [], isLoading: imagesLoading } = useQuery<PropertyImage[]>({
     queryKey: ["/api/properties", editingProperty?.id, "images"],
     enabled: !!editingProperty?.id,
+  });
+
+  // Optional supporting documents an owner may have attached (Issue #4 /
+  // ownership verification) - admin-only view, separate from photos.
+  const { data: propertyDocuments = [], isLoading: documentsLoading } = useQuery<any[]>({
+    queryKey: ["/api/properties", editingProperty?.id, "documents"],
+    enabled: !!editingProperty?.id,
+  });
+
+  const deleteDocumentMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/property-documents/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", editingProperty?.id, "documents"] });
+    },
   });
 
   const sellPropertyFlag = featureFlags.find((f) => f.name === "sell_property");
@@ -1434,7 +1523,11 @@ export default function AdminPage() {
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={() => deletePropertyMutation.mutate(property.id)}
+                  onClick={() => {
+                    if (window.confirm(`Delete "${property.title}"? This can be restored later from the Deleted tab.`)) {
+                      deletePropertyMutation.mutate(property.id);
+                    }
+                  }}
                   data-testid={`button-delete-property-${property.id}`}
                 >
                   <Trash2 className="h-4 w-4 text-destructive" />
@@ -1608,7 +1701,7 @@ export default function AdminPage() {
 
         {/* Property Tabs by Segment */}
         <Tabs value={propertySegment} onValueChange={(v) => { setPropertySegment(v as any); setPropertyPage(1); }} className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="all" data-testid="tab-all-properties">
               All ({filteredProperties.length})
             </TabsTrigger>
@@ -1626,6 +1719,9 @@ export default function AdminPage() {
             </TabsTrigger>
             <TabsTrigger value="commercial" data-testid="tab-commercial-properties">
               Commercial ({commercialProperties.length})
+            </TabsTrigger>
+            <TabsTrigger value="deleted" data-testid="tab-deleted-properties">
+              Deleted
             </TabsTrigger>
           </TabsList>
           
@@ -1793,10 +1889,262 @@ export default function AdminPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="deleted" className="mt-4">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Deleted listings are never removed from the database (Issue #2) - they're marked inactive
+                  and kept here permanently, along with a full audit trail of who deleted them and when.
+                </p>
+                {deletedPropertiesLoading ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+                  </div>
+                ) : deletedProperties.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Trash2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No deleted listings</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Owner</TableHead>
+                        <TableHead>Deleted By</TableHead>
+                        <TableHead>Deleted At</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {deletedProperties.map((property: any) => (
+                        <TableRow key={property.id} data-testid={`row-deleted-property-${property.id}`}>
+                          <TableCell className="font-medium max-w-[200px] truncate">{property.title}</TableCell>
+                          <TableCell className="text-sm">{getOwnerName(property)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs capitalize">{property.deletedByRole || "-"}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {property.deletedAt ? new Date(property.deletedAt).toLocaleString() : "-"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setViewingAuditLogFor({ id: property.id, title: property.title })}
+                                data-testid={`button-audit-log-${property.id}`}
+                              >
+                                <History className="h-4 w-4 mr-1" /> History
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => restorePropertyMutation.mutate(property.id)}
+                                disabled={restorePropertyMutation.isPending}
+                                data-testid={`button-restore-property-${property.id}`}
+                              >
+                                <RotateCcw className="h-4 w-4 mr-1" /> Restore
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
     );
   };
+
+  const REPORT_REASON_LABELS: Record<string, string> = {
+    broker_listing: "Posted by a broker/agent",
+    fake_listing: "Fake Listing",
+    incorrect_info: "Incorrect Information",
+    already_rented: "Already Rented/Sold",
+    scam: "Suspected Scam",
+    inappropriate_content: "Inappropriate Content",
+    other: "Other",
+  };
+
+  const renderReports = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Reports</h1>
+        <p className="text-muted-foreground">Listings reported by visitors, including suspected brokers (Issue #4)</p>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          {reportsLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+            </div>
+          ) : reports.length === 0 ? (
+            <div className="text-center py-12">
+              <Flag className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No reports yet</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Property</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Details</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Reported</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reports.map((report: any) => (
+                  <TableRow key={report.id} data-testid={`row-report-${report.id}`}>
+                    <TableCell>
+                      <a href={`/properties/${report.propertyId}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-sm">
+                        View listing
+                      </a>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={report.reason === "broker_listing" ? "destructive" : "outline"} className="text-xs">
+                        {REPORT_REASON_LABELS[report.reason] || report.reason}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground">{report.description || "-"}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={report.status || "pending"}
+                        onValueChange={(value) => updateReportMutation.mutate({ id: report.id, status: value })}
+                      >
+                        <SelectTrigger className="w-[130px]" data-testid={`select-report-status-${report.id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="reviewed">Reviewed</SelectItem>
+                          <SelectItem value="resolved">Resolved</SelectItem>
+                          <SelectItem value="dismissed">Dismissed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setViewingAuditLogFor({ id: report.propertyId, title: "Reported listing" })}
+                        data-testid={`button-view-report-history-${report.id}`}
+                      >
+                        <History className="h-4 w-4 mr-1" /> Listing History
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderFlaggedAccounts = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Flagged Accounts</h1>
+        <p className="text-muted-foreground">
+          Accounts auto-flagged for exceeding the 2-active-listing cap, or reported as a suspected broker (Issue #4)
+        </p>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          {flaggedUsersLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+            </div>
+          ) : flaggedUsers.length === 0 ? (
+            <div className="text-center py-12">
+              <ShieldAlert className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No flagged accounts right now</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Active Listings</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Flagged</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {flaggedUsers.map((u: any) => (
+                  <TableRow key={u.id} data-testid={`row-flagged-user-${u.id}`}>
+                    <TableCell className="font-medium">{[u.firstName, u.lastName].filter(Boolean).join(" ") || "-"}</TableCell>
+                    <TableCell className="text-xs">
+                      <div>{u.email || "-"}</div>
+                      <div className="text-muted-foreground">{u.phone || "-"}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={u.activeListingCount > 2 ? "destructive" : "secondary"}>{u.activeListingCount}</Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground">{u.flagReason || "-"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {u.flaggedAt ? new Date(u.flaggedAt).toLocaleDateString() : "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => flaggedUserActionMutation.mutate({ id: u.id, action: "approve" })}
+                          disabled={flaggedUserActionMutation.isPending}
+                          data-testid={`button-approve-flagged-${u.id}`}
+                        >
+                          Clear Flag
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => flaggedUserActionMutation.mutate({ id: u.id, action: "warn" })}
+                          disabled={flaggedUserActionMutation.isPending}
+                          data-testid={`button-warn-flagged-${u.id}`}
+                        >
+                          Warn
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => {
+                            if (window.confirm(`Deactivate ${u.email || u.phone}'s account? They won't be able to log in or list properties.`)) {
+                              flaggedUserActionMutation.mutate({ id: u.id, action: "deactivate" });
+                            }
+                          }}
+                          disabled={flaggedUserActionMutation.isPending}
+                          data-testid={`button-deactivate-flagged-${u.id}`}
+                        >
+                          Deactivate
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 
   const renderEnquiries = () => (
     <div className="space-y-6">
@@ -4678,6 +5026,8 @@ export default function AdminPage() {
     switch (activeSection) {
       case "dashboard": return renderDashboard();
       case "properties": return renderProperties();
+      case "reports": return renderReports();
+      case "flagged": return renderFlaggedAccounts();
       case "enquiries": return renderEnquiries();
       case "owners": return renderOwners();
       case "users": return renderUsers();
@@ -5069,6 +5419,47 @@ export default function AdminPage() {
                   </div>
                 )}
               </div>
+
+              {editingProperty && (
+                <div className="space-y-3 pt-4 border-t">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    <Label className="font-semibold">Supporting Documents</Label>
+                    <span className="text-xs text-muted-foreground">(optional, owner-submitted)</span>
+                  </div>
+                  {documentsLoading ? (
+                    <Skeleton className="h-10 w-full" />
+                  ) : propertyDocuments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No documents attached to this listing.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {propertyDocuments.map((doc: any) => (
+                        <div key={doc.id} className="flex items-center justify-between gap-2 p-2 border rounded-md" data-testid={`document-${doc.id}`}>
+                          <a
+                            href={doc.url.startsWith('/') ? doc.url : `/${doc.url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm text-primary hover:underline truncate"
+                          >
+                            <FileText className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{doc.fileName}</span>
+                          </a>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 shrink-0"
+                            onClick={() => deleteDocumentMutation.mutate(doc.id)}
+                            data-testid={`button-delete-document-${doc.id}`}
+                          >
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => {
@@ -5733,6 +6124,45 @@ export default function AdminPage() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Listing audit trail viewer - Issue #2 / #4 */}
+      <Dialog open={!!viewingAuditLogFor} onOpenChange={(open) => !open && setViewingAuditLogFor(null)}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Listing History
+            </DialogTitle>
+            <DialogDescription>{viewingAuditLogFor?.title}</DialogDescription>
+          </DialogHeader>
+          {auditLogLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full" />)}
+            </div>
+          ) : auditLogEntries.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">No history recorded for this listing yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {auditLogEntries.map((entry: any) => (
+                <div key={entry.id} className="border rounded-lg p-3 text-sm" data-testid={`audit-entry-${entry.id}`}>
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="capitalize text-xs">{entry.action}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : "-"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 capitalize">by {entry.actorRole}{entry.ipAddress ? ` · ${entry.ipAddress}` : ""}</p>
+                  {entry.snapshot && (
+                    <pre className="text-xs bg-muted/50 rounded p-2 mt-2 overflow-x-auto whitespace-pre-wrap">
+                      {JSON.stringify(entry.snapshot, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

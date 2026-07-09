@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, ArrowLeft, Share2, User } from "lucide-react";
 import type { BlogPost } from "@shared/schema";
+import DOMPurify from "isomorphic-dompurify";
 
 export default function BlogDetailPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -136,7 +137,12 @@ export default function BlogDetailPage() {
 
           <div 
             className="prose prose-lg dark:prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: post.content.replace(/\n/g, '<br/>') }}
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(post.content.replace(/\n/g, '<br/>'), {
+                ALLOWED_TAGS: ['b', 'i', 'strong', 'em', 'a', 'br', 'p', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li'],
+                ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style'],
+              }),
+            }}
           />
         </article>
       </main>

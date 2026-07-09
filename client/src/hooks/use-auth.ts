@@ -9,6 +9,11 @@ export interface AuthUser {
   activeRoleId: string | null;
   activeRoleName: string | null;
   isAdmin: boolean;
+  profileCompleted: boolean;
+  userType: string | null;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  isFlagged: boolean;
 }
 
 interface UseAuthReturn {

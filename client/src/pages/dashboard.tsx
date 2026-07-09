@@ -153,138 +153,6 @@ const REPORT_REASONS = [
   { value: "other", label: "Other" },
 ];
 
-const mockUser = {
-  id: "user-1",
-  firstName: "Rahul",
-  lastName: "Sharma",
-  phone: "+91 98765 43210",
-  email: "rahul@example.com",
-  activeRole: "residential_owner" as UserRoleType,
-  availableRoles: ["residential_tenant", "residential_owner", "commercial_owner"] as UserRoleType[],
-};
-
-const mockOwnerProperties: DashboardProperty[] = [
-  {
-    id: "prop-1",
-    title: "Spacious 3BHK in Andheri West",
-    description: "Well-maintained apartment with modern amenities",
-    propertyType: "apartment",
-    listingType: "rent",
-    status: "active",
-    isCommercial: false,
-    rent: "45000",
-    securityDeposit: "90000",
-    maintenanceCharges: "5000",
-    address: "Lokhandwala Complex, Andheri West",
-    cityId: "mumbai",
-    localityId: "andheri",
-    bedrooms: 3,
-    bathrooms: "2",
-    squareFeet: 1200,
-    furnishing: "semi-furnished",
-    amenities: ["gym", "parking", "security"],
-    isFeatured: false,
-    isPremium: false,
-    viewCount: 156,
-    createdAt: new Date("2025-01-01"),
-    updatedAt: new Date("2025-01-08"),
-    expiresAt: new Date("2025-02-01"),
-    enquiryCount: 12,
-    city: "Mumbai",
-    locality: "Andheri West",
-  },
-  {
-    id: "prop-2",
-    title: "2BHK near Powai Lake",
-    description: "Lake view apartment",
-    propertyType: "apartment",
-    listingType: "rent",
-    status: "rented",
-    isCommercial: false,
-    rent: "35000",
-    securityDeposit: "70000",
-    maintenanceCharges: "3000",
-    address: "Hiranandani Gardens, Powai",
-    cityId: "mumbai",
-    localityId: "powai",
-    bedrooms: 2,
-    bathrooms: "2",
-    squareFeet: 950,
-    furnishing: "furnished",
-    amenities: ["gym", "pool", "parking"],
-    isFeatured: false,
-    isPremium: false,
-    viewCount: 89,
-    createdAt: new Date("2024-12-15"),
-    updatedAt: new Date("2024-12-20"),
-    expiresAt: null,
-    enquiryCount: 8,
-    city: "Mumbai",
-    locality: "Powai",
-  },
-];
-
-const mockShortlists = [
-  {
-    id: "short-1",
-    propertyId: "prop-1",
-    property: {
-      id: "prop-1",
-      title: "Modern 2BHK in Koramangala",
-      rent: "28000",
-      bedrooms: 2,
-      bathrooms: "2",
-      squareFeet: 1100,
-      furnishing: "semi-furnished",
-      city: "Bangalore",
-      locality: "Koramangala",
-      status: "active",
-    },
-    createdAt: new Date("2025-01-07"),
-  },
-  {
-    id: "short-2",
-    propertyId: "prop-2",
-    property: {
-      id: "prop-2",
-      title: "3BHK Villa in HSR Layout",
-      rent: "55000",
-      bedrooms: 3,
-      bathrooms: "3",
-      squareFeet: 2000,
-      furnishing: "fully-furnished",
-      city: "Bangalore",
-      locality: "HSR Layout",
-      status: "active",
-    },
-    createdAt: new Date("2025-01-05"),
-  },
-];
-
-const mockEnquiries = [
-  {
-    id: "enq-1",
-    propertyId: "prop-1",
-    propertyTitle: "Modern 2BHK in Koramangala",
-    message: "Hi, I'm interested in this property. Is it still available?",
-    status: "sent",
-    createdAt: new Date("2025-01-07"),
-    ownerName: "Priya Patel",
-    ownerPhone: "+91 99876 54321",
-  },
-  {
-    id: "enq-2",
-    propertyId: "prop-2",
-    propertyTitle: "3BHK Villa in HSR Layout",
-    message: "Can I schedule a visit this weekend?",
-    status: "responded",
-    createdAt: new Date("2025-01-05"),
-    respondedAt: new Date("2025-01-06"),
-    ownerName: "Amit Kumar",
-    ownerPhone: "+91 98765 12345",
-  },
-];
-
 const formatPrice = (price: string | number | null | undefined): string => {
   if (!price) return "0";
   const num = typeof price === "string" ? parseFloat(price) : price;
@@ -323,8 +191,30 @@ export default function DashboardPage() {
     queryKey: ["/api/owner/properties", user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      const res = await fetch(`/api/owner/properties?ownerId=${user.id}`);
-      if (!res.ok) return [];
+      const res = await apiRequest("GET", `/api/owner/properties?ownerId=${user.id}`);
+      return res.json();
+    },
+    enabled: !!user?.id,
+  });
+
+  // Issue: these two used to be hardcoded `mockShortlists`/`mockEnquiries`
+  // constants - every tenant saw the same fake data regardless of their
+  // real account. Now wired to the real (already-working) API endpoints.
+  const { data: shortlists = [], isLoading: shortlistsLoading } = useQuery<DashboardShortlist[]>({
+    queryKey: ["/api/shortlists", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const res = await apiRequest("GET", `/api/shortlists?userId=${user.id}`);
+      return res.json();
+    },
+    enabled: !!user?.id,
+  });
+
+  const { data: tenantEnquiries = [], isLoading: tenantEnquiriesLoading } = useQuery<DashboardEnquiry[]>({
+    queryKey: ["/api/tenant/enquiries", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const res = await apiRequest("GET", `/api/tenant/enquiries?tenantId=${user.id}`);
       return res.json();
     },
     enabled: !!user?.id,
@@ -471,11 +361,57 @@ export default function DashboardPage() {
     createBoostMutation.mutate({ propertyId: selectedProperty, boostType });
   };
 
-  const handleRemoveShortlist = (shortlistId: string) => {
-    toast({
-      title: "Removed from Shortlist",
-      description: "Property has been removed from your saved list",
-    });
+  const removeShortlistMutation = useMutation({
+    mutationFn: async (propertyId: string) => {
+      if (!user?.id) throw new Error("Not logged in");
+      return apiRequest("DELETE", `/api/shortlists/${user.id}/${propertyId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/shortlists"] });
+      toast({
+        title: "Removed from Shortlist",
+        description: "Property has been removed from your saved list",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Couldn't remove property",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Issue: this used to just show a fake "Report Submitted" toast without
+  // ever calling the reports API - nothing was actually saved.
+  const submitReportMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/reports", {
+        propertyId: reportPropertyId,
+        reason: reportReason,
+        description: reportDescription,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Report Submitted",
+        description: "Thank you for reporting. We'll review this listing.",
+      });
+      setReportDialogOpen(false);
+      setReportReason("");
+      setReportDescription("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Couldn't submit report",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleRemoveShortlist = (propertyId: string) => {
+    removeShortlistMutation.mutate(propertyId);
   };
 
   const handleReportSubmit = () => {
@@ -486,13 +422,8 @@ export default function DashboardPage() {
       });
       return;
     }
-    toast({
-      title: "Report Submitted",
-      description: "Thank you for reporting. We'll review this listing.",
-    });
-    setReportDialogOpen(false);
-    setReportReason("");
-    setReportDescription("");
+    if (!reportPropertyId) return;
+    submitReportMutation.mutate();
   };
 
   const openReportDialog = (propertyId: string) => {
@@ -551,8 +482,8 @@ export default function DashboardPage() {
             />
           ) : (
             <TenantDashboard
-              shortlists={mockShortlists}
-              enquiries={mockEnquiries}
+              shortlists={shortlists}
+              enquiries={tenantEnquiries}
               isCommercial={isCommercial}
               alertPreferences={alertPreferences}
               setAlertPreferences={setAlertPreferences}
@@ -1188,7 +1119,7 @@ function TenantDashboard({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => onRemoveShortlist(item.id)}
+                          onClick={() => onRemoveShortlist(item.propertyId)}
                           data-testid={`button-remove-shortlist-${item.id}`}
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />
