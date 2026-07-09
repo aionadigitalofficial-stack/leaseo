@@ -1110,6 +1110,113 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== FORGOT PASSWORD ====================
+  // This flow never existed before - login.tsx has always linked to
+  // /forgot-password, but neither the route nor any backend endpoint for it
+  // was ever built (the only "reset password" endpoint requires already
+  // being logged in, which defeats the purpose). Reuses the existing OTP
+  // infrastructure with the password_reset purpose.
+
+  // Step 1: request a reset code by email
+  app.post("/api/auth/forgot-password/request", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.email, email));
+      // Always return success even if the email isn't registered, so this
+      // endpoint can't be used to check which emails have an account.
+      if (!user) {
+        return res.json({ success: true, message: "If that email is registered, a reset code has been sent." });
+      }
+
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const codeHash = await hashPassword(code);
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+      await db.delete(otpRequests).where(
+        and(eq(otpRequests.email, email), eq(otpRequests.purpose, "password_reset"))
+      );
+      await db.insert(otpRequests).values({
+        email,
+        codeHash,
+        purpose: "password_reset",
+        expiresAt,
+        attemptCount: 0,
+        maxAttempts: 3,
+      });
+
+      const { sendOTPEmail } = await import("./email");
+      const emailSent = await sendOTPEmail(email, code);
+
+      const response: any = { success: true, message: "If that email is registered, a reset code has been sent." };
+      if (!emailSent && process.env.NODE_ENV !== "production") {
+        response.devCode = code;
+      }
+      if (!emailSent && process.env.NODE_ENV === "production") {
+        console.error(`[ForgotPassword] CRITICAL: failed to send reset email to ${email}. Check SMTP_* env vars.`);
+      }
+      res.json(response);
+    } catch (error) {
+      console.error("Error requesting password reset:", error);
+      res.status(500).json({ error: "Failed to send reset code" });
+    }
+  });
+
+  // Step 2: verify the code and set a new password, while logged out
+  app.post("/api/auth/forgot-password/reset", async (req, res) => {
+    try {
+      const { email, code, newPassword } = req.body;
+      if (!email || !code || !newPassword) {
+        return res.status(400).json({ error: "Email, code, and new password are required" });
+      }
+
+      const passwordError = validatePasswordStrength(newPassword);
+      if (passwordError) {
+        return res.status(400).json({ error: passwordError });
+      }
+
+      const [otpRequest] = await db.select().from(otpRequests).where(
+        and(
+          eq(otpRequests.email, email),
+          eq(otpRequests.purpose, "password_reset"),
+          gt(otpRequests.expiresAt, new Date())
+        )
+      );
+
+      if (!otpRequest) {
+        return res.status(400).json({ error: "Reset code expired or not found. Please request a new one." });
+      }
+      if (otpRequest.attemptCount && otpRequest.attemptCount >= (otpRequest.maxAttempts || 3)) {
+        return res.status(400).json({ error: "Too many attempts. Please request a new code." });
+      }
+
+      const isValid = await verifyPassword(code, otpRequest.codeHash);
+      if (!isValid) {
+        await db.update(otpRequests)
+          .set({ attemptCount: (otpRequest.attemptCount || 0) + 1 })
+          .where(eq(otpRequests.id, otpRequest.id));
+        return res.status(400).json({ error: "Invalid reset code" });
+      }
+
+      const [user] = await db.select().from(users).where(eq(users.email, email));
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const newPasswordHash = await hashPassword(newPassword);
+      await db.update(users).set({ passwordHash: newPasswordHash }).where(eq(users.id, user.id));
+      await db.delete(otpRequests).where(eq(otpRequests.id, otpRequest.id));
+
+      res.json({ success: true, message: "Password reset successfully. You can now log in." });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ error: "Failed to reset password" });
+    }
+  });
+
   // ==================== OTP VERIFICATION ====================
 
   // Send OTP (email or phone)
@@ -1169,9 +1276,19 @@ export async function registerRoutes(
         smsSent,
       };
       
-      // Only show dev code if sending failed
+      // Only show dev code if sending failed AND we're not in production.
+      // On leaseo.in, if this fires, it means BOTH email and SMS delivery
+      // are currently failing (see server/email.ts SMTP_* / server/sms.ts
+      // provider config) - that's a delivery problem to fix at the
+      // infrastructure level, not something this fallback should paper
+      // over by handing the real code to whoever's watching the network
+      // tab.
       if (!emailSent && !smsSent) {
-        response.devCode = code;
+        if (process.env.NODE_ENV === "production") {
+          console.error(`[OTP] CRITICAL: both email and SMS delivery failed for ${email || phone}. Check SMTP_* env vars and the active SMS provider (Admin > SMS/WhatsApp Providers, or BHASHSMS_* env vars).`);
+        } else {
+          response.devCode = code;
+        }
       }
       
       res.json(response);
