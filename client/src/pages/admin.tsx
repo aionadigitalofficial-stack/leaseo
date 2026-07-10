@@ -140,6 +140,7 @@ const blogFormSchema = z.object({
   excerpt: z.string().min(10, "Excerpt is required"),
   content: z.string().min(50, "Content must be at least 50 characters"),
   status: z.enum(["draft", "published"]),
+  featuredImage: z.string().optional(),
   metaTitle: z.string().optional(),
   metaDescription: z.string().optional(),
   metaKeywords: z.string().optional(),
