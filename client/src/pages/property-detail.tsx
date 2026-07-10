@@ -868,7 +868,7 @@ export default function PropertyDetailPage() {
           <DialogHeader className="sr-only">
             <DialogTitle>Property Gallery</DialogTitle>
           </DialogHeader>
-          <div className="relative h-full flex items-center justify-center">
+          <div className="absolute inset-0 flex items-center justify-center">
             <Button
               size="icon"
               variant="ghost"
