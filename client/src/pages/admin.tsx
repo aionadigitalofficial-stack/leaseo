@@ -801,7 +801,7 @@ export default function AdminPage() {
   });
 
   const createBlogMutation = useMutation({
-    mutationFn: async (data: any) => apiRequest("POST", "/api/blog", data),
+    mutationFn: async (data: any) => apiRequest("POST", "/api/admin/blog", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/blog"] });
       setIsAddBlogOpen(false);
@@ -811,7 +811,7 @@ export default function AdminPage() {
   });
 
   const updateBlogMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => apiRequest("PATCH", `/api/blog/${id}`, data),
+    mutationFn: async ({ id, data }: { id: string; data: any }) => apiRequest("PATCH", `/api/admin/blog/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/blog"] });
       setEditingBlog(null);
@@ -822,7 +822,7 @@ export default function AdminPage() {
 
   const updateBlogStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => 
-      apiRequest("PATCH", `/api/blog/${id}`, { status }),
+      apiRequest("PATCH", `/api/admin/blog/${id}`, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/blog"] });
       toast({ title: "Blog status updated" });
@@ -833,7 +833,7 @@ export default function AdminPage() {
   });
 
   const deleteBlogMutation = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/blog/${id}`),
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/admin/blog/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/blog"] });
       toast({ title: "Blog post deleted" });
