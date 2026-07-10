@@ -64,6 +64,7 @@ export function Header() {
   };
 
   return (
+    <>
     <header className="sticky top-0 z-50 w-full border-b" style={{ backgroundColor: '#0b2743' }}>
       <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-4">
         <Link href="/" className="flex items-center gap-2" data-testid="link-home">
@@ -458,5 +459,25 @@ export function Header() {
         </div>
       </div>
     </header>
+    <div className="w-full overflow-hidden whitespace-nowrap" style={{ backgroundColor: '#dc2626' }} data-testid="banner-disclaimer">
+      <div
+        className="inline-block py-2 text-sm font-medium text-white"
+        style={{ animation: "marquee 22s linear infinite" }}
+      >
+        <span className="mx-8">
+          Disclaimer: Leaseo is a brokerage-free platform that only connects property owners and tenants. We are not involved in any financial transactions and do not charge any brokerage or hidden fees. Users are advised to verify all property and owner details before making any payment or finalising a deal.
+        </span>
+        <span className="mx-8">
+          Disclaimer: Leaseo is a brokerage-free platform that only connects property owners and tenants. We are not involved in any financial transactions and do not charge any brokerage or hidden fees. Users are advised to verify all property and owner details before making any payment or finalising a deal.
+        </span>
+      </div>
+      <style>{`
+        @keyframes marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+      `}</style>
+    </div>
+    </>
   );
 }
