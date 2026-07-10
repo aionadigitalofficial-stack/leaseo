@@ -1,0 +1,1719 @@
+import { useState, useEffect } from "react";
+import { useLocation, useSearch } from "wouter";
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { useUpload } from "@/hooks/use-upload";
+import {
+  Building2,
+  Home,
+  MapPin,
+  Ruler,
+  IndianRupee,
+  Calendar,
+  Camera,
+  FileCheck,
+  ChevronRight,
+  ChevronLeft,
+  Check,
+  Upload,
+  X,
+  Phone,
+} from "lucide-react";
+import { INDIAN_CITIES, BHK_OPTIONS, FURNISHING_OPTIONS, PROPERTY_TYPES_RESIDENTIAL, PROPERTY_TYPES_COMMERCIAL, CITY_STATE_MAP } from "@/lib/constants";
+import { Star } from "lucide-react";
+
+interface PropertyImage {
+  id: string;
+  propertyId: string;
+  url: string;
+  caption: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+  isApproved: boolean;
+  createdAt: string;
+}
+
+const STEPS = [
+  { id: 1, title: "Property Type", icon: Building2 },
+  { id: 2, title: "Location", icon: MapPin },
+  { id: 3, title: "Property Details", icon: Home },
+  { id: 4, title: "Pricing", icon: IndianRupee },
+  { id: 5, title: "Availability", icon: Calendar },
+  { id: 6, title: "Photos", icon: Camera },
+  { id: 7, title: "Review", icon: FileCheck },
+];
+
+const AMENITIES = [
+  "Lift", "Power Backup", "Security", "CCTV", "Gym", "Swimming Pool",
+  "Parking", "Garden", "Club House", "Children Play Area", "Gas Pipeline",
+  "Water Supply 24x7", "Intercom", "Fire Safety", "Rainwater Harvesting",
+];
+
+const PREFERRED_TENANTS = ["Family", "Bachelor Male", "Bachelor Female", "Company", "Any"];
+
+interface PropertyFormData {
+  segment: "rent" | "buy" | "commercial";
+  listingType: "rent" | "sale";
+  propertyCategory: "residential" | "commercial";
+  propertyType: string;
+  city: string;
+  locality: string;
+  address: string;
+  pincode: string;
+  bedrooms: number;
+  bathrooms: number;
+  balconies: number;
+  squareFeet: number;
+  carpetArea: number;
+  floorNumber: number;
+  totalFloors: number;
+  facing: string;
+  furnishing: string;
+  amenities: string[];
+  rent: number;
+  price: number;
+  securityDeposit: number;
+  maintenanceCharges: number;
+  availableFrom: string;
+  preferredTenants: string[];
+  description: string;
+  images: File[];
+  // Optional supporting documents (ownership proof, tax receipt, etc.) -
+  // never required to submit a listing, purely to help admin verification.
+  documents: File[];
+  videoUrl: string;
+}
+
+const initialFormData: PropertyFormData = {
+  segment: "rent",
+  listingType: "rent",
+  propertyCategory: "residential",
+  propertyType: "",
+  city: "",
+  locality: "",
+  address: "",
+  pincode: "",
+  bedrooms: 2,
+  bathrooms: 2,
+  balconies: 1,
+  squareFeet: 0,
+  carpetArea: 0,
+  floorNumber: 0,
+  totalFloors: 1,
+  facing: "",
+  furnishing: "unfurnished",
+  amenities: [],
+  rent: 0,
+  price: 0,
+  securityDeposit: 0,
+  maintenanceCharges: 0,
+  availableFrom: "",
+  preferredTenants: ["Any"],
+  description: "",
+  images: [],
+  documents: [],
+  videoUrl: "",
+};
+
+export default function PostPropertyPage() {
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const { toast } = useToast();
+  const { user, isAuthenticated, isLoading: authLoading, login } = useAuth();
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState<PropertyFormData>(initialFormData);
+  const [showVerifyDialog, setShowVerifyDialog] = useState(false);
+  const [verifyMethod, setVerifyMethod] = useState<"email" | "phone">("email");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
+  const [isOtpLoading, setIsOtpLoading] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
+  // Issue #4: mandatory "I am the owner, not a broker" declaration checkbox
+  const [brokerDeclarationConfirmed, setBrokerDeclarationConfirmed] = useState(false);
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
+  const [featuredImageIndex, setFeaturedImageIndex] = useState(0);
+
+  // Check if we're in edit mode
+  const searchParams = new URLSearchParams(searchString);
+  const editPropertyId = searchParams.get("edit");
+  const isEditMode = !!editPropertyId;
+
+  // Fetch existing property for edit mode
+  const { data: existingProperty, isLoading: isLoadingProperty } = useQuery({
+    queryKey: ["/api/properties", editPropertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/properties/${editPropertyId}`);
+      if (!res.ok) throw new Error("Failed to fetch property");
+      return res.json();
+    },
+    enabled: isEditMode,
+  });
+
+  // Fetch existing property images for edit mode
+  const { data: existingImages = [], isLoading: isLoadingImages } = useQuery<PropertyImage[]>({
+    queryKey: ["/api/properties", editPropertyId, "images"],
+    enabled: isEditMode && !!editPropertyId,
+  });
+
+  // Set primary image mutation
+  const setPrimaryImageMutation = useMutation({
+    mutationFn: async (imageId: string) => apiRequest("PATCH", `/api/property-images/${imageId}/set-primary`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", editPropertyId, "images"] });
+      toast({ title: "Cover image updated", description: "The cover image has been changed successfully." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update cover image.", variant: "destructive" });
+    },
+  });
+
+  // Delete image mutation
+  const deleteImageMutation = useMutation({
+    mutationFn: async (imageId: string) => apiRequest("DELETE", `/api/property-images/${imageId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties", editPropertyId, "images"] });
+      toast({ title: "Image deleted", description: "The image has been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete image.", variant: "destructive" });
+    },
+  });
+
+  // Same problem as the profile-incomplete case below, one step earlier:
+  // a user with no account at all could previously fill out the entire
+  // multi-step form and only discover at final Submit that they were
+  // never logged in, silently losing everything they'd entered. Catch
+  // this immediately on page load instead, before the form even renders.
+  useEffect(() => {
+    if (authLoading || isEditMode) return;
+    if (!isAuthenticated) {
+      toast({
+        title: "Create an account to continue",
+        description: "Sign up (or log in if you already have an account), and we'll bring you right back here to finish posting your property.",
+      });
+      setLocation(`/register?redirect=${encodeURIComponent("/post-property")}`);
+    }
+  }, [authLoading, isAuthenticated, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Issue #3 / bug report #4: posting a listing requires a completed,
+  // verified profile server-side. Previously a user could fill out the
+  // entire multi-step form, pass this page's own (separate, single-channel)
+  // "Verify Your Identity" step, see "Ready to Publish", and only then
+  // discover at the final Submit that the server blocks them - a confusing
+  // dead end. Catch this immediately on page load instead, before they've
+  // invested any time in the form.
+  useEffect(() => {
+    if (authLoading || isEditMode) return;
+    if (isAuthenticated && user && !user.profileCompleted) {
+      toast({
+        title: "Complete your profile first",
+        description: "We need your name, user type, and a verified email + phone before you can post a listing.",
+      });
+      setLocation(`/profile/complete?redirect=${encodeURIComponent("/post-property")}`);
+    }
+  }, [authLoading, isAuthenticated, user, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pre-populate form when editing
+  useEffect(() => {
+    if (existingProperty && isEditMode) {
+      const isCommercial = existingProperty.isCommercial;
+      const segment = isCommercial ? "commercial" : (existingProperty.listingType === "sale" ? "buy" : "rent");
+      
+      setFormData({
+        segment: segment as "rent" | "buy" | "commercial",
+        listingType: existingProperty.listingType || "rent",
+        propertyCategory: isCommercial ? "commercial" : "residential",
+        propertyType: existingProperty.propertyType || "",
+        city: existingProperty.city || "",
+        locality: existingProperty.address?.split(",")[0] || "",
+        address: existingProperty.address || "",
+        pincode: existingProperty.pincode || "",
+        bedrooms: existingProperty.bedrooms || 2,
+        bathrooms: parseInt(existingProperty.bathrooms) || 2,
+        balconies: existingProperty.balconies || 1,
+        squareFeet: existingProperty.squareFeet || 0,
+        carpetArea: existingProperty.carpetArea || 0,
+        floorNumber: existingProperty.floorNumber || 0,
+        totalFloors: existingProperty.totalFloors || 1,
+        facing: existingProperty.facing || "",
+        furnishing: existingProperty.furnishing || "unfurnished",
+        amenities: existingProperty.amenities || [],
+        rent: parseFloat(existingProperty.rent) || 0,
+        price: parseFloat(existingProperty.salePrice || existingProperty.price) || 0,
+        securityDeposit: parseFloat(existingProperty.securityDeposit) || 0,
+        maintenanceCharges: parseFloat(existingProperty.maintenanceCharges) || 0,
+        availableFrom: existingProperty.availableFrom ? new Date(existingProperty.availableFrom).toISOString().split("T")[0] : "",
+        preferredTenants: existingProperty.preferredTenants || ["Any"],
+        description: existingProperty.description || "",
+        images: [],
+        documents: [],
+        videoUrl: existingProperty.videoUrl || "",
+      });
+      // In edit mode, skip verification since user is editing their own property
+      setIsVerified(true);
+    }
+  }, [existingProperty, isEditMode]);
+
+  // Was `user?.activeRoleId?.includes("owner")` - activeRoleId is a UUID,
+  // never a string containing "owner", so this check could basically never
+  // be true. activeRoleName is the actual role name (e.g. "residential_owner").
+  const isOwnerRole = user?.activeRoleName?.includes("owner") || false;
+
+  useEffect(() => {
+    if (isAuthenticated && isOwnerRole) {
+      setIsVerified(true);
+    }
+  }, [isAuthenticated, isOwnerRole]);
+
+  const getPropertyTypeLabel = (value: string) => {
+    const allTypes = [...PROPERTY_TYPES_RESIDENTIAL, ...PROPERTY_TYPES_COMMERCIAL];
+    return allTypes.find(t => t.value === value)?.label || value;
+  };
+
+  const progress = (currentStep / STEPS.length) * 100;
+
+  const { uploadFile } = useUpload();
+  const [uploadProgress, setUploadProgress] = useState("");
+
+  // Parses the {error, message, redirectTo} JSON body apiRequest's thrown
+  // Error wraps as "STATUS: <raw body>", so the specific error codes from
+  // the server (PROFILE_INCOMPLETE, DECLARATION_REQUIRED, LISTING_LIMIT_REACHED)
+  // can be told apart instead of showing one generic failure toast.
+  const parseApiError = (error: unknown): { message: string; code?: string; redirectTo?: string } => {
+    if (error instanceof Error) {
+      const match = error.message.match(/^\d+:\s*([\s\S]*)$/);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          return { message: parsed.message || parsed.error || error.message, code: parsed.error, redirectTo: parsed.redirectTo };
+        } catch {
+          // Not JSON - fall through to the raw message
+        }
+      }
+      return { message: error.message };
+    }
+    return { message: "Something went wrong" };
+  };
+
+  const propertyMutation = useMutation({
+    mutationFn: async (data: PropertyFormData) => {
+      const isForSale = data.listingType === "sale";
+      const titleType = isForSale ? "Sale" : "Rent";
+      const propertyData = {
+        title: data.segment === "commercial" 
+          ? `${data.propertyType} for ${titleType} in ${data.locality}`
+          : `${data.bedrooms} BHK ${data.propertyType} for ${titleType} in ${data.locality}`,
+        description: data.description,
+        propertyType: data.propertyType,
+        listingType: data.listingType,
+        isCommercial: data.segment === "commercial",
+        price: isForSale ? data.price.toString() : data.rent.toString(),
+        rent: !isForSale ? data.rent.toString() : undefined,
+        salePrice: isForSale ? data.price.toString() : undefined,
+        securityDeposit: !isForSale && data.securityDeposit > 0 ? data.securityDeposit.toString() : undefined,
+        maintenanceCharges: data.maintenanceCharges > 0 ? data.maintenanceCharges.toString() : undefined,
+        address: data.address,
+        city: data.city,
+        state: CITY_STATE_MAP[data.city] || "Maharashtra",
+        pincode: data.pincode,
+        bedrooms: data.segment !== "commercial" ? data.bedrooms : undefined,
+        bathrooms: data.bathrooms.toString(),
+        balconies: data.segment !== "commercial" ? data.balconies : undefined,
+        squareFeet: data.squareFeet,
+        carpetArea: data.carpetArea,
+        floorNumber: data.floorNumber,
+        totalFloors: data.totalFloors,
+        facing: data.facing,
+        furnishing: data.furnishing,
+        amenities: data.amenities,
+        availableFrom: data.availableFrom ? new Date(data.availableFrom) : undefined,
+        // Issue #4: mandatory "I'm the owner, not a broker" declaration.
+        // Only relevant on new listings - an existing listing was already
+        // declared when it was first created.
+        ...(!isEditMode ? { brokerDeclarationConfirmed } : {}),
+      };
+      
+      let propertyId: string;
+      
+      if (isEditMode && editPropertyId) {
+        await apiRequest("PATCH", `/api/properties/${editPropertyId}`, propertyData);
+        propertyId = editPropertyId;
+      } else {
+        const response = await apiRequest("POST", "/api/properties", propertyData);
+        const createdProperty = await response.json();
+        propertyId = createdProperty.id;
+      }
+      
+      // Upload images if there are any
+      if (data.images.length > 0) {
+        setUploadProgress("Uploading images...");
+        // Check if any existing image is primary (edit mode)
+        const hasExistingPrimary = existingImages.some(img => img.isPrimary);
+        
+        for (let i = 0; i < data.images.length; i++) {
+          const file = data.images[i];
+          setUploadProgress(`Uploading image ${i + 1} of ${data.images.length}...`);
+          
+          try {
+            const uploadResponse = await uploadFile(file);
+            if (uploadResponse) {
+              // In edit mode: only set primary if no existing primary AND this is the first new image
+              // In new mode: use featuredImageIndex to determine primary
+              const shouldBePrimary = isEditMode 
+                ? (!hasExistingPrimary && i === 0)
+                : (i === featuredImageIndex);
+              
+              // Link the image to the property
+              await apiRequest("POST", `/api/properties/${propertyId}/images`, {
+                url: uploadResponse.objectPath,
+                caption: file.name,
+                isPrimary: shouldBePrimary,
+              });
+            }
+          } catch (error) {
+            console.error(`Failed to upload image ${i + 1}:`, error);
+          }
+        }
+        setUploadProgress("");
+      }
+
+      // Optional supporting documents (ownership proof, tax receipt, etc.)
+      if (data.documents.length > 0) {
+        setUploadProgress("Uploading documents...");
+        for (let i = 0; i < data.documents.length; i++) {
+          const file = data.documents[i];
+          setUploadProgress(`Uploading document ${i + 1} of ${data.documents.length}...`);
+          try {
+            const uploadResponse = await uploadFile(file);
+            if (uploadResponse) {
+              await apiRequest("POST", `/api/properties/${propertyId}/documents`, {
+                url: uploadResponse.objectPath,
+                fileName: file.name,
+                documentType: "other",
+              });
+            }
+          } catch (error) {
+            console.error(`Failed to upload document ${i + 1}:`, error);
+          }
+        }
+        setUploadProgress("");
+      }
+      
+      return { success: true, propertyId };
+    },
+    onSuccess: () => {
+      toast({
+        title: isEditMode ? "Property Updated Successfully!" : "Property Submitted Successfully!",
+        description: isEditMode
+          ? "Your changes have been saved."
+          : "Your property has been submitted and is pending admin approval. We'll notify you by email once it's reviewed.",
+      });
+      setLocation("/dashboard");
+    },
+    onError: (error) => {
+      setUploadProgress("");
+      const { message, code, redirectTo } = parseApiError(error);
+
+      if (code === "PROFILE_INCOMPLETE") {
+        toast({ title: "Complete your profile first", description: message, variant: "destructive" });
+        setLocation(`${redirectTo || "/profile/complete"}?redirect=${encodeURIComponent("/post-property")}`);
+        return;
+      }
+      if (code === "LISTING_LIMIT_REACHED") {
+        toast({ title: "Listing limit reached", description: message, variant: "destructive" });
+        return;
+      }
+      if (code === "DECLARATION_REQUIRED") {
+        toast({ title: "Declaration required", description: message, variant: "destructive" });
+        return;
+      }
+
+      toast({
+        title: "Error",
+        description: isEditMode ? "Failed to update property. Please try again." : "Failed to list property. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateFormData = <K extends keyof PropertyFormData>(
+    field: K,
+    value: PropertyFormData[K]
+  ) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const toggleAmenity = (amenity: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      amenities: prev.amenities.includes(amenity)
+        ? prev.amenities.filter((a) => a !== amenity)
+        : [...prev.amenities, amenity],
+    }));
+  };
+
+  const togglePreferredTenant = (tenant: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      preferredTenants: prev.preferredTenants.includes(tenant)
+        ? prev.preferredTenants.filter((t) => t !== tenant)
+        : [...prev.preferredTenants, tenant],
+    }));
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const currentTotal = existingImages.length + formData.images.length;
+    if (files.length + currentTotal > 10) {
+      toast({
+        title: "Too many images",
+        description: `Maximum 10 images allowed. You can add ${10 - currentTotal} more.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const newUrls = files.map((file) => URL.createObjectURL(file));
+    setImagePreviewUrls((prev) => [...prev, ...newUrls]);
+    setFormData((prev) => ({ ...prev, images: [...prev.images, ...files] }));
+  };
+
+  const removeImage = (index: number) => {
+    URL.revokeObjectURL(imagePreviewUrls[index]);
+    setImagePreviewUrls((prev) => prev.filter((_, i) => i !== index));
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index),
+    }));
+    // Adjust featured image index when removing images
+    if (index === featuredImageIndex) {
+      setFeaturedImageIndex(0);
+    } else if (index < featuredImageIndex) {
+      setFeaturedImageIndex((prev) => prev - 1);
+    }
+  };
+
+  // Optional supporting documents - never required to submit a listing
+  const handleDocumentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length + formData.documents.length > 5) {
+      toast({
+        title: "Too many documents",
+        description: "You can attach up to 5 supporting documents.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setFormData((prev) => ({ ...prev, documents: [...prev.documents, ...files] }));
+  };
+
+  const removeDocument = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      documents: prev.documents.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleSendOtp = async () => {
+    if (verifyMethod === "email" && !email) {
+      toast({ title: "Email Required", description: "Please enter your email address", variant: "destructive" });
+      return;
+    }
+    if (verifyMethod === "phone" && phoneNumber.length < 10) {
+      toast({ title: "Phone Required", description: "Please enter a valid phone number", variant: "destructive" });
+      return;
+    }
+
+    setIsOtpLoading(true);
+    try {
+      const response = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: verifyMethod === "email" ? email : undefined,
+          phone: verifyMethod === "phone" ? phoneNumber : undefined,
+          purpose: verifyMethod === "email" ? "verify_email" : "verify_phone",
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
+      if (data.devCode) setDevCode(data.devCode);
+      setOtpSent(true);
+      toast({
+        title: "Verification Code Sent",
+        description: `Code sent to ${verifyMethod === "email" ? email : `+91 ${phoneNumber}`}`,
+      });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to send code", variant: "destructive" });
+    } finally {
+      setIsOtpLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (otp.length !== 6) {
+      toast({ title: "Invalid Code", description: "Please enter the 6-digit code", variant: "destructive" });
+      return;
+    }
+
+    setIsOtpLoading(true);
+    try {
+      const response = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: verifyMethod === "email" ? email : undefined,
+          phone: verifyMethod === "phone" ? phoneNumber : undefined,
+          code: otp,
+          segment: formData.segment,
+          createAccount: true,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
+      // If account was created/found, log the user in
+      if (data.token && data.user) {
+        login(data.token, data.user);
+        toast({
+          title: "Account Created",
+          description: "Your owner account has been created and verified.",
+        });
+      } else {
+        toast({
+          title: "Verified",
+          description: `Your ${verifyMethod === "email" ? "email" : "phone"} has been verified successfully.`,
+        });
+      }
+
+      setIsVerified(true);
+      setShowVerifyDialog(false);
+    } catch (error: any) {
+      toast({ title: "Verification Failed", description: error.message || "Invalid code", variant: "destructive" });
+    } finally {
+      setIsOtpLoading(false);
+    }
+  };
+
+  const canProceed = (): boolean => {
+    switch (currentStep) {
+      case 1:
+        return !!formData.segment && !!formData.propertyType;
+      case 2:
+        return !!formData.city && !!formData.locality && !!formData.address;
+      case 3:
+        return formData.squareFeet > 0;
+      case 4:
+        return formData.listingType === "sale" ? formData.price > 0 : formData.rent > 0;
+      case 5:
+        return formData.listingType === "sale" || formData.preferredTenants.length > 0;
+      case 6:
+        return (existingImages.length + formData.images.length) >= 3;
+      case 7:
+        return isVerified && (isEditMode || brokerDeclarationConfirmed);
+      default:
+        return true;
+    }
+  };
+
+  const handleNext = () => {
+    if (currentStep < STEPS.length) {
+      setCurrentStep((prev) => prev + 1);
+    }
+  };
+
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep((prev) => prev - 1);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!isVerified) {
+      setShowVerifyDialog(true);
+      return;
+    }
+    // Submit with images in original order - featuredImageIndex is used in mutation to set isPrimary
+    propertyMutation.mutate(formData);
+  };
+
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 1:
+        return (
+          <div className="space-y-6">
+            <div>
+              <Label className="text-base font-medium mb-3 block">What do you want to list?</Label>
+              <RadioGroup
+                value={formData.segment}
+                onValueChange={(value: "rent" | "buy" | "commercial") => {
+                  updateFormData("segment", value);
+                  updateFormData("propertyType", "");
+                  updateFormData("propertyCategory", value === "commercial" ? "commercial" : "residential");
+                  updateFormData("listingType", value === "buy" ? "sale" : "rent");
+                }}
+                className="grid grid-cols-3 gap-4"
+              >
+                <Label
+                  htmlFor="rent"
+                  className={`flex flex-col items-center gap-2 p-6 border rounded-lg cursor-pointer transition-all ${
+                    formData.segment === "rent"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <RadioGroupItem value="rent" id="rent" className="sr-only" />
+                  <Home className="h-10 w-10 text-primary" />
+                  <span className="font-medium">For Rent</span>
+                  <span className="text-xs text-muted-foreground text-center">
+                    Residential properties
+                  </span>
+                </Label>
+                <Label
+                  htmlFor="buy"
+                  className={`flex flex-col items-center gap-2 p-6 border rounded-lg cursor-pointer transition-all ${
+                    formData.segment === "buy"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <RadioGroupItem value="buy" id="buy" className="sr-only" />
+                  <Home className="h-10 w-10 text-primary" />
+                  <span className="font-medium">For Sale</span>
+                  <span className="text-xs text-muted-foreground text-center">
+                    Residential properties
+                  </span>
+                </Label>
+                <Label
+                  htmlFor="commercial"
+                  className={`flex flex-col items-center gap-2 p-6 border rounded-lg cursor-pointer transition-all ${
+                    formData.segment === "commercial"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <RadioGroupItem value="commercial" id="commercial" className="sr-only" />
+                  <Building2 className="h-10 w-10 text-primary" />
+                  <span className="font-medium">Commercial</span>
+                  <span className="text-xs text-muted-foreground text-center">
+                    Office, Shop, Warehouse
+                  </span>
+                </Label>
+              </RadioGroup>
+            </div>
+
+            {formData.segment === "commercial" && (
+              <div>
+                <Label className="text-base font-medium mb-3 block">Listing type</Label>
+                <RadioGroup
+                  value={formData.listingType}
+                  onValueChange={(value: "rent" | "sale") => {
+                    updateFormData("listingType", value);
+                  }}
+                  className="grid grid-cols-2 gap-4"
+                >
+                  <Label
+                    htmlFor="commercial-rent"
+                    className={`flex flex-col items-center gap-2 p-4 border rounded-lg cursor-pointer transition-all ${
+                      formData.listingType === "rent"
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    <RadioGroupItem value="rent" id="commercial-rent" className="sr-only" />
+                    <span className="font-medium">For Rent</span>
+                    <span className="text-xs text-muted-foreground">Monthly/Yearly lease</span>
+                  </Label>
+                  <Label
+                    htmlFor="commercial-sale"
+                    className={`flex flex-col items-center gap-2 p-4 border rounded-lg cursor-pointer transition-all ${
+                      formData.listingType === "sale"
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    <RadioGroupItem value="sale" id="commercial-sale" className="sr-only" />
+                    <span className="font-medium">For Sale</span>
+                    <span className="text-xs text-muted-foreground">Buy/Sell outright</span>
+                  </Label>
+                </RadioGroup>
+              </div>
+            )}
+
+            <div>
+              <Label className="text-base font-medium mb-3 block">Select property type</Label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {(formData.segment === "commercial"
+                  ? PROPERTY_TYPES_COMMERCIAL
+                  : PROPERTY_TYPES_RESIDENTIAL
+                ).map((type) => (
+                  <Button
+                    key={type.value}
+                    type="button"
+                    variant={formData.propertyType === type.value ? "default" : "outline"}
+                    className="h-auto py-3"
+                    onClick={() => updateFormData("propertyType", type.value)}
+                    data-testid={`button-type-${type.value}`}
+                  >
+                    {type.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 2:
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="city">City</Label>
+                <Select
+                  value={formData.city}
+                  onValueChange={(value) => updateFormData("city", value)}
+                >
+                  <SelectTrigger id="city" data-testid="select-city">
+                    <SelectValue placeholder="Select city" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INDIAN_CITIES.map((city) => (
+                      <SelectItem key={city} value={city}>{city}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="locality">Locality / Area</Label>
+                <Input
+                  id="locality"
+                  placeholder="e.g., Bandra West"
+                  value={formData.locality}
+                  onChange={(e) => updateFormData("locality", e.target.value)}
+                  data-testid="input-locality"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="address">Complete Address</Label>
+              <Textarea
+                id="address"
+                placeholder="Building name, street, landmark..."
+                value={formData.address}
+                onChange={(e) => updateFormData("address", e.target.value)}
+                rows={3}
+                data-testid="input-address"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pincode">Pincode</Label>
+              <Input
+                id="pincode"
+                placeholder="400050"
+                value={formData.pincode}
+                onChange={(e) => updateFormData("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))}
+                className="w-40"
+                data-testid="input-pincode"
+              />
+            </div>
+          </div>
+        );
+
+      case 3:
+        return (
+          <div className="space-y-6">
+            {formData.propertyCategory === "residential" && (
+              <div>
+                <Label className="text-base font-medium mb-3 block">Configuration</Label>
+                <div className="flex flex-wrap gap-2">
+                  {BHK_OPTIONS.map((bhk) => (
+                    <Button
+                      key={bhk}
+                      type="button"
+                      variant={
+                        (bhk === "1 RK" && formData.bedrooms === 0) ||
+                        (bhk.includes("BHK") && formData.bedrooms === parseInt(bhk))
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={() => {
+                        const beds = bhk === "1 RK" ? 0 : parseInt(bhk) || 4;
+                        updateFormData("bedrooms", beds);
+                      }}
+                      data-testid={`button-bhk-${bhk.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      {bhk}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {formData.propertyCategory === "residential" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="bathrooms">Bathrooms</Label>
+                    <Select
+                      value={formData.bathrooms.toString()}
+                      onValueChange={(v) => updateFormData("bathrooms", parseInt(v))}
+                    >
+                      <SelectTrigger id="bathrooms">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="balconies">Balconies</Label>
+                    <Select
+                      value={formData.balconies.toString()}
+                      onValueChange={(v) => updateFormData("balconies", parseInt(v))}
+                    >
+                      <SelectTrigger id="balconies">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[0, 1, 2, 3, 4].map((n) => (
+                          <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="squareFeet">Built-up Area (sqft)</Label>
+                <Input
+                  id="squareFeet"
+                  type="number"
+                  placeholder="1200"
+                  value={formData.squareFeet || ""}
+                  onChange={(e) => updateFormData("squareFeet", parseInt(e.target.value) || 0)}
+                  data-testid="input-sqft"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="carpetArea">Carpet Area (sqft)</Label>
+                <Input
+                  id="carpetArea"
+                  type="number"
+                  placeholder="900"
+                  value={formData.carpetArea || ""}
+                  onChange={(e) => updateFormData("carpetArea", parseInt(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="floorNumber">Floor Number</Label>
+                <Select
+                  value={formData.floorNumber.toString()}
+                  onValueChange={(v) => updateFormData("floorNumber", parseInt(v))}
+                >
+                  <SelectTrigger id="floorNumber">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Ground</SelectItem>
+                    {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => (
+                      <SelectItem key={n} value={n.toString()}>{n}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="totalFloors">Total Floors</Label>
+                <Input
+                  id="totalFloors"
+                  type="number"
+                  min="1"
+                  value={formData.totalFloors}
+                  onChange={(e) => updateFormData("totalFloors", parseInt(e.target.value) || 1)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="facing">Facing</Label>
+                <Select
+                  value={formData.facing}
+                  onValueChange={(v) => updateFormData("facing", v)}
+                >
+                  <SelectTrigger id="facing">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["North", "South", "East", "West", "North-East", "North-West", "South-East", "South-West"].map((d) => (
+                      <SelectItem key={d} value={d.toLowerCase()}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-base font-medium mb-3 block">Furnishing Status</Label>
+              <div className="flex flex-wrap gap-2">
+                {FURNISHING_OPTIONS.map((option) => (
+                  <Button
+                    key={option}
+                    type="button"
+                    variant={formData.furnishing === option.toLowerCase().replace(/\s+/g, "_") ? "default" : "outline"}
+                    onClick={() => updateFormData("furnishing", option.toLowerCase().replace(/\s+/g, "_"))}
+                  >
+                    {option}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-base font-medium mb-3 block">Amenities</Label>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {AMENITIES.map((amenity) => (
+                  <label
+                    key={amenity}
+                    className="flex items-center gap-2 p-2 border rounded-md cursor-pointer hover:bg-muted/50"
+                  >
+                    <Checkbox
+                      checked={formData.amenities.includes(amenity)}
+                      onCheckedChange={() => toggleAmenity(amenity)}
+                    />
+                    <span className="text-sm">{amenity}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 4:
+        return (
+          <div className="space-y-6">
+            {formData.listingType === "sale" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="price">Sale Price</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="price"
+                      type="number"
+                      placeholder="5000000"
+                      value={formData.price || ""}
+                      onChange={(e) => updateFormData("price", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-price"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Total sale price in INR
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maintenance">Maintenance (per month)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="maintenance"
+                      type="number"
+                      placeholder="2500"
+                      value={formData.maintenanceCharges || ""}
+                      onChange={(e) => updateFormData("maintenanceCharges", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-maintenance"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Optional: Monthly society/maintenance charges
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="rent">Monthly Rent</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="rent"
+                      type="number"
+                      placeholder="25000"
+                      value={formData.rent || ""}
+                      onChange={(e) => updateFormData("rent", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-rent"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deposit">Security Deposit</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="deposit"
+                      type="number"
+                      placeholder="100000"
+                      value={formData.securityDeposit || ""}
+                      onChange={(e) => updateFormData("securityDeposit", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-deposit"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maintenance">Maintenance (per month)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {"\u20B9"}
+                    </span>
+                    <Input
+                      id="maintenance"
+                      type="number"
+                      placeholder="2500"
+                      value={formData.maintenanceCharges || ""}
+                      onChange={(e) => updateFormData("maintenanceCharges", parseInt(e.target.value) || 0)}
+                      className="pl-8"
+                      data-testid="input-maintenance"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm text-muted-foreground">
+                {formData.listingType === "sale" 
+                  ? "Tip: Properties priced competitively sell faster. Research similar properties in your area before setting the price."
+                  : "Tip: Properties priced competitively get 3x more enquiries. Check similar properties in your area before setting the rent."
+                }
+              </p>
+            </div>
+          </div>
+        );
+
+      case 5:
+        return (
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="availableFrom">Available From</Label>
+              <Input
+                id="availableFrom"
+                type="date"
+                value={formData.availableFrom}
+                onChange={(e) => updateFormData("availableFrom", e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
+                className="w-48"
+                data-testid="input-available-from"
+              />
+              <p className="text-sm text-muted-foreground">
+                Leave empty if available immediately
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-base font-medium mb-3 block">Preferred Tenants</Label>
+              <div className="flex flex-wrap gap-2">
+                {PREFERRED_TENANTS.map((tenant) => (
+                  <Button
+                    key={tenant}
+                    type="button"
+                    variant={formData.preferredTenants.includes(tenant) ? "default" : "outline"}
+                    onClick={() => togglePreferredTenant(tenant)}
+                    data-testid={`button-tenant-${tenant.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    {tenant}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Property Description</Label>
+              <Textarea
+                id="description"
+                placeholder="Describe your property - features, nearby amenities, transport links, etc."
+                value={formData.description}
+                onChange={(e) => updateFormData("description", e.target.value)}
+                rows={5}
+                data-testid="input-description"
+              />
+              <p className="text-sm text-muted-foreground">
+                A good description helps tenants understand your property better
+              </p>
+            </div>
+          </div>
+        );
+
+      case 6:
+        const totalImages = existingImages.length + formData.images.length;
+        return (
+          <div className="space-y-6">
+            <div>
+              <Label className="text-base font-medium mb-3 block">
+                Upload Photos (Minimum 3, Maximum 10)
+              </Label>
+              <p className="text-sm text-muted-foreground mb-4">
+                Add clear photos of your property. Click on any photo to set it as the cover image.
+              </p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {/* Existing images from database (edit mode) */}
+                {isEditMode && existingImages.map((image) => (
+                  <div 
+                    key={image.id} 
+                    className={`relative aspect-square rounded-lg overflow-hidden group cursor-pointer border-2 transition-all ${image.isPrimary ? 'border-primary ring-2 ring-primary/30' : 'border-transparent hover:border-muted-foreground/30'}`}
+                    onClick={() => !image.isPrimary && setPrimaryImageMutation.mutate(image.id)}
+                  >
+                    <img 
+                      src={image.url.startsWith('/') ? image.url : `/${image.url}`} 
+                      alt={image.caption || "Property image"} 
+                      className="w-full h-full object-cover" 
+                    />
+                    <Button
+                      size="icon"
+                      variant="destructive"
+                      className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => { e.stopPropagation(); deleteImageMutation.mutate(image.id); }}
+                      disabled={deleteImageMutation.isPending}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                    {image.isPrimary && (
+                      <Badge className="absolute bottom-2 left-2 text-xs bg-primary">Cover</Badge>
+                    )}
+                    {!image.isPrimary && (
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                        <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 px-2 py-1 rounded">
+                          {setPrimaryImageMutation.isPending ? "Setting..." : "Click to set as cover"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* New images being added */}
+                {imagePreviewUrls.map((url, index) => {
+                  const hasExistingPrimary = existingImages.some(img => img.isPrimary);
+                  const isNewImageCover = index === featuredImageIndex && (!isEditMode || !hasExistingPrimary);
+                  return (
+                    <div 
+                      key={`new-${index}`} 
+                      className={`relative aspect-square rounded-lg overflow-hidden group cursor-pointer border-2 transition-all ${isNewImageCover ? 'border-primary ring-2 ring-primary/30' : 'border-transparent hover:border-muted-foreground/30'}`}
+                      onClick={() => setFeaturedImageIndex(index)}
+                    >
+                      <img src={url} alt={`New Property ${index + 1}`} className="w-full h-full object-cover" />
+                      <Badge className="absolute top-2 left-2 text-xs bg-blue-500">New</Badge>
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => { e.stopPropagation(); removeImage(index); }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                      {isNewImageCover && (
+                        <Badge className="absolute bottom-2 left-2 text-xs bg-primary">Cover</Badge>
+                      )}
+                      {!isNewImageCover && (
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                          <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 px-2 py-1 rounded">
+                            {isEditMode && hasExistingPrimary ? "Cover set from existing images" : "Click to set as cover"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                
+                {totalImages < 10 && (
+                  <label className="aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+                    <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">Add Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleImageUpload}
+                      data-testid="input-images"
+                    />
+                  </label>
+                )}
+              </div>
+
+              {totalImages < 3 && (
+                <p className="text-sm text-destructive mt-2">
+                  Please upload at least 3 photos ({3 - totalImages} more needed)
+                </p>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <Label htmlFor="videoUrl">Video URL (Optional)</Label>
+              <Input
+                id="videoUrl"
+                placeholder="YouTube or Vimeo link"
+                value={formData.videoUrl}
+                onChange={(e) => updateFormData("videoUrl", e.target.value)}
+              />
+              <p className="text-sm text-muted-foreground">
+                Properties with videos get 40% more views
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div>
+                <Label className="text-base font-medium">Supporting Documents (Optional)</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Not required to list your property - but attaching ownership proof, a property tax
+                  receipt, or a society NOC can help our team verify your listing faster.
+                </p>
+              </div>
+
+              {formData.documents.length > 0 && (
+                <div className="space-y-2">
+                  {formData.documents.map((file, index) => (
+                    <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 p-2 border rounded-md bg-muted/30">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileCheck className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm truncate">{file.name}</span>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => removeDocument(index)}
+                        data-testid={`button-remove-document-${index}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {formData.documents.length < 5 && (
+                <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-lg py-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                  <Upload className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Attach a document (PDF or image)</span>
+                  <input
+                    type="file"
+                    accept=".pdf,image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleDocumentUpload}
+                    data-testid="input-documents"
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+        );
+
+      case 7:
+        return (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Review Your Listing</CardTitle>
+                <CardDescription>Please verify all details before submitting</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Property Type</p>
+                    <p className="font-medium capitalize">{getPropertyTypeLabel(formData.propertyType)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Category</p>
+                    <p className="font-medium capitalize">{formData.propertyCategory}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Location</p>
+                    <p className="font-medium">{formData.locality}, {formData.city}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Configuration</p>
+                    <p className="font-medium">
+                      {formData.bedrooms === 0 ? "1 RK" : `${formData.bedrooms} BHK`} | {formData.bathrooms} Bath
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Area</p>
+                    <p className="font-medium">{formData.squareFeet} sqft</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Furnishing</p>
+                    <p className="font-medium capitalize">{formData.furnishing.replace(/_/g, " ")}</p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Rent</p>
+                    <p className="font-medium text-lg">{"\u20B9"}{formData.rent.toLocaleString("en-IN")}/mo</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Deposit</p>
+                    <p className="font-medium">{"\u20B9"}{formData.securityDeposit.toLocaleString("en-IN")}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Maintenance</p>
+                    <p className="font-medium">{"\u20B9"}{formData.maintenanceCharges.toLocaleString("en-IN")}/mo</p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <p className="text-muted-foreground text-sm mb-2">Photos ({existingImages.length + formData.images.length})</p>
+                  <div className="flex gap-2 overflow-x-auto pb-2">
+                    {/* Show existing images first */}
+                    {existingImages.slice(0, 3).map((img) => (
+                      <img key={img.id} src={img.url.startsWith('/') ? img.url : `/${img.url}`} alt="" className="h-16 w-16 rounded object-cover shrink-0" />
+                    ))}
+                    {/* Show new images */}
+                    {imagePreviewUrls.slice(0, Math.max(0, 5 - existingImages.length)).map((url, i) => (
+                      <img key={`new-${i}`} src={url} alt="" className="h-16 w-16 rounded object-cover shrink-0" />
+                    ))}
+                    {(existingImages.length + formData.images.length) > 5 && (
+                      <div className="h-16 w-16 rounded bg-muted flex items-center justify-center shrink-0">
+                        <span className="text-sm text-muted-foreground">+{existingImages.length + formData.images.length - 5}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {!isEditMode && (
+                  <div className="flex items-start gap-3 p-4 border rounded-lg">
+                    <Checkbox
+                      id="broker-declaration"
+                      checked={brokerDeclarationConfirmed}
+                      onCheckedChange={(checked) => setBrokerDeclarationConfirmed(checked === true)}
+                      data-testid="checkbox-broker-declaration"
+                      className="mt-0.5"
+                    />
+                    <Label htmlFor="broker-declaration" className="text-sm font-normal leading-relaxed cursor-pointer">
+                      I confirm that I am the direct owner of this property and am not acting as a broker or agent.
+                    </Label>
+                  </div>
+                )}
+
+                {isVerified ? (
+                  <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                    <Check className="h-5 w-5 text-green-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-700 dark:text-green-400">Ready to Publish</p>
+                      <p className="text-xs text-green-600 dark:text-green-500">
+                        {isAuthenticated && isOwnerRole ? "You're logged in as a property owner" : "Your identity has been verified"}
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="bg-green-100 text-green-700 gap-1">
+                      <Check className="h-3 w-3" />
+                      Verified
+                    </Badge>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+                    <Phone className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Verification Required</p>
+                      <p className="text-xs text-muted-foreground">
+                        Verify your email or phone to publish the listing
+                      </p>
+                    </div>
+                    <Button size="sm" onClick={() => setShowVerifyDialog(true)}>
+                      Verify Now
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  // Show loading state when fetching property for edit
+  if (isEditMode && isLoadingProperty) {
+    return (
+      <div className="min-h-screen flex flex-col bg-muted/30">
+        <Header />
+        <main className="flex-1 container mx-auto px-4 py-8">
+          <div className="max-w-4xl mx-auto">
+            <Skeleton className="h-10 w-64 mb-4" />
+            <Skeleton className="h-6 w-96 mb-8" />
+            <Skeleton className="h-[400px] w-full" />
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-muted/30">
+      <Header />
+
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-2xl md:text-3xl font-bold mb-2">
+              {isEditMode ? "Edit Your Property" : "Post Your Property"}
+            </h1>
+            <p className="text-muted-foreground">
+              {isEditMode ? "Update your property listing details" : "List your property for free - No brokerage, no middlemen"}
+            </p>
+          </div>
+
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Step {currentStep} of {STEPS.length}</span>
+              <span className="text-sm text-muted-foreground">{STEPS[currentStep - 1].title}</span>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
+
+          <div className="hidden md:flex items-center justify-center gap-2 mb-8 overflow-x-auto pb-2">
+            {STEPS.map((step, index) => {
+              const Icon = step.icon;
+              const isCompleted = currentStep > step.id;
+              const isCurrent = currentStep === step.id;
+              return (
+                <div key={step.id} className="flex items-center">
+                  <div
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                      isCurrent
+                        ? "bg-primary text-primary-foreground"
+                        : isCompleted
+                        ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Icon className="h-4 w-4" />
+                    )}
+                    <span className="text-sm font-medium whitespace-nowrap">{step.title}</span>
+                  </div>
+                  {index < STEPS.length - 1 && (
+                    <ChevronRight className="h-4 w-4 mx-1 text-muted-foreground" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <Card>
+            <CardContent className="p-6 md:p-8">
+              {renderStepContent()}
+
+              <div className="flex items-center justify-between mt-8 pt-6 border-t">
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  disabled={currentStep === 1}
+                  className="gap-2"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Back
+                </Button>
+
+                {currentStep === STEPS.length ? (
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={!canProceed() || propertyMutation.isPending}
+                    className="gap-2"
+                    data-testid="button-submit-listing"
+                  >
+                    {propertyMutation.isPending ? (uploadProgress || (isEditMode ? "Updating..." : "Submitting...")) : (isEditMode ? "Update Property" : "Submit Listing")}
+                    <Check className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleNext}
+                    disabled={!canProceed()}
+                    className="gap-2"
+                    data-testid="button-next-step"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+
+      <Dialog open={showVerifyDialog} onOpenChange={setShowVerifyDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Verify Your Identity</DialogTitle>
+            <DialogDescription>
+              We need to verify your email or phone before publishing the listing
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {!otpSent ? (
+              <>
+                <div className="flex gap-2 p-1 bg-muted rounded-md">
+                  <Button
+                    variant={verifyMethod === "email" ? "default" : "ghost"}
+                    className="flex-1"
+                    onClick={() => setVerifyMethod("email")}
+                    data-testid="button-verify-email-tab"
+                  >
+                    Email
+                  </Button>
+                  <Button
+                    variant={verifyMethod === "phone" ? "default" : "ghost"}
+                    className="flex-1"
+                    onClick={() => setVerifyMethod("phone")}
+                    data-testid="button-verify-phone-tab"
+                  >
+                    Phone
+                  </Button>
+                </div>
+
+                {verifyMethod === "email" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="verify-email">Email Address</Label>
+                    <Input
+                      id="verify-email"
+                      type="email"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      data-testid="input-verify-email"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="verify-phone">Phone Number</Label>
+                    <div className="flex gap-2">
+                      <div className="flex items-center px-3 border rounded-md bg-muted text-sm">
+                        +91
+                      </div>
+                      <Input
+                        id="verify-phone"
+                        type="tel"
+                        placeholder="Enter 10-digit number"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                        className="flex-1"
+                        data-testid="input-verify-phone"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  className="w-full"
+                  onClick={handleSendOtp}
+                  disabled={isOtpLoading || (verifyMethod === "email" ? !email : phoneNumber.length < 10)}
+                  data-testid="button-send-otp-listing"
+                >
+                  {isOtpLoading ? "Sending..." : "Send Verification Code"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="verify-otp">Enter Verification Code</Label>
+                  <Input
+                    id="verify-otp"
+                    type="text"
+                    placeholder="Enter 6-digit code"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className="text-center text-lg tracking-widest"
+                    data-testid="input-verify-otp"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Code sent to {verifyMethod === "email" ? email : `+91 ${phoneNumber}`}
+                  </p>
+                </div>
+
+                {devCode && (
+                  <div className="bg-muted/50 border rounded-md p-3 text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Development Mode - Your code:</p>
+                    <p className="text-lg font-mono font-bold tracking-widest">{devCode}</p>
+                  </div>
+                )}
+
+                <Button
+                  className="w-full"
+                  onClick={handleVerifyOtp}
+                  disabled={isOtpLoading || otp.length < 6}
+                  data-testid="button-verify-otp-listing"
+                >
+                  {isOtpLoading ? "Verifying..." : "Verify"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => { setOtpSent(false); setOtp(""); setDevCode(null); }}
+                >
+                  Change {verifyMethod === "email" ? "Email" : "Number"}
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Footer />
+    </div>
+  );
+}
