@@ -492,8 +492,21 @@ export async function registerRoutes(
       }
 
       const isAdmin = !!req.user?.isAdmin;
-      if (!isAdmin && existingProperty.ownerId !== req.user?.id) {
-        return res.status(403).json({ error: "You don't have permission to delete this property" });
+      const isOwner = existingProperty.ownerId === req.user?.id;
+      const hasNoImages = !existingProperty.images || existingProperty.images.length === 0;
+      // Only admins can delete listings in general - owners cannot self-delete
+      // (Previously an owner could delete and immediately re-post to get
+      // around the 2-active-listing cap; this closes that loophole.)
+      //
+      // Narrow exception: an owner MAY delete their own listing if it
+      // currently has zero photos. This exists specifically so that if
+      // image uploads fail partway through submission (network blip,
+      // browser closed early, etc.), the owner isn't stuck with a live,
+      // photo-less listing they can't remove and can't re-post over
+      // (since it's still occupying one of their 2 active-listing slots).
+      // A listing that has any photos at all is never eligible here.
+      if (!isAdmin && !(isOwner && hasNoImages)) {
+        return res.status(403).json({ error: "Only admins can delete listings. Please contact us if you need a listing removed." });
       }
 
       const deleter = await storage.getUser(req.user!.id);
