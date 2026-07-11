@@ -274,6 +274,17 @@ export default function PostPropertyPage() {
     }
   }, [existingProperty, isEditMode]);
 
+  // Admins posting a listing on behalf of a property owner don't go through
+  // the owner's phone - the backend already exempts admin submissions from
+  // the phone/profile verification requirement entirely (see isAdminSubmission
+  // in the POST /api/properties route), so this client-side OTP gate was
+  // pointlessly blocking something the server never required.
+  useEffect(() => {
+    if (user?.isAdmin) {
+      setIsVerified(true);
+    }
+  }, [user?.isAdmin]);
+
   // Was `user?.activeRoleId?.includes("owner")` - activeRoleId is a UUID,
   // never a string containing "owner", so this check could basically never
   // be true. activeRoleName is the actual role name (e.g. "residential_owner").
@@ -365,6 +376,7 @@ export default function PostPropertyPage() {
       }
       
       // Upload images if there are any
+      let successfulImageUploads = 0;
       if (data.images.length > 0) {
         setUploadProgress("Uploading images...");
         // Check if any existing image is primary (edit mode)
@@ -389,12 +401,29 @@ export default function PostPropertyPage() {
                 caption: file.name,
                 isPrimary: shouldBePrimary,
               });
+              successfulImageUploads++;
             }
           } catch (error) {
             console.error(`Failed to upload image ${i + 1}:`, error);
           }
         }
         setUploadProgress("");
+      }
+
+      // No listing may go live with zero photos. If every upload failed
+      // (e.g. a network blip), don't leave a photo-less listing sitting
+      // live/pending - clean it up and make the user aware, rather than
+      // silently succeeding with a listing nobody can see properly.
+      if (!isEditMode && successfulImageUploads === 0) {
+        try {
+          await apiRequest("DELETE", `/api/properties/${propertyId}`);
+        } catch (cleanupError) {
+          console.error("Failed to clean up photo-less listing:", cleanupError);
+        }
+        throw new Error("PHOTOS_REQUIRED: Your property could not be listed because none of your photos uploaded successfully. Please try again.");
+      }
+      if (isEditMode && existingImages.length === 0 && successfulImageUploads === 0 && data.images.length > 0) {
+        throw new Error("PHOTOS_REQUIRED: None of your photos uploaded successfully. Please try again - a listing must have at least one photo.");
       }
 
       // Optional supporting documents (ownership proof, tax receipt, etc.)
@@ -445,6 +474,14 @@ export default function PostPropertyPage() {
       }
       if (code === "DECLARATION_REQUIRED") {
         toast({ title: "Declaration required", description: message, variant: "destructive" });
+        return;
+      }
+      if (message.startsWith("PHOTOS_REQUIRED:")) {
+        toast({
+          title: "At least one photo is required",
+          description: message.replace("PHOTOS_REQUIRED:", "").trim(),
+          variant: "destructive",
+        });
         return;
       }
 
