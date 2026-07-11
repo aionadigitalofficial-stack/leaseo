@@ -26,6 +26,8 @@ export const PROPERTY_TYPES_RESIDENTIAL = [
   { label: "Townhouse", value: "townhouse" },
   { label: "Condo", value: "condo" },
   { label: "Studio", value: "studio" },
+  { label: "PG", value: "pg" },
+  { label: "Hostel", value: "hostel" },
 ];
 
 export const PROPERTY_TYPES_COMMERCIAL = [
