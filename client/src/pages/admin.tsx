@@ -108,7 +108,7 @@ type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
   description: z.string().min(10, "Description must be at least 10 characters"),
-  propertyType: z.enum(["house", "apartment", "condo", "townhouse", "studio", "villa", "office", "shop", "warehouse", "land"]),
+  propertyType: z.enum(["house", "apartment", "condo", "townhouse", "studio", "villa", "office", "shop", "warehouse", "land", "pg", "hostel"]),
   listingType: z.enum(["rent", "sale"]),
   isCommercial: z.boolean().default(false),
   price: z.string().min(1, "Price is required"),
@@ -119,6 +119,12 @@ const propertyFormSchema = z.object({
   bathrooms: z.string().min(1, "Bathrooms is required"),
   squareFeet: z.string().optional(),
   isFeatured: z.boolean().default(false),
+  // Internal-only contact details for the real property owner, when an
+  // admin is posting on their behalf. Never shown on the public property
+  // page (that always shows the generic "Property Owner" label) - these
+  // exist purely so staff have a way to actually reach the owner later.
+  ownerContactName: z.string().optional(),
+  ownerContactPhone: z.string().optional(),
 });
 
 type PropertyFormData = z.infer<typeof propertyFormSchema>;
@@ -634,6 +640,8 @@ export default function AdminPage() {
         bathrooms: String(editingProperty.bathrooms || "0"),
         squareFeet: editingProperty.squareFeet ? String(editingProperty.squareFeet) : "",
         isFeatured: editingProperty.isFeatured || false,
+        ownerContactName: (editingProperty as any).ownerContactName || "",
+        ownerContactPhone: (editingProperty as any).ownerContactPhone || "",
       });
     }
   }, [editingProperty, propertyForm]);
@@ -5219,10 +5227,15 @@ export default function AdminPage() {
                         <SelectItem value="apartment">Apartment</SelectItem>
                         <SelectItem value="house">House</SelectItem>
                         <SelectItem value="villa">Villa</SelectItem>
+                        <SelectItem value="condo">Condo</SelectItem>
+                        <SelectItem value="townhouse">Townhouse</SelectItem>
                         <SelectItem value="studio">Studio</SelectItem>
+                        <SelectItem value="pg">PG</SelectItem>
+                        <SelectItem value="hostel">Hostel</SelectItem>
                         <SelectItem value="office">Office</SelectItem>
                         <SelectItem value="shop">Shop</SelectItem>
                         <SelectItem value="warehouse">Warehouse</SelectItem>
+                        <SelectItem value="land">Land</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -5238,6 +5251,22 @@ export default function AdminPage() {
                         <SelectItem value="sale">For Sale</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={propertyForm.control} name="ownerContactName" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Property Owner Name</FormLabel>
+                    <FormControl><Input {...field} placeholder="For internal reference only - not shown publicly" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={propertyForm.control} name="ownerContactPhone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Property Owner Phone</FormLabel>
+                    <FormControl><Input {...field} placeholder="For internal reference only - not shown publicly" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
