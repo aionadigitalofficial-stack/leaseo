@@ -15,7 +15,9 @@ export const propertyTypeEnum = pgEnum("property_type", [
   "office",
   "shop",
   "warehouse",
-  "land"
+  "land",
+  "pg",
+  "hostel"
 ]);
 
 export const listingTypeEnum = pgEnum("listing_type", [
@@ -296,6 +298,14 @@ export const properties = pgTable("properties", {
   
   // Owner reference
   ownerId: varchar("owner_id").references(() => users.id),
+  // Internal-only owner contact details, filled in by an admin when
+  // posting a listing on behalf of a property owner who doesn't have
+  // (or isn't going through) their own account. Not shown on the public
+  // property page - the public page always shows the generic "Property
+  // Owner" label regardless of these fields, per policy. These exist
+  // purely so staff have a way to actually reach the real owner later.
+  ownerContactName: text("owner_contact_name"),
+  ownerContactPhone: varchar("owner_contact_phone"),
   
   // Timestamps
   availableFrom: timestamp("available_from"),
