@@ -141,6 +141,9 @@ const propertyFormSchema = z.object({
   preferredTenants: z.array(z.string()).default([]),
   videoUrl: z.string().optional(),
   isFeatured: z.boolean().default(false),
+  // Custom labeled price rows (e.g. PG rent with/without food, deposit) -
+  // admin-only, shown as a pricing table on the public property page.
+  priceOptions: z.array(z.object({ label: z.string(), amount: z.string() })).default([]),
   // Internal-only contact details for the real property owner, when an
   // admin is posting on their behalf. Never shown on the public property
   // page (that always shows the generic "Property Owner" label) - these
@@ -589,6 +592,7 @@ export default function AdminPage() {
       preferredTenants: ["Any"],
       videoUrl: "",
       isFeatured: false,
+      priceOptions: [],
       ownerContactName: "",
       ownerContactPhone: "",
     },
@@ -695,6 +699,7 @@ export default function AdminPage() {
         isFeatured: editingProperty.isFeatured || false,
         ownerContactName: (editingProperty as any).ownerContactName || "",
         ownerContactPhone: (editingProperty as any).ownerContactPhone || "",
+        priceOptions: (editingProperty as any).priceOptions || [],
       });
     }
   }, [editingProperty, propertyForm]);
@@ -1133,6 +1138,23 @@ export default function AdminPage() {
     );
   };
 
+  const addPriceOption = () => {
+    const current = propertyForm.getValues("priceOptions") || [];
+    propertyForm.setValue("priceOptions", [...current, { label: "", amount: "" }]);
+  };
+
+  const removePriceOption = (index: number) => {
+    const current = propertyForm.getValues("priceOptions") || [];
+    propertyForm.setValue("priceOptions", current.filter((_, i) => i !== index));
+  };
+
+  const updatePriceOption = (index: number, field: "label" | "amount", value: string) => {
+    const current = propertyForm.getValues("priceOptions") || [];
+    const updated = [...current];
+    updated[index] = { ...updated[index], [field]: value };
+    propertyForm.setValue("priceOptions", updated);
+  };
+
   const handlePropertySubmit = (data: PropertyFormData) => {
     const isForSale = data.listingType === "sale";
     // Matches the exact field split used by the public post-property flow
@@ -1155,6 +1177,7 @@ export default function AdminPage() {
       floorNumber: data.floorNumber ? parseInt(data.floorNumber) : undefined,
       totalFloors: data.totalFloors ? parseInt(data.totalFloors) : undefined,
       availableFrom: data.availableFrom ? new Date(data.availableFrom) : undefined,
+      priceOptions: (data.priceOptions || []).filter((p) => p.label.trim() || p.amount.trim()),
     };
 
     if (editingProperty) {
@@ -5563,6 +5586,36 @@ export default function AdminPage() {
                   </FormItem>
                 )} />
               )}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <Label className="font-medium">Custom Price Options (Optional)</Label>
+                  <Button type="button" size="sm" variant="outline" onClick={addPriceOption}>
+                    <Plus className="h-3 w-3 mr-1" /> Add Price Row
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  For listings with multiple price tiers (e.g. PG/Hostel: "Rent with food", "Rent without food", "Deposit"). Shown as a pricing table on the public listing page.
+                </p>
+                {(propertyForm.watch("priceOptions") || []).map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      placeholder="Label (e.g. Rent with food)"
+                      value={option.label}
+                      onChange={(e) => updatePriceOption(index, "label", e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Amount (e.g. 9000, or 'Contact for price')"
+                      value={option.amount}
+                      onChange={(e) => updatePriceOption(index, "amount", e.target.value)}
+                      className="w-56"
+                    />
+                    <Button type="button" size="icon" variant="ghost" onClick={() => removePriceOption(index)}>
+                      <X className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
               <FormField control={propertyForm.control} name="isFeatured" render={({ field }) => (
                 <FormItem className="flex items-center gap-2">
                   <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>

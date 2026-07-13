@@ -111,6 +111,7 @@ interface ExtendedProperty extends Property {
   images?: string[];
   locality?: string;
   ownerName?: string;
+  priceOptions?: { label: string; amount: string }[];
   ownerPhone?: string;
   ownerVerified?: boolean;
   preferredTenant?: string[];
@@ -498,6 +499,26 @@ export default function PropertyDetailPage() {
                   </div>
                 </div>
               </div>
+
+              {property.priceOptions && property.priceOptions.length > 0 && (
+                <div className="bg-muted/50 dark:bg-muted/20 rounded-lg p-6">
+                  <h3 className="text-sm font-semibold mb-3">Pricing Options</h3>
+                  <div className="space-y-2">
+                    {property.priceOptions.map((option, index) => {
+                      const numericAmount = parseFloat(option.amount);
+                      const isNumeric = option.amount.trim() !== "" && Number.isFinite(numericAmount);
+                      return (
+                        <div key={index} className="flex items-center justify-between py-2 border-b last:border-b-0 border-border/50">
+                          <span className="text-sm text-muted-foreground">{option.label}</span>
+                          <span className="font-semibold">
+                            {isNumeric ? `${"\u20B9"}${formatINR(option.amount)}` : option.amount}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <h2 className="text-xl font-semibold mb-4">Property Overview</h2>
