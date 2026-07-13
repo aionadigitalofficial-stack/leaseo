@@ -45,8 +45,10 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { FURNISHING_OPTIONS, PREFERRED_TENANT } from "@/lib/constants";
 import {
   Building2,
   MessageSquare,
@@ -105,6 +107,12 @@ import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageCont
 
 type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization" | "footer" | "reports" | "flagged";
 
+const AMENITIES = [
+  "Lift", "Power Backup", "Security", "CCTV", "Gym", "Swimming Pool",
+  "Parking", "Garden", "Club House", "Children Play Area", "Gas Pipeline",
+  "Water Supply 24x7", "Intercom", "Fire Safety", "Rainwater Harvesting",
+];
+
 const propertyFormSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
   description: z.string().min(10, "Description must be at least 10 characters"),
@@ -112,12 +120,26 @@ const propertyFormSchema = z.object({
   listingType: z.enum(["rent", "sale"]),
   isCommercial: z.boolean().default(false),
   price: z.string().min(1, "Price is required"),
+  securityDeposit: z.string().optional(),
+  maintenanceCharges: z.string().optional(),
   address: z.string().min(5, "Address is required"),
+  locality: z.string().optional(),
   city: z.string().min(2, "City is required"),
   state: z.string().min(2, "State is required"),
+  pincode: z.string().optional(),
   bedrooms: z.string().min(1, "Bedrooms is required"),
   bathrooms: z.string().min(1, "Bathrooms is required"),
+  balconies: z.string().optional(),
   squareFeet: z.string().optional(),
+  carpetArea: z.string().optional(),
+  floorNumber: z.string().optional(),
+  totalFloors: z.string().optional(),
+  facing: z.string().optional(),
+  furnishing: z.string().optional(),
+  amenities: z.array(z.string()).default([]),
+  availableFrom: z.string().optional(),
+  preferredTenants: z.array(z.string()).default([]),
+  videoUrl: z.string().optional(),
   isFeatured: z.boolean().default(false),
   // Internal-only contact details for the real property owner, when an
   // admin is posting on their behalf. Never shown on the public property
@@ -546,13 +568,29 @@ export default function AdminPage() {
       listingType: "rent",
       isCommercial: false,
       price: "",
+      securityDeposit: "",
+      maintenanceCharges: "",
       address: "",
+      locality: "",
       city: "",
       state: "Maharashtra",
+      pincode: "",
       bedrooms: "2",
       bathrooms: "2",
+      balconies: "1",
       squareFeet: "",
+      carpetArea: "",
+      floorNumber: "",
+      totalFloors: "",
+      facing: "",
+      furnishing: "unfurnished",
+      amenities: [],
+      availableFrom: "",
+      preferredTenants: ["Any"],
+      videoUrl: "",
       isFeatured: false,
+      ownerContactName: "",
+      ownerContactPhone: "",
     },
   });
 
@@ -626,19 +664,34 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (editingProperty) {
+      const isForSale = editingProperty.listingType === "sale";
       propertyForm.reset({
         title: editingProperty.title,
         description: editingProperty.description,
         propertyType: editingProperty.propertyType as any,
         listingType: editingProperty.listingType as any,
         isCommercial: editingProperty.isCommercial || false,
-        price: String(editingProperty.price || editingProperty.rent || ""),
+        price: String((isForSale ? editingProperty.salePrice || editingProperty.price : editingProperty.rent || editingProperty.price) || ""),
+        securityDeposit: editingProperty.securityDeposit ? String(editingProperty.securityDeposit) : "",
+        maintenanceCharges: editingProperty.maintenanceCharges ? String(editingProperty.maintenanceCharges) : "",
         address: editingProperty.address,
+        locality: editingProperty.locality || "",
         city: editingProperty.city,
         state: editingProperty.state,
+        pincode: editingProperty.pincode || "",
         bedrooms: String(editingProperty.bedrooms || "0"),
         bathrooms: String(editingProperty.bathrooms || "0"),
+        balconies: editingProperty.balconies !== undefined && editingProperty.balconies !== null ? String(editingProperty.balconies) : "",
         squareFeet: editingProperty.squareFeet ? String(editingProperty.squareFeet) : "",
+        carpetArea: editingProperty.carpetArea ? String(editingProperty.carpetArea) : "",
+        floorNumber: editingProperty.floorNumber !== undefined && editingProperty.floorNumber !== null ? String(editingProperty.floorNumber) : "",
+        totalFloors: editingProperty.totalFloors ? String(editingProperty.totalFloors) : "",
+        facing: editingProperty.facing || "",
+        furnishing: editingProperty.furnishing || "unfurnished",
+        amenities: editingProperty.amenities || [],
+        availableFrom: editingProperty.availableFrom ? new Date(editingProperty.availableFrom).toISOString().split("T")[0] : "",
+        preferredTenants: editingProperty.preferredTenants || ["Any"],
+        videoUrl: editingProperty.videoUrl || "",
         isFeatured: editingProperty.isFeatured || false,
         ownerContactName: (editingProperty as any).ownerContactName || "",
         ownerContactPhone: (editingProperty as any).ownerContactPhone || "",
@@ -1064,20 +1117,50 @@ export default function AdminPage() {
     pendingEnquiries: enquiries.filter(e => e.status === "new" || e.status === "pending").length,
   };
 
+  const toggleAdminAmenity = (amenity: string) => {
+    const current = propertyForm.getValues("amenities") || [];
+    propertyForm.setValue(
+      "amenities",
+      current.includes(amenity) ? current.filter((a) => a !== amenity) : [...current, amenity]
+    );
+  };
+
+  const toggleAdminPreferredTenant = (tenant: string) => {
+    const current = propertyForm.getValues("preferredTenants") || [];
+    propertyForm.setValue(
+      "preferredTenants",
+      current.includes(tenant) ? current.filter((t) => t !== tenant) : [...current, tenant]
+    );
+  };
+
   const handlePropertySubmit = (data: PropertyFormData) => {
+    const isForSale = data.listingType === "sale";
+    // Matches the exact field split used by the public post-property flow
+    // (server distinguishes `rent` vs `salePrice`, with `price` as the
+    // display/sort value) - the previous version only ever sent a single
+    // "price" field, which meant rent-listings created here never got a
+    // `rent` value on the backend, unlike every other rent listing.
+    const propertyData: any = {
+      ...data,
+      price: data.price,
+      rent: !isForSale ? data.price : undefined,
+      salePrice: isForSale ? data.price : undefined,
+      securityDeposit: !isForSale && data.securityDeposit ? data.securityDeposit : undefined,
+      maintenanceCharges: data.maintenanceCharges || undefined,
+      bedrooms: parseInt(data.bedrooms),
+      bathrooms: data.bathrooms,
+      balconies: data.balconies ? parseInt(data.balconies) : undefined,
+      squareFeet: data.squareFeet ? parseInt(data.squareFeet) : undefined,
+      carpetArea: data.carpetArea ? parseInt(data.carpetArea) : undefined,
+      floorNumber: data.floorNumber ? parseInt(data.floorNumber) : undefined,
+      totalFloors: data.totalFloors ? parseInt(data.totalFloors) : undefined,
+      availableFrom: data.availableFrom ? new Date(data.availableFrom) : undefined,
+    };
+
     if (editingProperty) {
-      updatePropertyMutation.mutate({
-        id: editingProperty.id,
-        data: {
-          ...data,
-          price: data.price,
-          bedrooms: parseInt(data.bedrooms),
-          bathrooms: data.bathrooms,
-          squareFeet: data.squareFeet ? parseInt(data.squareFeet) : undefined,
-        } as any,
-      });
+      updatePropertyMutation.mutate({ id: editingProperty.id, data: propertyData });
     } else {
-      createPropertyMutation.mutate(data);
+      createPropertyMutation.mutate(propertyData);
     }
   };
 
@@ -5274,15 +5357,33 @@ export default function AdminPage() {
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={propertyForm.control} name="price" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Price (INR)</FormLabel>
+                    <FormLabel>{propertyForm.watch("listingType") === "sale" ? "Sale Price (INR)" : "Monthly Rent (INR)"}</FormLabel>
                     <FormControl><Input {...field} type="number" placeholder="25000" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={propertyForm.control} name="squareFeet" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Square Feet</FormLabel>
+                    <FormLabel>Built-up Area (sqft)</FormLabel>
                     <FormControl><Input {...field} type="number" placeholder="1000" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {propertyForm.watch("listingType") !== "sale" && (
+                  <FormField control={propertyForm.control} name="securityDeposit" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Security Deposit (INR)</FormLabel>
+                      <FormControl><Input {...field} type="number" placeholder="100000" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
+                <FormField control={propertyForm.control} name="maintenanceCharges" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Maintenance (per month, INR)</FormLabel>
+                    <FormControl><Input {...field} type="number" placeholder="2500" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -5294,6 +5395,22 @@ export default function AdminPage() {
                   <FormMessage />
                 </FormItem>
               )} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={propertyForm.control} name="locality" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Locality / Area</FormLabel>
+                    <FormControl><Input {...field} placeholder="e.g., Bandra West" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={propertyForm.control} name="pincode" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Pincode</FormLabel>
+                    <FormControl><Input {...field} placeholder="400050" maxLength={6} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={propertyForm.control} name="city" render={({ field }) => (
                   <FormItem>
@@ -5326,6 +5443,126 @@ export default function AdminPage() {
                   </FormItem>
                 )} />
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={propertyForm.control} name="balconies" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Balconies</FormLabel>
+                    <FormControl><Input {...field} type="number" placeholder="1" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={propertyForm.control} name="carpetArea" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Carpet Area (sqft)</FormLabel>
+                    <FormControl><Input {...field} type="number" placeholder="900" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <FormField control={propertyForm.control} name="floorNumber" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Floor Number</FormLabel>
+                    <FormControl><Input {...field} type="number" placeholder="0 = Ground" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={propertyForm.control} name="totalFloors" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Total Floors</FormLabel>
+                    <FormControl><Input {...field} type="number" placeholder="4" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={propertyForm.control} name="facing" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Facing</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {["North", "South", "East", "West", "North-East", "North-West", "South-East", "South-West"].map((d) => (
+                          <SelectItem key={d} value={d.toLowerCase()}>{d}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={propertyForm.control} name="furnishing" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Furnishing Status</FormLabel>
+                  <div className="flex flex-wrap gap-2">
+                    {FURNISHING_OPTIONS.map((option) => {
+                      const value = option.toLowerCase().replace(/\s+/g, "_");
+                      return (
+                        <Button
+                          key={option}
+                          type="button"
+                          size="sm"
+                          variant={field.value === value ? "default" : "outline"}
+                          onClick={() => field.onChange(value)}
+                        >
+                          {option}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={propertyForm.control} name="amenities" render={() => (
+                <FormItem>
+                  <FormLabel>Amenities</FormLabel>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {AMENITIES.map((amenity) => (
+                      <label key={amenity} className="flex items-center gap-2 p-2 border rounded-md cursor-pointer hover:bg-muted/50 text-sm">
+                        <Checkbox
+                          checked={(propertyForm.watch("amenities") || []).includes(amenity)}
+                          onCheckedChange={() => toggleAdminAmenity(amenity)}
+                        />
+                        {amenity}
+                      </label>
+                    ))}
+                  </div>
+                </FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={propertyForm.control} name="availableFrom" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Available From</FormLabel>
+                    <FormControl><Input {...field} type="date" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={propertyForm.control} name="videoUrl" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Video URL (Optional)</FormLabel>
+                    <FormControl><Input {...field} placeholder="YouTube or Vimeo link" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              {propertyForm.watch("listingType") !== "sale" && (
+                <FormField control={propertyForm.control} name="preferredTenants" render={() => (
+                  <FormItem>
+                    <FormLabel>Preferred Tenants</FormLabel>
+                    <div className="flex flex-wrap gap-2">
+                      {PREFERRED_TENANT.map((tenant) => (
+                        <Button
+                          key={tenant}
+                          type="button"
+                          size="sm"
+                          variant={(propertyForm.watch("preferredTenants") || []).includes(tenant) ? "default" : "outline"}
+                          onClick={() => toggleAdminPreferredTenant(tenant)}
+                        >
+                          {tenant}
+                        </Button>
+                      ))}
+                    </div>
+                  </FormItem>
+                )} />
+              )}
               <FormField control={propertyForm.control} name="isFeatured" render={({ field }) => (
                 <FormItem className="flex items-center gap-2">
                   <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
