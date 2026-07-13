@@ -150,6 +150,7 @@ const propertyFormSchema = z.object({
   // exist purely so staff have a way to actually reach the owner later.
   ownerContactName: z.string().optional(),
   ownerContactPhone: z.string().optional(),
+  ownerContactEmail: z.string().optional(),
 });
 
 type PropertyFormData = z.infer<typeof propertyFormSchema>;
@@ -595,6 +596,7 @@ export default function AdminPage() {
       priceOptions: [],
       ownerContactName: "",
       ownerContactPhone: "",
+      ownerContactEmail: "",
     },
   });
 
@@ -699,6 +701,7 @@ export default function AdminPage() {
         isFeatured: editingProperty.isFeatured || false,
         ownerContactName: (editingProperty as any).ownerContactName || "",
         ownerContactPhone: (editingProperty as any).ownerContactPhone || "",
+        ownerContactEmail: (editingProperty as any).ownerContactEmail || "",
         priceOptions: (editingProperty as any).priceOptions || [],
       });
     }
@@ -5361,22 +5364,32 @@ export default function AdminPage() {
                   </FormItem>
                 )} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <FormField control={propertyForm.control} name="ownerContactName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Property Owner Name</FormLabel>
-                    <FormControl><Input {...field} placeholder="For internal reference only - not shown publicly" /></FormControl>
+                    <FormControl><Input {...field} placeholder="Not shown publicly" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={propertyForm.control} name="ownerContactPhone" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Property Owner Phone</FormLabel>
-                    <FormControl><Input {...field} placeholder="For internal reference only - not shown publicly" /></FormControl>
+                    <FormControl><Input {...field} placeholder="Not shown publicly" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={propertyForm.control} name="ownerContactEmail" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Property Owner Email</FormLabel>
+                    <FormControl><Input {...field} type="email" placeholder="Used in the submission notification email" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
               </div>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Internal reference only - never shown on the public property page. When filled in, the owner's name and email are used in the "new submission" notification email instead of your own admin account details.
+              </p>
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={propertyForm.control} name="price" render={({ field }) => (
                   <FormItem>
