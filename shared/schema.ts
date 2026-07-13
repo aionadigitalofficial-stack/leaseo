@@ -312,6 +312,7 @@ export const properties = pgTable("properties", {
   // purely so staff have a way to actually reach the real owner later.
   ownerContactName: text("owner_contact_name"),
   ownerContactPhone: varchar("owner_contact_phone"),
+  ownerContactEmail: varchar("owner_contact_email"),
   
   // Timestamps
   availableFrom: timestamp("available_from"),
