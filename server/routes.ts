@@ -366,15 +366,23 @@ export async function registerRoutes(
       // after the fact - moderation moved from "block before it's live" to
       // "flag/report after it's live", per the brief.
       try {
+        // For admin submissions, prefer the real owner's details entered in
+        // the ownerContactName/Email/Phone fields (when provided) over the
+        // creator's own identity - otherwise every admin-posted listing's
+        // notification email showed the admin's own name/email instead of
+        // the actual property owner it was posted on behalf of.
         const owner = creator;
-        const ownerName = owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") : "";
+        const fallbackName = owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") : "";
+        const ownerName = (isAdminSubmission && property.ownerContactName) ? property.ownerContactName : fallbackName;
+        const ownerEmail = (isAdminSubmission && property.ownerContactEmail) ? property.ownerContactEmail : (owner?.email || "");
+        const ownerPhone = (isAdminSubmission && property.ownerContactPhone) ? property.ownerContactPhone : (owner?.phone || "");
         const { sendNewPropertySubmissionEmail } = await import("./email");
         const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || "admin@leaseo.in";
         await sendNewPropertySubmissionEmail(
           adminEmail,
           ownerName,
-          owner?.email || "",
-          owner?.phone || "",
+          ownerEmail,
+          ownerPhone,
           property.title,
           property.id
         );
