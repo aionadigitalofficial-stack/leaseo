@@ -265,6 +265,12 @@ export const properties = pgTable("properties", {
   securityDeposit: decimal("security_deposit", { precision: 12, scale: 2 }),
   maintenanceCharges: decimal("maintenance_charges", { precision: 10, scale: 2 }),
   priceUnit: text("price_unit").default("month"),
+  // Custom labeled price rows - e.g. PG/Hostel listings often have several
+  // price tiers ("Rent with food: 9000", "Rent without food: 7000",
+  // "Deposit: 5000") that don't fit the single price/rent/deposit fields
+  // above. Admin-only input (not on the public post-property form); shown
+  // as a simple pricing table on the public property page when present.
+  priceOptions: jsonb("price_options").$type<{ label: string; amount: string }[]>().default([]),
   
   // Location - linked to cities/localities
   address: text("address").notNull(),
