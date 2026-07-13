@@ -420,6 +420,16 @@ export async function registerRoutes(
         submissionUserAgent,
         ...updateData
       } = req.body;
+
+      // Dates round-trip through JSON as plain strings, and Drizzle's
+      // timestamp column mapper requires an actual Date object (it calls
+      // .toISOString() internally) - the POST /api/properties route
+      // already does this same conversion; this route never did, which
+      // silently worked as long as nothing sent availableFrom on update,
+      // until the admin form was expanded to include it.
+      if (updateData.availableFrom && typeof updateData.availableFrom === "string") {
+        updateData.availableFrom = new Date(updateData.availableFrom);
+      }
       
       const property = await storage.updateProperty(req.params.id, updateData);
 
