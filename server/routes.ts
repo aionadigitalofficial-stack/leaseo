@@ -18,6 +18,25 @@ const sanitizeHtml = (html: string): string => {
   });
 };
 
+// Generates a readable-but-random temporary password for owner accounts
+// created on an admin's behalf (see POST /api/properties). Meets the same
+// strength rule validatePasswordStrength enforces elsewhere (8+ chars,
+// upper, lower, digit) so the owner can log in immediately without being
+// forced through a "weak password" rejection on first use.
+const generateTemporaryPassword = (): string => {
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const digits = "23456789";
+  const all = upper + lower + digits;
+  let password = upper[Math.floor(Math.random() * upper.length)]
+    + lower[Math.floor(Math.random() * lower.length)]
+    + digits[Math.floor(Math.random() * digits.length)];
+  for (let i = 0; i < 7; i++) {
+    password += all[Math.floor(Math.random() * all.length)];
+  }
+  return password.split("").sort(() => Math.random() - 0.5).join("");
+};
+
 // Best-effort client IP, used only for the listing audit trail (Issue #4).
 // Not a security control by itself - req.ip already respects Express's
 // "trust proxy" setting for X-Forwarded-For.
@@ -298,9 +317,67 @@ export async function registerRoutes(
         body.availableFrom = new Date(body.availableFrom);
       }
 
-      // Always link property to authenticated user
-      body.ownerId = req.user!.id;
-      console.log(`[Property] Creating property for authenticated user: ${req.user!.id}`);
+      // When an admin posts on behalf of an owner and provides that owner's
+      // email, create (or link to an existing) real account for them,
+      // instead of always linking the property to the admin's own account.
+      // A freshly-created owner gets either the password the admin typed in
+      // (ownerAccountPassword - validated for strength below) or, if left
+      // blank, a generated temporary one - either way it's handed back in
+      // the response so the admin can share it with the real owner. This
+      // is the only time the plaintext password exists; only its hash is
+      // ever stored. ownerAccountPassword itself is transient and is never
+      // saved as part of the property record (stripped out below).
+      let generatedOwnerCredentials: { email: string; password: string } | null = null;
+      const manualOwnerPassword = body.ownerAccountPassword;
+      delete body.ownerAccountPassword;
+
+      if (isAdminSubmission && body.ownerContactEmail) {
+        const ownerEmail = String(body.ownerContactEmail).trim().toLowerCase();
+        let [ownerUser] = await db.select().from(users).where(eq(users.email, ownerEmail));
+
+        if (!ownerUser) {
+          let accountPassword = generateTemporaryPassword();
+          if (manualOwnerPassword && String(manualOwnerPassword).trim()) {
+            const passwordError = validatePasswordStrength(String(manualOwnerPassword));
+            if (passwordError) {
+              return res.status(400).json({ error: `Owner account password: ${passwordError}` });
+            }
+            accountPassword = String(manualOwnerPassword);
+          }
+          const passwordHash = await hashPassword(accountPassword);
+          const nameParts = String(body.ownerContactName || "").trim().split(/\s+/).filter(Boolean);
+          const firstName = nameParts[0] || "Property";
+          const lastName = nameParts.slice(1).join(" ") || "Owner";
+          const roleName = body.isCommercial ? "commercial_owner" : "residential_owner";
+          const [ownerRole] = await db.select().from(roles).where(eq(roles.name, roleName));
+
+          const [newOwner] = await db.insert(users).values({
+            email: ownerEmail,
+            passwordHash,
+            firstName,
+            lastName,
+            phone: body.ownerContactPhone || null,
+            isActive: true,
+            profileCompleted: true,
+            userType: "owner",
+            activeRoleId: ownerRole?.id || null,
+          }).returning();
+
+          if (ownerRole && newOwner) {
+            await db.insert(userRoles).values({ userId: newOwner.id, roleId: ownerRole.id }).onConflictDoNothing();
+          }
+
+          ownerUser = newOwner;
+          generatedOwnerCredentials = { email: ownerEmail, password: accountPassword };
+          console.log(`[Property] Created new owner account for admin submission: ${ownerEmail}`);
+        }
+
+        body.ownerId = ownerUser.id;
+      } else {
+        // Always link property to authenticated user
+        body.ownerId = req.user!.id;
+      }
+      console.log(`[Property] Creating property, owner: ${body.ownerId}`);
 
       // New listings from regular users must go through admin approval
       // before appearing live on the site. Admins may still explicitly set
@@ -391,7 +468,7 @@ export async function registerRoutes(
         // Don't fail property creation if the notification email fails
       }
 
-      res.status(201).json(property);
+      res.status(201).json({ ...property, generatedOwnerCredentials });
     } catch (error) {
       console.error("Error creating property:", error);
       res.status(500).json({ error: "Failed to create property" });
