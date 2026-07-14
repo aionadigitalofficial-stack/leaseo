@@ -74,6 +74,7 @@ import {
   Tag,
   Check,
   X,
+  Copy,
   Image,
   TrendingUp,
   CreditCard,
@@ -151,6 +152,10 @@ const propertyFormSchema = z.object({
   ownerContactName: z.string().optional(),
   ownerContactPhone: z.string().optional(),
   ownerContactEmail: z.string().optional(),
+  // Transient - only used at the moment a NEW owner account is created
+  // (see POST /api/properties). Never saved to the properties table itself.
+  // Leave blank to auto-generate a random temporary password instead.
+  ownerAccountPassword: z.string().optional(),
 });
 
 type PropertyFormData = z.infer<typeof propertyFormSchema>;
@@ -376,6 +381,7 @@ export default function AdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
+  const [generatedOwnerCredentials, setGeneratedOwnerCredentials] = useState<{ email: string; password: string } | null>(null);
   const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
   const [csvFileContent, setCsvFileContent] = useState("");
   const [isAddCityOpen, setIsAddCityOpen] = useState(false);
@@ -597,6 +603,7 @@ export default function AdminPage() {
       ownerContactName: "",
       ownerContactPhone: "",
       ownerContactEmail: "",
+      ownerAccountPassword: "",
     },
   });
 
@@ -747,21 +754,30 @@ export default function AdminPage() {
 
   const createPropertyMutation = useMutation({
     mutationFn: async (data: PropertyFormData) => {
-      return apiRequest("POST", "/api/properties", {
+      const response = await apiRequest("POST", "/api/properties", {
         ...data,
         price: data.price,
         bedrooms: parseInt(data.bedrooms),
         bathrooms: data.bathrooms,
         squareFeet: data.squareFeet ? parseInt(data.squareFeet) : undefined,
       });
+      return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/properties"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/properties/pending-count"] });
       setIsAddPropertyOpen(false);
       propertyForm.reset();
       toast({ title: "Property created successfully" });
+      // A new owner account was created (only happens when Property Owner
+      // Email was filled in and no account with that email existed yet) -
+      // show the login details once here so the admin can copy and share
+      // them with the real owner. This is the only place the plaintext
+      // password is ever available - only its hash is stored server-side.
+      if (result?.generatedOwnerCredentials) {
+        setGeneratedOwnerCredentials(result.generatedOwnerCredentials);
+      }
     },
     onError: () => {
       toast({ title: "Failed to create property", variant: "destructive" });
@@ -5390,6 +5406,16 @@ export default function AdminPage() {
               <p className="text-xs text-muted-foreground -mt-2">
                 Internal reference only - never shown on the public property page. When filled in, the owner's name and email are used in the "new submission" notification email instead of your own admin account details.
               </p>
+              <FormField control={propertyForm.control} name="ownerAccountPassword" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Owner Account Password (Optional)</FormLabel>
+                  <FormControl><Input {...field} placeholder="Leave blank to auto-generate a random password instead" /></FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Only used if a new owner account is being created (i.e. this email has no existing account). Must be 8+ characters with an uppercase letter, a lowercase letter, and a number. If left blank, a random one is generated and shown to you after saving.
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={propertyForm.control} name="price" render={({ field }) => (
                   <FormItem>
@@ -5807,6 +5833,49 @@ export default function AdminPage() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!generatedOwnerCredentials} onOpenChange={(open) => !open && setGeneratedOwnerCredentials(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Owner Account Created</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            A new login account was created for this property's owner. Share these details with them so they can log in and manage their own listing. This password is shown only once - it isn't stored anywhere in plain text.
+          </p>
+          {generatedOwnerCredentials && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2 p-3 border rounded-md bg-muted/30">
+                <div>
+                  <p className="text-xs text-muted-foreground">Email / Login ID</p>
+                  <p className="font-mono text-sm">{generatedOwnerCredentials.email}</p>
+                </div>
+                <Button size="icon" variant="ghost" onClick={() => navigator.clipboard.writeText(generatedOwnerCredentials.email)}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex items-center justify-between gap-2 p-3 border rounded-md bg-muted/30">
+                <div>
+                  <p className="text-xs text-muted-foreground">Temporary Password</p>
+                  <p className="font-mono text-sm">{generatedOwnerCredentials.password}</p>
+                </div>
+                <Button size="icon" variant="ghost" onClick={() => navigator.clipboard.writeText(generatedOwnerCredentials.password)}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => navigator.clipboard.writeText(`Email: ${generatedOwnerCredentials.email}\nPassword: ${generatedOwnerCredentials.password}`)}
+              >
+                <Copy className="h-4 w-4 mr-2" /> Copy Both
+              </Button>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setGeneratedOwnerCredentials(null)}>Done</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
