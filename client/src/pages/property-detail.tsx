@@ -431,7 +431,7 @@ export default function PropertyDetailPage() {
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div className="flex-1">
                   <h1 className="text-2xl md:text-3xl font-bold mb-2" data-testid="text-property-title">
-                    {bhkLabel} {property.propertyType === "apartment" ? "Apartment" : property.propertyType} for Rent
+                    {property.title}
                   </h1>
                   <div className="flex items-center gap-2 text-muted-foreground mb-4">
                     <MapPin className="h-4 w-4" />

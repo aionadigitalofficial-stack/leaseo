@@ -73,6 +73,7 @@ interface PropertyFormData {
   listingType: "rent" | "sale";
   propertyCategory: "residential" | "commercial";
   propertyType: string;
+  title: string;
   city: string;
   locality: string;
   address: string;
@@ -106,6 +107,7 @@ const initialFormData: PropertyFormData = {
   listingType: "rent",
   propertyCategory: "residential",
   propertyType: "",
+  title: "",
   city: "",
   locality: "",
   address: "",
@@ -152,6 +154,9 @@ export default function PostPropertyPage() {
   const [brokerDeclarationConfirmed, setBrokerDeclarationConfirmed] = useState(false);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const [featuredImageIndex, setFeaturedImageIndex] = useState(0);
+  // Tracks whether the user has manually edited the title, so the
+  // auto-suggestion below stops overwriting it once they've typed their own.
+  const [titleManuallyEdited, setTitleManuallyEdited] = useState(false);
 
   // Check if we're in edit mode
   const searchParams = new URLSearchParams(searchString);
@@ -244,6 +249,7 @@ export default function PostPropertyPage() {
         listingType: existingProperty.listingType || "rent",
         propertyCategory: isCommercial ? "commercial" : "residential",
         propertyType: existingProperty.propertyType || "",
+        title: existingProperty.title || "",
         city: existingProperty.city || "",
         locality: existingProperty.address?.split(",")[0] || "",
         address: existingProperty.address || "",
@@ -301,6 +307,22 @@ export default function PostPropertyPage() {
     return allTypes.find(t => t.value === value)?.label || value;
   };
 
+  // Auto-suggests a title as the user fills in property type / BHK /
+  // locality / listing type, but never overwrites it once they've typed
+  // their own - this mirrors the same "editable Title field" the admin
+  // panel already has, so property titles are consistent everywhere and
+  // no longer silently regenerated/ignored on the public site.
+  useEffect(() => {
+    if (titleManuallyEdited || isEditMode) return;
+    if (!formData.propertyType) return;
+    const titleType = formData.listingType === "sale" ? "Sale" : "Rent";
+    const typeLabel = getPropertyTypeLabel(formData.propertyType);
+    const suggested = formData.segment === "commercial"
+      ? `${typeLabel} for ${titleType}${formData.locality ? ` in ${formData.locality}` : ""}`
+      : `${formData.bedrooms} BHK ${typeLabel} for ${titleType}${formData.locality ? ` in ${formData.locality}` : ""}`;
+    setFormData((prev) => ({ ...prev, title: suggested }));
+  }, [formData.propertyType, formData.bedrooms, formData.listingType, formData.locality, formData.segment, titleManuallyEdited, isEditMode]);
+
   const progress = (currentStep / STEPS.length) * 100;
 
   const { uploadFile } = useUpload();
@@ -331,9 +353,9 @@ export default function PostPropertyPage() {
       const isForSale = data.listingType === "sale";
       const titleType = isForSale ? "Sale" : "Rent";
       const propertyData = {
-        title: data.segment === "commercial" 
+        title: data.title?.trim() || (data.segment === "commercial" 
           ? `${data.propertyType} for ${titleType} in ${data.locality}`
-          : `${data.bedrooms} BHK ${data.propertyType} for ${titleType} in ${data.locality}`,
+          : `${data.bedrooms} BHK ${data.propertyType} for ${titleType} in ${data.locality}`),
         description: data.description,
         propertyType: data.propertyType,
         listingType: data.listingType,
@@ -1203,6 +1225,23 @@ export default function PostPropertyPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="title">Listing Title</Label>
+              <Input
+                id="title"
+                placeholder="e.g., 2 BHK Apartment for Rent in Bandra West"
+                value={formData.title}
+                onChange={(e) => {
+                  setTitleManuallyEdited(true);
+                  updateFormData("title", e.target.value);
+                }}
+                data-testid="input-title"
+              />
+              <p className="text-sm text-muted-foreground">
+                We've suggested a title based on your details - feel free to customize it.
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="description">Property Description</Label>
               <Textarea
                 id="description"
@@ -1398,6 +1437,10 @@ export default function PostPropertyPage() {
                 <CardDescription>Please verify all details before submitting</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div>
+                  <p className="text-muted-foreground text-sm">Listing Title</p>
+                  <p className="font-semibold text-lg">{formData.title}</p>
+                </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Property Type</p>
