@@ -1,4 +1,5 @@
 import { Switch, Route } from "wouter";
+import { useEffect } from "react";
 import { queryClient, apiRequest } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -55,6 +56,44 @@ function Router() {
 
 function AppContent() {
   const { toast } = useToast();
+
+  // The admin "Tracking Codes" settings page only ever saved these values
+  // to the database - nothing on the actual public site ever loaded them
+  // into a real page for a visitor's browser to execute, so Google
+  // Analytics never received any traffic regardless of what was saved.
+  // This runs once, site-wide, and actually injects the gtag.js script
+  // (GA4) plus the Search Console verification meta tag.
+  useEffect(() => {
+    fetch("/api/tracking-codes")
+      .then((res) => res.json())
+      .then((data) => {
+        const gaId = (data?.googleAnalyticsCode || "").trim();
+        if (gaId && !document.querySelector(`script[src*="googletagmanager.com/gtag/js"]`)) {
+          const loaderScript = document.createElement("script");
+          loaderScript.async = true;
+          loaderScript.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId)}`;
+          document.head.appendChild(loaderScript);
+
+          const inlineScript = document.createElement("script");
+          inlineScript.innerHTML = `
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${gaId.replace(/'/g, "")}');
+          `;
+          document.head.appendChild(inlineScript);
+        }
+
+        const verificationContent = (data?.googleWebmasterCode || "").trim();
+        if (verificationContent && !document.querySelector('meta[name="google-site-verification"]')) {
+          const meta = document.createElement("meta");
+          meta.name = "google-site-verification";
+          meta.content = verificationContent;
+          document.head.appendChild(meta);
+        }
+      })
+      .catch((err) => console.error("Failed to load tracking codes:", err));
+  }, []);
 
   const handleSaveChanges = async (changes: Map<string, unknown>) => {
     const changesArray = Array.from(changes.entries());
