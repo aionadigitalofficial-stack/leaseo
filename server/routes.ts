@@ -10,6 +10,8 @@ import DOMPurify from "isomorphic-dompurify";
 // Use local storage for VPS deployment (Replit object storage removed)
 import { registerLocalStorageRoutes } from "./local-storage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { registerWhatsAppRoutes } from "./whatsapp/routes";
+import { saveDeliveryEvents, listDeliveryEvents } from "./whatsapp/store";
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
@@ -97,6 +99,14 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  registerWhatsAppRoutes(app, {
+    authenticate: authMiddleware,
+    requireAdmin: adminMiddleware,
+    saveEvents: saveDeliveryEvents,
+    listEvents: listDeliveryEvents,
+    logger: { error: (message) => process.stderr.write(`${message}\n`) },
+  });
+
   // Initialize feature flags on startup
   await (storage as any).initializeFeatureFlags?.();
 

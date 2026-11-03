@@ -52,7 +52,8 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+      // Never log WhatsApp message IDs, configuration details, or recipient data.
+      if (capturedJsonResponse && !path.startsWith("/api/admin/whatsapp") && !path.startsWith("/api/whatsapp")) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 

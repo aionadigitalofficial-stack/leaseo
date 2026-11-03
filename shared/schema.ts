@@ -1,9 +1,22 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, decimal, timestamp, pgEnum, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, bigint, boolean, decimal, timestamp, pgEnum, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ==================== ENUMS ====================
+
+// Append-only event history prevents late webhooks from overwriting a newer status.
+export const whatsappDeliveryEvents = pgTable("whatsapp_delivery_events", {
+  eventKey: varchar("event_key", { length: 64 }).primaryKey(),
+  messageId: text("message_id").notNull(),
+  status: text("status").notNull(),
+  eventTimestamp: bigint("event_timestamp", { mode: "number" }).notNull(),
+  errorCode: integer("error_code"),
+  receivedAt: timestamp("received_at").notNull().defaultNow(),
+}, table => [
+  index("whatsapp_delivery_events_time_idx").on(table.eventTimestamp),
+  index("whatsapp_delivery_events_message_idx").on(table.messageId),
+]);
 
 export const propertyTypeEnum = pgEnum("property_type", [
   "house",
