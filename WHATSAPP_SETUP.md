@@ -1,13 +1,57 @@
-# Leaseo: Meta WhatsApp backend setup
+# Leaseo: Meta WhatsApp admin settings and backend
 
 ## Scope
 
-This adds the direct Meta WhatsApp Cloud API backend to the existing Leaseo app.
+This adds direct Meta WhatsApp Cloud API messaging and a new **Meta WhatsApp** tab
+inside **Admin → SMS/WhatsApp Providers** in the existing Leaseo app.
 The WhatsApp button still opens `wa.me`. Search, enquiry, OTP and email behaviour
 are unchanged. No automatic notifications or replies are enabled.
 
 **The code is not a connected Meta account.** Your Coolify server needs the Meta
 values below before it can send a message. No live credentials are included.
+
+## Start here: deploy the admin settings update
+
+1. Extract the changed-files ZIP into your existing repository root. Replace the
+   included files; do not add an extra `leaseo/` parent directory.
+2. Back up your database and **rerun `migrations/whatsapp.sql`** against the same
+   existing database. The migration is safe to rerun and now also creates the
+   encrypted settings table. The previous backend-only migration is not enough.
+3. Ensure Coolify has a stable server-side encryption key of at least 32
+   characters. Prefer a dedicated `WHATSAPP_CONFIG_ENCRYPTION_KEY`; if absent,
+   an existing strong `SESSION_SECRET` (otherwise `JWT_SECRET`) is used.
+   Generate a strong key locally, for example with `openssl rand -hex 32`.
+   Add it only to Coolify's runtime environment settings, never Git or chat.
+   Do not change your existing authentication secrets just for this feature.
+4. Redeploy the app in Coolify.
+5. Open **Admin → SMS/WhatsApp → Meta WhatsApp**. Enter your Meta Phone Number ID,
+   Business Account ID, access token, app secret, chosen webhook verify token,
+   Graph API version, test recipient, template name and language.
+6. Save first with messaging disabled if you are still preparing Meta. Once all
+   required values are present, turn on messaging and save. Saving never sends.
+7. Configure Meta's webhook, then confirm the recipient's WhatsApp opt-in and use
+   **Send test message**. Template text parameters can be added in order.
+
+Secrets are never returned to the browser. Leave secret inputs blank when editing
+to keep the saved values; enter a new value to rotate one. Remember your chosen
+verify token in your own secret manager so you can enter it into Meta.
+
+Dashboard settings take precedence over earlier WHATSAPP_* environment variables.
+Once a dashboard configuration is saved, **use the dashboard toggle** to disable
+messaging. Changing `WHATSAPP_ENABLED` in Coolify will not override saved settings.
+
+The new tab does not select/change the active legacy OTP provider. Twilio, MSG91,
+BhashSMS and WATI forms are unchanged. Only the initially displayed UI tab changes.
+
+### Encryption key safety
+
+Back up the stable encryption key securely with your deployment secrets. Keep it
+the same across all replicas and future deployments. Changing/losing it makes the
+saved configuration unreadable; restore the original key to recover access.
+The code never stores the key in PostgreSQL and never falls back to plaintext.
+The environment fallback uses SESSION_SECRET before JWT_SECRET, just as described
+above; the selected key must be strong. A dedicated key avoids coupling credential
+storage to future login-secret rotation.
 
 ## Files to deploy to your existing repository
 
@@ -18,6 +62,11 @@ New files:
 - `server/whatsapp/store.ts`
 - `server/whatsapp/core.test.ts`
 - `server/whatsapp/routes.test.ts`
+- `server/whatsapp/settings.ts`
+- `server/whatsapp/settings-store.ts`
+- `server/whatsapp/settings.test.ts`
+- `server/whatsapp/admin-contract.md`
+- `client/src/components/meta-whatsapp-settings.tsx`
 - `migrations/whatsapp.sql`
 - `WHATSAPP_SETUP.md`
 
@@ -25,7 +74,8 @@ Modified files:
 
 - `server/routes.ts`: registers WhatsApp routes with existing admin authentication.
 - `server/index.ts`: excludes WhatsApp response bodies from request logs.
-- `shared/schema.ts`: adds the delivery-event table.
+- `shared/schema.ts`: adds isolated settings and delivery-event tables.
+- `client/src/pages/admin.tsx`: adds only the Meta tab/import/default tab selection.
 - `.env.example`: lists configuration names; contains no live values.
 - `.gitignore`: prevents committing environment files and uploads.
 - `package.json`: adds `test:whatsapp` (no new dependencies).
@@ -56,11 +106,14 @@ temporary getting-started token for production.
 
 ## 2. Add runtime environment values in Coolify
 
-Use your existing application's server-side environment settings. Do not put
+These are optional fallback values before saving credentials in the dashboard.
+Only the encryption key must remain server-side. Use your existing application's
+server-side environment settings for fallback configuration. Do not put
 secrets in source files, frontend settings, `VITE_*` variables or build arguments.
 
 | Variable | Value / purpose |
 | --- | --- |
+| `WHATSAPP_CONFIG_ENCRYPTION_KEY` | Stable 32+ character encryption key, kept outside the database. Existing strong SESSION_SECRET/JWT_SECRET is used if this is absent. |
 | `WHATSAPP_ENABLED` | Start with `false`. Only the literal `true` permits sending. |
 | `WHATSAPP_API_VERSION` | A supported Graph API version, for example `v24.0`; update before Meta retires it. |
 | `WHATSAPP_ACCESS_TOKEN` | Meta access token. Treat as a secret. |
@@ -69,7 +122,7 @@ secrets in source files, frontend settings, `VITE_*` variables or build argument
 | `WHATSAPP_APP_SECRET` | App secret used to verify webhook signatures. |
 | `WHATSAPP_VERIFY_TOKEN` | Your random webhook verification token. |
 | `WHATSAPP_TEST_RECIPIENT` | Optional test recipient, including country code, e.g. `12025550123`; obtain their opt-in first. |
-| `WHATSAPP_TEST_TEMPLATE` | `hello_world` for Meta's test number; for a production number use an approved template with no variables for this test endpoint. |
+| `WHATSAPP_TEST_TEMPLATE` | `hello_world` for Meta's test number; for production use an approved template. The dashboard supports positional body text parameters. |
 | `WHATSAPP_TEST_LANGUAGE` | Exact approved language, e.g. `en_US`. |
 
 Keep your existing database, authentication, email, SMS and upload settings.
@@ -85,7 +138,7 @@ For example, from a shell where `psql` and the existing connection are configure
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/whatsapp.sql
 ```
 
-This creates one new table and two indexes. It does not modify properties, users
+This creates two WhatsApp-only tables and two indexes. It does not modify properties, users
 or enquiries. Do **not** import `database_export.sql`, replace the database, or run
 a broad schema push just to enable this feature.
 
@@ -95,7 +148,8 @@ Nothing in this project has changed or redeployed your running Coolify server.
 ## 4. Configure the webhook in Meta
 
 - Callback URL: `https://YOUR_EXISTING_LEASEO_DOMAIN/api/whatsapp/webhook`
-- Verify token: exactly the server's `WHATSAPP_VERIFY_TOKEN`.
+- Verify token: exactly the value entered in the dashboard's Verify token field
+  (or `WHATSAPP_VERIFY_TOKEN` if using environment fallback).
 - Subscribe to the `messages` field and ensure the app is subscribed to the
   WhatsApp Business Account. If needed use Meta's documented
   `POST /{WHATSAPP_BUSINESS_ACCOUNT_ID}/subscribed_apps` flow with an appropriately
@@ -114,12 +168,14 @@ failures get 503 so Meta can retry. Exact duplicate status events are ignored.
 ## 5. Check configuration and make one intentional test
 
 These endpoints use your existing Leaseo **admin Bearer authentication**. There is
-no new admin screen and no new login system.
+also accessible through the new Meta WhatsApp tab. There is no new login system.
 
 | Endpoint | Purpose |
 | --- | --- |
+| `GET /api/admin/whatsapp/settings` | Safe saved fields plus secret-presence flags; never secret values. |
+| `PUT /api/admin/whatsapp/settings` | Validates and encrypts dashboard settings; blank secrets keep prior values. |
 | `GET /api/admin/whatsapp/status` | Missing/invalid variable names and enablement; never secret values. |
-| `POST /api/admin/whatsapp/test` | Sends one template to the server-configured test recipient only. |
+| `POST /api/admin/whatsapp/test` | Sends one template to the saved test recipient only. |
 | `GET /api/admin/whatsapp/delivery-events` | Latest 50 delivery events, newest event timestamp first. |
 | `GET /api/whatsapp/webhook` | Meta's verification challenge. |
 | `POST /api/whatsapp/webhook` | Signed delivery callbacks; no automatic replies. |
@@ -127,7 +183,8 @@ no new admin screen and no new login system.
 Once configuration is complete, the migration is applied, and the recipient has
 opted in:
 
-1. Set `WHATSAPP_ENABLED=true` in Coolify and redeploy/restart.
+1. Enable messaging and save in the dashboard (or use `WHATSAPP_ENABLED=true` in
+   Coolify only if you have not saved a dashboard configuration).
 2. From an authenticated API client send:
 
    ```http
@@ -144,16 +201,18 @@ opted in:
 4. A `202` with `status: "accepted"` means Meta accepted the request, **not** that
    the recipient received it. Check `sent`, `delivered`, `read` or `failed` webhook
    events. Read receipts depend on recipient settings.
-5. If you want everything inactive afterwards, set `WHATSAPP_ENABLED=false`.
+5. To make sending inactive afterwards, disable it and save in the dashboard.
    Delivery webhooks may still arrive for messages already sent.
 
-The test endpoint cannot choose arbitrary recipients, templates, message bodies
-or template variables from a request. Its template must have no dynamic variables.
+The test endpoint cannot choose arbitrary recipients, templates or message bodies
+from a request. It accepts optional `bodyParameters` as positional text values.
 For future application workflows use the reusable backend sender below.
 
 ## Future notification integration — deliberately not connected yet
 
-`sendTemplateMessage` in `server/whatsapp/core.ts` accepts:
+Use `sendConfiguredTemplateMessage` in `server/whatsapp/settings-store.ts` for
+future server workflows so they respect dashboard settings. It wraps
+`sendTemplateMessage` from `core.ts` and accepts:
 
 - `to`: full international number, with country code;
 - `templateName`: exact Meta-approved template name;
@@ -181,7 +240,9 @@ notification triggers are decided.
 ## Storage and operations
 
 Only message ID, status, event timestamp, numeric error code and receipt time are
-stored in `whatsapp_delivery_events`. Incoming message bodies, names and phone
+stored in `whatsapp_delivery_events`. Settings, including configured phone numbers,
+are stored separately as AES-256-GCM ciphertext in `whatsapp_settings`.
+Incoming message bodies, names and phone
 numbers are not stored here. Incoming messages are acknowledged but do not reply.
 Meta webhook retries are deduplicated by message ID + status + event timestamp.
 History remains append-only so late events do not overwrite newer statuses.
@@ -196,6 +257,10 @@ Common responses:
   recipient eligibility in Meta. Provider payloads are intentionally not exposed.
 - `META_REQUEST_OUTCOME_UNKNOWN`: check delivery history before retrying.
 - `WHATSAPP_EVENT_STORAGE_UNAVAILABLE`: check migration/database availability.
+- `WHATSAPP_SETTINGS_STORAGE_UNAVAILABLE`: rerun the supplied migration; it now
+  creates both WhatsApp tables.
+- `WHATSAPP_ENCRYPTION_KEY_REQUIRED`: configure a strong stable server encryption key.
+- `WHATSAPP_SETTINGS_DECRYPTION_FAILED`: restore the original encryption key.
 
 ## Local checks
 
@@ -209,13 +274,15 @@ npm run check
 Tests use synthetic credentials and stubbed Meta responses. They do not send any
 live messages. A passing local test does not verify your Meta account or Coolify.
 
-Verification of this implementation: all 18 focused sender/handler checks passed,
-and the backend bundled successfully. The full repository typecheck reports eight
+All 29 focused sender, handler and encryption checks passed with synthetic
+credentials. The production frontend built and the backend bundled successfully.
+The full repository typecheck has eight
 pre-existing errors, also reproduced against the unmodified upload: property
 typing in the admin/detail pages, missing `pg` declarations, obsolete storage
 calls in legacy route copies, and an undeclared `nanoid` import in the Vite helper.
-No WhatsApp-specific type errors were reported. The existing database and full
-signed-in UI were not run or verified here.
+The actual signed-in Coolify admin, production database and Meta account have not
+been accessed or browser-tested. Run one intentional opted-in test after deploying
+and configuring.
 
 ## Official references
 

@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { test } from "node:test";
 import { registerWhatsAppRoutes } from "./routes.ts";
+import { encryptSettings, decryptSettings, type LoadedSettings } from "./settings.ts";
 
 const env = {
   WHATSAPP_ENABLED: "true", WHATSAPP_API_VERSION: "v24.0",
   WHATSAPP_ACCESS_TOKEN: "synthetic-token", WHATSAPP_PHONE_NUMBER_ID: "12345",
   WHATSAPP_BUSINESS_ACCOUNT_ID: "98765", WHATSAPP_APP_SECRET: "synthetic-secret",
   WHATSAPP_VERIFY_TOKEN: "synthetic-verification", WHATSAPP_TEST_RECIPIENT: "12025550123",
+  WHATSAPP_CONFIG_ENCRYPTION_KEY: "synthetic-encryption-key-for-tests-only-123456",
 };
 
 // In-process handler tests only: no HTTP server, database, login bypass, or Meta call.
@@ -15,12 +17,30 @@ function fixture(options: { failStorage?: boolean; environment?: Record<string, 
   const registered = new Map<string, any[]>();
   const persisted: unknown[] = [];
   const sends: any[] = [];
+  const testEnv = options.environment ?? env;
+  let saved: string | undefined;
+  let savedAt: string | null = null;
   const app = {
     get(path: string, ...handlers: any[]) { registered.set(`GET ${path}`, handlers); },
     post(path: string, ...handlers: any[]) { registered.set(`POST ${path}`, handlers); },
+    put(path: string, ...handlers: any[]) { registered.set(`PUT ${path}`, handlers); },
   };
   registerWhatsAppRoutes(app as any, {
     environment: options.environment ?? env,
+    async loadSettings(): Promise<LoadedSettings> {
+      return saved ? {
+        environment: { ...testEnv, ...decryptSettings(saved, testEnv) },
+        source: "database", updatedAt: savedAt,
+      } : { environment: testEnv, source: "environment", updatedAt: null };
+    },
+    async persistSettings(config) {
+      saved = encryptSettings(config, testEnv);
+      savedAt = new Date().toISOString();
+      return {
+        environment: { ...testEnv, ...decryptSettings(saved, testEnv) },
+        source: "database", updatedAt: savedAt,
+      };
+    },
     authenticate(req, res, next) {
       if (!(req as any).authenticated) { res.sendStatus(401); return; }
       next();
@@ -77,6 +97,8 @@ test("all administration endpoints require authentication and admin access", asy
     ["GET", "/api/admin/whatsapp/status"],
     ["GET", "/api/admin/whatsapp/delivery-events"],
     ["POST", "/api/admin/whatsapp/test"],
+    ["GET", "/api/admin/whatsapp/settings"],
+    ["PUT", "/api/admin/whatsapp/settings"],
   ]) {
     assert.equal((await app.request(method, path)).statusCode, 401);
     assert.equal((await app.request(method, path, { authenticated: true })).statusCode, 403);
@@ -145,5 +167,76 @@ test("manual test without a server-configured test recipient cannot send", async
   const app = fixture({ environment: { ...env, WHATSAPP_TEST_RECIPIENT: "" } });
   assert.equal((await app.request("POST", "/api/admin/whatsapp/test",
     { ...admin, body: { consentConfirmed: true } })).statusCode, 503);
+  assert.equal(app.sends.length, 0);
+});
+
+const update = {
+  enabled: true, apiVersion: "v24.0", phoneNumberId: "12345", businessAccountId: "98765",
+  testRecipient: "12025550199", testTemplate: "property_enquiry", testLanguage: "en_US",
+};
+
+test("dashboard settings save, survive reload, and never return secret values", async () => {
+  const app = fixture();
+  const res = await app.request("PUT", "/api/admin/whatsapp/settings", {
+    ...admin, body: { ...update, accessToken: "synthetic-new-token", appSecret: "synthetic-new-secret" },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal((res.body as any).status.source, "database");
+  assert.equal((res.body as any).settings.hasAccessToken, true);
+  assert.ok(!JSON.stringify(res.body).includes("synthetic-new-token"));
+  const loaded = await app.request("GET", "/api/admin/whatsapp/settings", admin);
+  assert.equal((loaded.body as any).settings.testRecipient, update.testRecipient);
+  assert.ok(!JSON.stringify(loaded.body).includes("synthetic-new-secret"));
+  assert.equal(app.sends.length, 0, "Saving must not send");
+});
+
+test("blank secret edits preserve saved values and test uses latest saved configuration", async () => {
+  const app = fixture();
+  await app.request("PUT", "/api/admin/whatsapp/settings", {
+    ...admin, body: { ...update, accessToken: "synthetic-new-token" },
+  });
+  const res = await app.request("PUT", "/api/admin/whatsapp/settings", {
+    ...admin, body: { ...update, accessToken: "", appSecret: "", verifyToken: "" },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal((res.body as any).settings.hasAccessToken, true);
+  const result = await app.request("POST", "/api/admin/whatsapp/test", {
+    ...admin, body: { consentConfirmed: true, bodyParameters: ["Sample listing"] },
+  });
+  assert.equal(result.statusCode, 202);
+  assert.equal(app.sends[0].to, update.testRecipient);
+  assert.equal(app.sends[0].templateName, update.testTemplate);
+  assert.deepEqual(app.sends[0].bodyParameters, ["Sample listing"]);
+});
+
+test("saving a new verify token immediately changes webhook verification", async () => {
+  const app = fixture();
+  await app.request("PUT", "/api/admin/whatsapp/settings", {
+    ...admin, body: { ...update, verifyToken: "synthetic-new-verify-token" },
+  });
+  for (const [token, expected] of [[env.WHATSAPP_VERIFY_TOKEN, 403], ["synthetic-new-verify-token", 200]] as const) {
+    assert.equal((await app.request("GET", "/api/whatsapp/webhook", { query: {
+      "hub.mode": "subscribe", "hub.challenge": "fixture", "hub.verify_token": token,
+    } })).statusCode, expected);
+  }
+});
+
+test("invalid/incomplete enabled settings and missing encryption keys cannot be saved", async () => {
+  const app = fixture();
+  const bad = await app.request("PUT", "/api/admin/whatsapp/settings", {
+    ...admin, body: { ...update, phoneNumberId: "" },
+  });
+  assert.equal(bad.statusCode, 400);
+  assert.deepEqual((bad.body as any).missing, ["WHATSAPP_PHONE_NUMBER_ID"]);
+  const noKey = fixture({ environment: { ...env, WHATSAPP_CONFIG_ENCRYPTION_KEY: "" } });
+  assert.equal((await noKey.request("PUT", "/api/admin/whatsapp/settings",
+    { ...admin, body: update })).statusCode, 503);
+});
+
+test("invalid body parameters cannot trigger a send", async () => {
+  const app = fixture();
+  assert.equal((await app.request("POST", "/api/admin/whatsapp/test", {
+    ...admin, body: { consentConfirmed: true, bodyParameters: [""] },
+  })).statusCode, 400);
   assert.equal(app.sends.length, 0);
 });

@@ -12,6 +12,7 @@ import { registerLocalStorageRoutes } from "./local-storage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerWhatsAppRoutes } from "./whatsapp/routes";
 import { saveDeliveryEvents, listDeliveryEvents } from "./whatsapp/store";
+import { loadWhatsAppSettings, persistWhatsAppSettings } from "./whatsapp/settings-store";
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
@@ -104,6 +105,8 @@ export async function registerRoutes(
     requireAdmin: adminMiddleware,
     saveEvents: saveDeliveryEvents,
     listEvents: listDeliveryEvents,
+    loadSettings: loadWhatsAppSettings,
+    persistSettings: persistWhatsAppSettings,
     logger: { error: (message) => process.stderr.write(`${message}\n`) },
   });
 

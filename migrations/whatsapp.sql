@@ -1,6 +1,11 @@
 -- Additive only. Run against the existing Leaseo database before enabling WhatsApp.
 -- Back up the database first. Do not replace/import the uploaded database export.
 BEGIN;
+CREATE TABLE IF NOT EXISTS whatsapp_settings (
+  id integer PRIMARY KEY,
+  encrypted_config text NOT NULL,
+  updated_at timestamp NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS whatsapp_delivery_events (
   event_key varchar(64) PRIMARY KEY,
   message_id text NOT NULL,

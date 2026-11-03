@@ -6,6 +6,12 @@ import { z } from "zod";
 // ==================== ENUMS ====================
 
 // Append-only event history prevents late webhooks from overwriting a newer status.
+export const whatsappSettings = pgTable("whatsapp_settings", {
+  id: integer("id").primaryKey(),
+  encryptedConfig: text("encrypted_config").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const whatsappDeliveryEvents = pgTable("whatsapp_delivery_events", {
   eventKey: varchar("event_key", { length: 64 }).primaryKey(),
   messageId: text("message_id").notNull(),

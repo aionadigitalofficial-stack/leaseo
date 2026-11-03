@@ -104,6 +104,7 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import MetaWhatsAppSettings from "@/components/meta-whatsapp-settings";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
 type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization" | "footer" | "reports" | "flagged";
@@ -3770,7 +3771,7 @@ export default function AdminPage() {
 
   // SMS/WhatsApp Providers state
   const [smsMode, setSmsMode] = useState<"sandbox" | "live">("sandbox");
-  const [activeProvider, setActiveProvider] = useState<string>("twilio");
+  const [activeProvider, setActiveProvider] = useState<string>("meta-whatsapp");
   
   const { data: smsProviders, isLoading: smsProvidersLoading } = useQuery<any[]>({
     queryKey: ["/api/admin/notification-providers"],
@@ -3814,6 +3815,10 @@ export default function AdminPage() {
           <TabsTrigger value="wati" data-testid="tab-wati">
             <MessageCircle className="h-4 w-4 mr-2" />
             WATI
+          </TabsTrigger>
+          <TabsTrigger value="meta-whatsapp" data-testid="tab-meta-whatsapp">
+            <MessageCircle className="h-4 w-4 mr-2" />
+            Meta WhatsApp
           </TabsTrigger>
         </TabsList>
 
@@ -3883,6 +3888,10 @@ export default function AdminPage() {
               { key: "fromNumber", label: "Business Number", placeholder: "+91XXXXXXXXXX" },
             ]}
           />
+        </TabsContent>
+
+        <TabsContent value="meta-whatsapp" className="mt-4">
+          <MetaWhatsAppSettings />
         </TabsContent>
       </Tabs>
     </div>
