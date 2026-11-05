@@ -13,6 +13,7 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { registerWhatsAppRoutes } from "./whatsapp/routes";
 import { saveDeliveryEvents, listDeliveryEvents } from "./whatsapp/store";
 import { loadWhatsAppSettings, persistWhatsAppSettings } from "./whatsapp/settings-store";
+import { registerNotificationRoutes } from "./notifications/routes";
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
@@ -20,6 +21,13 @@ const sanitizeHtml = (html: string): string => {
     ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style'],
   });
 };
+
+// Contact data belongs only in authenticated contact/admin responses.
+function publicProperty<T extends Record<string, any>>(property:T) {
+  const {ownerContactName,ownerContactPhone,ownerContactEmail,ownerPhone,ownerEmail,
+    submissionIp,submissionUserAgent,...publicFields}=property;
+  return publicFields;
+}
 
 // Generates a readable-but-random temporary password for owner accounts
 // created on an admin's behalf (see POST /api/properties). Meets the same
@@ -100,6 +108,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  registerNotificationRoutes(app);
   registerWhatsAppRoutes(app, {
     authenticate: authMiddleware,
     requireAdmin: adminMiddleware,
@@ -211,7 +220,7 @@ export async function registerRoutes(
       if (req.query.featured === "true") {
         const limit = req.query.limit ? parseInt(req.query.limit as string) : 8;
         const properties = await storage.getFeaturedProperties(limit);
-        return res.json(properties);
+        return res.json(properties.map(publicProperty));
       }
 
       const sortBy = req.query.sortBy as string | undefined;
@@ -236,7 +245,7 @@ export async function registerRoutes(
         properties = properties.filter(p => p.id !== excludeId);
       }
       
-      res.json(properties);
+      res.json(properties.map(publicProperty));
     } catch (error) {
       console.error("Error fetching properties:", error);
       res.status(500).json({ error: "Failed to fetch properties" });
@@ -265,7 +274,7 @@ export async function registerRoutes(
       if (!property) {
         return res.status(404).json({ error: "Property not found" });
       }
-      res.json(property);
+      res.json(publicProperty(property));
     } catch (error) {
       console.error("Error fetching property:", error);
       res.status(500).json({ error: "Failed to fetch property" });
@@ -756,8 +765,8 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to fetch enquiries" });
     }
   };
-  app.get("/api/inquiries", getEnquiriesHandler);
-  app.get("/api/enquiries", getEnquiriesHandler);
+  app.get("/api/inquiries", authMiddleware, adminMiddleware, getEnquiriesHandler);
+  app.get("/api/enquiries", authMiddleware, adminMiddleware, getEnquiriesHandler);
 
   // Create new enquiry
   const createEnquiryHandler = async (req: any, res: any) => {
@@ -824,8 +833,8 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to update enquiry" });
     }
   };
-  app.patch("/api/inquiries/:id", updateEnquiryHandler);
-  app.patch("/api/enquiries/:id", updateEnquiryHandler);
+  app.patch("/api/inquiries/:id", authMiddleware, adminMiddleware, updateEnquiryHandler);
+  app.patch("/api/enquiries/:id", authMiddleware, adminMiddleware, updateEnquiryHandler);
 
   // ==================== SHORTLISTS ====================
 
@@ -1190,7 +1199,8 @@ export async function registerRoutes(
         if (existingPhoneOwner && existingPhoneOwner.id !== currentUser.id) {
           return res.status(400).json({ error: "This phone number is already associated with another account" });
         }
-        await db.update(users).set({ phone }).where(eq(users.id, currentUser.id));
+        // Changing the number invalidates its old account-level OTP verification.
+        await db.update(users).set({ phone, phoneVerifiedAt: null }).where(eq(users.id, currentUser.id));
         phoneToUse = phone;
       }
 
@@ -1380,6 +1390,9 @@ export async function registerRoutes(
   app.post("/api/auth/otp/send", async (req, res) => {
     try {
       const { email, phone, purpose = "verify_email" } = req.body;
+      if (purpose === "contact_owner" || req.body.propertyId) {
+        return res.status(400).json({ error: "Use the authenticated property contact verification flow" });
+      }
 
       if (!email && !phone) {
         return res.status(400).json({ error: "Email or phone is required" });
@@ -1462,6 +1475,9 @@ export async function registerRoutes(
   app.post("/api/auth/otp/verify", optionalAuthMiddleware, async (req, res) => {
     try {
       const { email, phone, code, segment, createAccount, propertyId } = req.body;
+      if (propertyId) {
+        return res.status(400).json({ error: "Use the authenticated property contact verification flow" });
+      }
 
       if (!email && !phone) {
         return res.status(400).json({ error: "Email or phone is required" });
@@ -3446,7 +3462,13 @@ export async function registerRoutes(
           .returning();
       }
       
-      res.json({ success: true, provider: result });
+      const {accountSid: savedSid,authToken: savedToken,apiKey: savedApiKey,
+        sandboxAccountSid: savedSandboxSid,sandboxAuthToken: savedSandboxToken,
+        sandboxApiKey: savedSandboxKey,...safeProvider}=result;
+      res.json({ success: true, provider: {...safeProvider,
+        hasAccountSid:Boolean(savedSid),hasAuthToken:Boolean(savedToken),hasApiKey:Boolean(savedApiKey),
+        hasSandboxAccountSid:Boolean(savedSandboxSid),hasSandboxAuthToken:Boolean(savedSandboxToken),
+        hasSandboxApiKey:Boolean(savedSandboxKey)} });
     } catch (error) {
       console.error("Error updating notification provider:", error);
       res.status(500).json({ error: "Failed to update notification provider settings" });

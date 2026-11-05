@@ -519,6 +519,75 @@ export const siteSettings = pgTable("site_settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Property contact access is separate from account-level users.phoneVerifiedAt.
+export const propertyContactOtps = pgTable("property_contact_otps", {
+  userId: varchar("user_id").primaryKey().references(() => users.id),
+  phone: text("phone").notNull(), codeHash: text("code_hash").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
+  sendCount: integer("send_count").notNull().default(1),
+});
+export const notificationRateLimits = pgTable("notification_rate_limits", {
+  userId: varchar("user_id").notNull().references(() => users.id), action: text("action").notNull(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+  requestCount: integer("request_count").notNull(),
+}, table => [uniqueIndex("notification_rate_limits_user_action_idx").on(table.userId,table.action)]);
+export const notificationConfiguration = pgTable("notification_configuration", {
+  id: integer("id").primaryKey(), settings: jsonb("settings").notNull().default({}),
+  encryptedSecret: text("encrypted_secret"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const notificationTemplates = pgTable("notification_templates", {
+  id: varchar("id").primaryKey(), templateName: text("template_name").notNull(),
+  recipientType: text("recipient_type").notNull(), channel: text("channel").notNull(),
+  eventType: text("event_type").notNull().default("property_contact"),
+  subject: text("subject").notNull().default(""), messageBody: text("message_body").notNull(),
+  isEnabled: boolean("is_enabled").notNull().default(false),
+  metaTemplateName: text("meta_template_name").notNull().default(""),
+  metaLanguage: text("meta_language").notNull().default("en_US"),
+  parameterKeys: jsonb("parameter_keys").$type<string[]>().notNull().default([]),
+  smsTemplateId: text("sms_template_id").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [uniqueIndex("notification_templates_kind_idx").on(table.recipientType,table.channel,table.eventType)]);
+export const propertyContactAccess = pgTable("property_contact_access", {
+  id: varchar("id").primaryKey(), enquiryId: varchar("enquiry_id").notNull().unique().references(() => enquiries.id),
+  customerId: varchar("customer_id").notNull().references(() => users.id),
+  propertyId: varchar("property_id").notNull().references(() => properties.id),
+  ownerId: varchar("owner_id").references(() => users.id),
+  verifiedPhone: text("verified_phone").notNull(), consentConfirmed: boolean("consent_confirmed").notNull(),
+  context: jsonb("context").$type<Record<string,string>>().notNull(),
+  contactAccessStatus: text("contact_access_status").notNull().default("granted"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+},table=>[
+  uniqueIndex("property_contact_access_customer_property_idx").on(table.customerId,table.propertyId),
+  index("property_contact_access_property_idx").on(table.propertyId),
+]);
+export const notificationJobs = pgTable("notification_jobs", {
+  id: varchar("id").primaryKey(), enquiryId: varchar("enquiry_id").notNull().references(()=>enquiries.id),
+  customerId: varchar("customer_id").notNull().references(()=>users.id),
+  propertyId: varchar("property_id").notNull().references(()=>properties.id),
+  recipientType: text("recipient_type").notNull(), recipientId: varchar("recipient_id"),
+  recipient: text("recipient").notNull(), channel: text("channel").notNull(),
+  templateId: varchar("template_id").notNull().references(()=>notificationTemplates.id),
+  testKey: text("test_key").notNull().default(""),
+  consentConfirmed: boolean("consent_confirmed").notNull().default(false),
+  status: text("status").notNull().default("pending"), attempts: integer("attempts").notNull().default(0),
+  retryable: boolean("retryable").notNull().default(false),
+  nextAttemptAt: timestamp("next_attempt_at",{withTimezone:true}).notNull().defaultNow(),
+  providerMessageId: text("provider_message_id"),errorCode: text("error_code"),
+  sentAt: timestamp("sent_at",{withTimezone:true}),
+  createdAt: timestamp("created_at",{withTimezone:true}).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at",{withTimezone:true}).notNull().defaultNow(),
+},table=>[
+  uniqueIndex("notification_jobs_enquiry_recipient_channel_idx").on(table.enquiryId,table.recipientType,table.channel,table.testKey),
+  index("notification_jobs_pending_idx").on(table.status,table.nextAttemptAt),
+  index("notification_jobs_provider_idx").on(table.providerMessageId),
+]);
+
 export type SiteSetting = typeof siteSettings.$inferSelect;
 export type InsertSiteSetting = typeof siteSettings.$inferInsert;
 

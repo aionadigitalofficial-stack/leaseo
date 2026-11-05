@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "test:whatsapp": "tsx --test server/whatsapp/*.test.ts",
+    "test:notifications": "tsx --test server/notifications/*.test.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

@@ -105,9 +105,10 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MetaWhatsAppSettings from "@/components/meta-whatsapp-settings";
+import NotificationManagement from "@/components/notification-management";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
-type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization" | "footer" | "reports" | "flagged";
+type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "notifications" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization" | "footer" | "reports" | "flagged";
 
 const AMENITIES = [
   "Lift", "Power Backup", "Security", "CCTV", "Gym", "Swimming Pool",
@@ -364,6 +365,7 @@ const sidebarItems: { id: AdminSection; label: string; icon: any }[] = [
   { id: "payments", label: "Payments", icon: CreditCard },
   { id: "gateway", label: "Payment Gateway", icon: KeyIcon },
   { id: "sms", label: "SMS/WhatsApp", icon: Phone },
+  { id: "notifications", label: "Notification Templates", icon: MessageCircle },
   { id: "newsletter", label: "Newsletter", icon: Mail },
   { id: "employees", label: "Employees", icon: Users },
   { id: "cities", label: "Cities & Localities", icon: MapPin },
@@ -5180,6 +5182,7 @@ export default function AdminPage() {
       case "payments": return renderPayments();
       case "gateway": return renderGateway();
       case "sms": return renderSmsProviders();
+      case "notifications": return <NotificationManagement onConfigureProviders={() => setActiveSection("sms")} />;
       case "newsletter": return renderNewsletter();
       case "employees": return renderEmployees();
       case "cities": return renderCities();
@@ -5209,7 +5212,7 @@ export default function AdminPage() {
 
   return (
     <div className="flex h-screen bg-background">
-      <aside className={`bg-background border-r flex flex-col transition-all duration-300 ${sidebarCollapsed ? "w-16" : "w-64"} flex-shrink-0`}>
+      <aside className={`bg-background border-r ${activeSection === "notifications" ? "hidden md:flex" : "flex"} flex-col transition-all duration-300 ${sidebarCollapsed ? "w-16" : "w-64"} flex-shrink-0`}>
         <div className="p-4 border-b flex items-center justify-between gap-2 bg-primary/5">
           {!sidebarCollapsed && <h2 className="font-bold text-lg text-primary">Leaseo Admin</h2>}
           <Button size="icon" variant="ghost" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="hover:bg-primary/10">
@@ -5270,7 +5273,14 @@ export default function AdminPage() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto bg-muted/20">
+      <main className="min-w-0 flex-1 overflow-auto bg-muted/20">
+        {activeSection === "notifications" && <div className="border-b p-3 md:hidden">
+          <Label htmlFor="notification-admin-navigation" className="mb-2 block text-xs">Admin navigation</Label>
+          <select id="notification-admin-navigation" className="w-full rounded-md border bg-background p-2 text-sm"
+            value={activeSection} onChange={event=>setActiveSection(event.target.value as AdminSection)}>
+            {sidebarItems.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </div>}
         <div className="p-6 max-w-7xl">{renderContent()}</div>
       </main>
 

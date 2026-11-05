@@ -1,13 +1,19 @@
 # Leaseo: Meta WhatsApp admin settings and backend
 
+> This is the original **base integration** guide. For the current property-contact
+> OTP flow, automated enquiry notifications, template management, queue, deployment
+> and tests, follow **PROPERTY_CONTACT_SETUP.md**. Its instructions supersede the
+> older “future integration” scope below. The application is hosted on Dokploy.
+
 ## Scope
 
 This adds direct Meta WhatsApp Cloud API messaging and a new **Meta WhatsApp** tab
 inside **Admin → SMS/WhatsApp Providers** in the existing Leaseo app.
-The WhatsApp button still opens `wa.me`. Search, enquiry, OTP and email behaviour
-are unchanged. No automatic notifications or replies are enabled.
+The base integration supports manual approved-template sends and signed webhooks.
+The property-contact extension adds configurable enquiry notifications separately;
+ordinary searches and inbound messages do not trigger automated replies.
 
-**The code is not a connected Meta account.** Your Coolify server needs the Meta
+**The code is not a connected Meta account.** Your Dokploy server needs the Meta
 values below before it can send a message. No live credentials are included.
 
 ## Start here: deploy the admin settings update
@@ -17,13 +23,13 @@ values below before it can send a message. No live credentials are included.
 2. Back up your database and **rerun `migrations/whatsapp.sql`** against the same
    existing database. The migration is safe to rerun and now also creates the
    encrypted settings table. The previous backend-only migration is not enough.
-3. Ensure Coolify has a stable server-side encryption key of at least 32
+3. Ensure Dokploy has a stable server-side encryption key of at least 32
    characters. Prefer a dedicated `WHATSAPP_CONFIG_ENCRYPTION_KEY`; if absent,
    an existing strong `SESSION_SECRET` (otherwise `JWT_SECRET`) is used.
    Generate a strong key locally, for example with `openssl rand -hex 32`.
-   Add it only to Coolify's runtime environment settings, never Git or chat.
+   Add it only to Dokploy's runtime environment settings, never Git or chat.
    Do not change your existing authentication secrets just for this feature.
-4. Redeploy the app in Coolify.
+4. Redeploy the app in Dokploy.
 5. Open **Admin → SMS/WhatsApp → Meta WhatsApp**. Enter your Meta Phone Number ID,
    Business Account ID, access token, app secret, chosen webhook verify token,
    Graph API version, test recipient, template name and language.
@@ -38,7 +44,7 @@ verify token in your own secret manager so you can enter it into Meta.
 
 Dashboard settings take precedence over earlier WHATSAPP_* environment variables.
 Once a dashboard configuration is saved, **use the dashboard toggle** to disable
-messaging. Changing `WHATSAPP_ENABLED` in Coolify will not override saved settings.
+messaging. Changing `WHATSAPP_ENABLED` in Dokploy will not override saved settings.
 
 The new tab does not select/change the active legacy OTP provider. Twilio, MSG91,
 BhashSMS and WATI forms are unchanged. Only the initially displayed UI tab changes.
@@ -104,7 +110,7 @@ Database exports and nested deployment ZIPs from the upload were not imported.
 Access-token lifetimes vary. Monitor and rotate credentials; do not rely on the
 temporary getting-started token for production.
 
-## 2. Add runtime environment values in Coolify
+## 2. Add runtime environment values in Dokploy
 
 These are optional fallback values before saving credentials in the dashboard.
 Only the encryption key must remain server-side. Use your existing application's
@@ -142,8 +148,8 @@ This creates two WhatsApp-only tables and two indexes. It does not modify proper
 or enquiries. Do **not** import `database_export.sql`, replace the database, or run
 a broad schema push just to enable this feature.
 
-Merge the files and redeploy using your existing Coolify build configuration.
-Nothing in this project has changed or redeployed your running Coolify server.
+Merge the files and redeploy using your existing Dokploy build configuration.
+Nothing in this project has changed or redeployed your running Dokploy server.
 
 ## 4. Configure the webhook in Meta
 
@@ -155,7 +161,7 @@ Nothing in this project has changed or redeployed your running Coolify server.
   `POST /{WHATSAPP_BUSINESS_ACCOUNT_ID}/subscribed_apps` flow with an appropriately
   permissioned token.
 - Use a publicly reachable HTTPS domain with a valid certificate. Do not put the
-  webhook behind Coolify preview authentication, a login page or a bot challenge.
+  webhook behind preview authentication, a login page or a bot challenge.
 
 Webhook GET verification works while sending is disabled. POST callbacks require
 the app secret, business account ID and phone number ID. Invalid signatures get

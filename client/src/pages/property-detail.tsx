@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Header } from "@/components/header";
@@ -14,9 +14,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
@@ -42,7 +42,6 @@ import {
   Home,
   ArrowLeft,
   MessageCircle,
-  Mail,
   BadgeCheck,
   Clock,
   Users,
@@ -107,7 +106,7 @@ const PLACEHOLDER_IMAGES = [
   "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=1200&auto=format&fit=crop",
 ];
 
-interface ExtendedProperty extends Property {
+type ExtendedProperty = Omit<Property, "priceOptions"> & {
   images?: string[];
   locality?: string;
   ownerName?: string;
@@ -115,31 +114,66 @@ interface ExtendedProperty extends Property {
   ownerPhone?: string;
   ownerVerified?: boolean;
   preferredTenant?: string[];
-}
+};
 
 export default function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFavorited, setIsFavorited] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [showContactDialog, setShowContactDialog] = useState(false);
-  const [verifyMethod, setVerifyMethod] = useState<"phone" | "email">("phone");
   const [otpSent, setOtpSent] = useState(false);
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [email, setEmail] = useState("");
+  const [phoneVerified, setPhoneVerified] = useState(false);
   const [otp, setOtp] = useState("");
   const [revealedPhone, setRevealedPhone] = useState<string | null>(null);
-  const [otpLoading, setOtpLoading] = useState(false);
+  const [contactAction, setContactAction] = useState<"whatsapp" | "call" | null>(null);
+  const [contactBusy, setContactBusy] = useState(false);
+  const [contactConsent, setContactConsent] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [contactSuccess, setContactSuccess] = useState<string | null>(null);
+  const [whatsappFallbackUrl, setWhatsappFallbackUrl] = useState<string | null>(null);
+  const actionWindowRef = useRef<Window | null>(null);
+  const requestGenerationRef = useRef(0);
+  const requestPropertyRef = useRef(id);
+  const requestUserRef = useRef(user?.id ?? null);
 
   // Issue #4: "Report this listing" - visible on every public listing page
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportDescription, setReportDescription] = useState("");
+
+  useEffect(() => {
+    requestGenerationRef.current += 1;
+    requestPropertyRef.current = id;
+    requestUserRef.current = user?.id ?? null;
+    setCurrentImageIndex(0);
+    setIsFavorited(false);
+    setShowGallery(false);
+    setPhoneVerified(false);
+    setRevealedPhone(null);
+    setOtpSent(false);
+    setOtp("");
+    setContactAction(null);
+    setContactBusy(false);
+    setContactConsent(false);
+    setOtpError(null);
+    setContactSuccess(null);
+    setWhatsappFallbackUrl(null);
+    setShowContactDialog(false);
+    setShowReportDialog(false);
+    setReportReason("");
+    setReportDescription("");
+    if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
+    actionWindowRef.current = null;
+    return () => {
+      requestGenerationRef.current += 1;
+      if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
+      actionWindowRef.current = null;
+    };
+  }, [id, user?.id]);
 
   const { data: property, isLoading, error } = useQuery<ExtendedProperty>({
     queryKey: ["/api/properties", id],
@@ -195,90 +229,136 @@ export default function PropertyDetailPage() {
     enabled: !!cityParam && !!id,
   });
 
-  const handleSendOtp = async () => {
+  const requestOtp = async () => {
+    if (!user?.phone) {
+      setOtpError("Add a mobile number to your account before requesting contact access.");
+      return;
+    }
+    const generation = requestGenerationRef.current;
     setOtpError(null);
-    setOtpLoading(true);
+    setContactBusy(true);
     try {
-      const payload = verifyMethod === "phone" 
-        ? { phone: phoneNumber.startsWith("+91") ? phoneNumber : `+91${phoneNumber}`, purpose: "contact_owner", propertyId: id }
-        : { email, purpose: "contact_owner", propertyId: id };
-      
-      const response = await fetch("/api/auth/otp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to send OTP");
-      }
+      await apiRequest("POST", "/api/property-contact/otp/request", {});
+      if (generation !== requestGenerationRef.current || requestPropertyRef.current !== id || requestUserRef.current !== user.id) return;
       setOtpSent(true);
     } catch (err: any) {
-      setOtpError(err.message || "Failed to send OTP. Please try again.");
+      if (generation === requestGenerationRef.current) setOtpError(err.message || "Could not send the verification code. Please try again.");
     } finally {
-      setOtpLoading(false);
+      if (generation === requestGenerationRef.current) setContactBusy(false);
     }
   };
 
-  const isValidContact = verifyMethod === "phone" 
-    ? phoneNumber.length >= 10 
-    : email.includes("@") && email.includes(".");
+  const createPropertyContact = async (action: "whatsapp" | "call", generation = requestGenerationRef.current) => {
+    const propertyId = id;
+    if (!contactConsent) {
+      setOtpError("Please confirm consent to share your enquiry with the property owner.");
+      return;
+    }
+    try {
+      const response = await apiRequest("POST", `/api/properties/${propertyId}/contact`, { consentConfirmed: true });
+      const contact = await response.json() as { enquiryId: string; created: boolean; ownerPhone: string; whatsappUrl: string; notificationStatus: "queued" | "existing" };
+      if (generation !== requestGenerationRef.current || requestPropertyRef.current !== propertyId || requestUserRef.current !== (user?.id ?? null)) return;
+      setRevealedPhone(contact.ownerPhone);
+      setPhoneVerified(true);
+      setContactSuccess("Property owner's contact details are now available.");
+      setShowContactDialog(false);
+      setContactConsent(false);
+      if (action === "whatsapp") {
+        setWhatsappFallbackUrl(contact.whatsappUrl);
+        if (actionWindowRef.current && !actionWindowRef.current.closed) {
+          actionWindowRef.current.location.href = contact.whatsappUrl;
+          actionWindowRef.current = null;
+        }
+      } else {
+        if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
+        actionWindowRef.current = null;
+        window.location.href = `tel:+${contact.ownerPhone}`;
+      }
+    } catch (err: any) {
+      if (generation !== requestGenerationRef.current) return;
+      if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
+      actionWindowRef.current = null;
+      setOtpSent(false);
+      setOtpError(err.message || "Unable to create this property enquiry. Please try again.");
+    }
+  };
+
+  const openContactFlow = (action: "whatsapp" | "call") => {
+    if (!isAuthenticated) {
+      navigate(`/login?redirect=${encodeURIComponent(`/properties/${id}`)}`);
+      return;
+    }
+    setContactAction(action);
+    setOtp("");
+    setOtpSent(false);
+    setContactConsent(false);
+    setOtpError(null);
+    setContactSuccess(null);
+    setWhatsappFallbackUrl(null);
+    setShowContactDialog(true);
+  };
+
+  const handleContinueContact = async () => {
+    if (!contactConsent || contactBusy || !contactAction) return;
+    if (!user?.phone) {
+      navigate(`/profile/complete?redirect=${encodeURIComponent(`/properties/${id}`)}`);
+      return;
+    }
+    const action = contactAction;
+    const generation = requestGenerationRef.current;
+    setOtpError(null);
+    setContactBusy(true);
+    // Reserve the WhatsApp tab in the click gesture so mobile and desktop browsers
+    // do not block it after the asynchronous authorization request.
+    if (action === "whatsapp" && !actionWindowRef.current) {
+      actionWindowRef.current = window.open("about:blank", "_blank");
+      if (actionWindowRef.current) actionWindowRef.current.opener = null;
+    }
+    try {
+      if (!phoneVerified) {
+        const statusResponse = await apiRequest("GET", "/api/property-contact/status");
+        const status = await statusResponse.json() as { verified: boolean; phone: string | null; verifiedAt: string | null; verificationExpiry: string | null };
+        if (generation !== requestGenerationRef.current || requestPropertyRef.current !== id || requestUserRef.current !== user.id) return;
+        if (!status.verified) {
+          await apiRequest("POST", "/api/property-contact/otp/request", {});
+          if (generation !== requestGenerationRef.current || requestPropertyRef.current !== id || requestUserRef.current !== user.id) return;
+          setOtpSent(true);
+          return;
+        }
+        setPhoneVerified(true);
+      }
+      await createPropertyContact(action, generation);
+    } catch (err: any) {
+      if (generation === requestGenerationRef.current) {
+        if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
+        actionWindowRef.current = null;
+        setOtpError(err.message || "Unable to verify your account. Please try again.");
+      }
+    } finally {
+      if (generation === requestGenerationRef.current) setContactBusy(false);
+    }
+  };
 
   const handleVerifyOtp = async () => {
-    if (otp.length !== 6) return;
-    
+    if (otp.length !== 6 || contactBusy || !contactAction) return;
+    const generation = requestGenerationRef.current;
+    const propertyId = id;
     setOtpError(null);
-    setOtpLoading(true);
+    setContactBusy(true);
     try {
-      const payload = verifyMethod === "phone" 
-        ? { phone: phoneNumber.startsWith("+91") ? phoneNumber : `+91${phoneNumber}`, code: otp, propertyId: id }
-        : { email, code: otp, propertyId: id };
-      
-      const response = await fetch("/api/auth/otp/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Invalid OTP");
-      }
-      
-      setOtpVerified(true);
-      // The server only returns ownerPhone once verification for THIS
-      // listing succeeds - there is no client-side fallback number anymore.
-      if (data.ownerPhone) {
-        setRevealedPhone(data.ownerPhone);
-      } else {
-        setOtpError("This owner hasn't added a contact number yet. Please use the enquiry form instead.");
-      }
-      setShowContactDialog(false);
+      await apiRequest("POST", "/api/property-contact/otp/verify", { code: otp });
+      if (generation !== requestGenerationRef.current || requestPropertyRef.current !== propertyId || requestUserRef.current !== user?.id) return;
+      setPhoneVerified(true);
+      await createPropertyContact(contactAction, generation);
     } catch (err: any) {
-      setOtpError(err.message || "Invalid OTP. Please try again.");
+      if (generation === requestGenerationRef.current) setOtpError(err.message || "Invalid code. Please try again.");
     } finally {
-      setOtpLoading(false);
+      if (generation === requestGenerationRef.current) setContactBusy(false);
     }
   };
 
-  const handleCallClick = () => {
-    if (otpVerified && revealedPhone) {
-      window.location.href = `tel:${revealedPhone}`;
-    } else {
-      setShowContactDialog(true);
-    }
-  };
-
-  const handleWhatsAppClick = () => {
-    if (otpVerified && revealedPhone) {
-      const cleanPhone = revealedPhone.replace(/\D/g, "");
-      const message = encodeURIComponent(`Hi, I'm interested in this property: ${property?.title}`);
-      window.open(`https://wa.me/91${cleanPhone}?text=${message}`, "_blank");
-    } else {
-      setShowContactDialog(true);
-    }
-  };
+  const handleCallClick = () => openContactFlow("call");
+  const handleWhatsAppClick = () => openContactFlow("whatsapp");
 
   if (isLoading) {
     return (
@@ -709,26 +789,44 @@ export default function PropertyDetailPage() {
                     <Button 
                       className="w-full gap-2" 
                       onClick={handleCallClick}
+                      disabled={contactBusy}
                       data-testid="button-call-owner"
                     >
                       <Phone className="h-4 w-4" />
-                      {otpVerified ? "Call Owner" : "Show Phone Number"}
+                      {contactBusy && contactAction === "call" ? "Processing..." : revealedPhone ? "Call Owner" : "Show Phone Number"}
                     </Button>
                     
                     <Button 
                       variant="outline" 
                       className="w-full gap-2 bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400"
                       onClick={handleWhatsAppClick}
+                      disabled={contactBusy}
                       data-testid="button-whatsapp"
                     >
                       <SiWhatsapp className="h-4 w-4" />
-                      WhatsApp
+                      {contactBusy && contactAction === "whatsapp" ? "Processing..." : "WhatsApp"}
                     </Button>
                   </div>
 
-                  {!otpVerified && (
+                  {revealedPhone && (
+                    <p className="text-sm text-center font-medium" data-testid="text-owner-contact">
+                      Owner phone: {revealedPhone}
+                    </p>
+                  )}
+                  {contactSuccess && (
+                    <div className="space-y-2 text-center" role="status" data-testid="status-contact-success">
+                      <p className="text-xs text-green-700 dark:text-green-400">{contactSuccess}</p>
+                      {whatsappFallbackUrl && (
+                        <a href={whatsappFallbackUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary underline" data-testid="link-open-whatsapp">
+                          Open WhatsApp chat
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {!revealedPhone && (
                     <p className="text-xs text-center text-muted-foreground">
-                      Verify your phone number to see owner contact
+                      Verify your account mobile number and confirm your enquiry to contact the owner
                     </p>
                   )}
 
@@ -768,82 +866,23 @@ export default function PropertyDetailPage() {
       </main>
 
       <Dialog open={showContactDialog} onOpenChange={setShowContactDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[92vw] max-w-md max-h-[90dvh] overflow-y-auto break-words" onCloseAutoFocus={() => {
+          if (!showContactDialog && actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
+        }}>
           <DialogHeader>
-            <DialogTitle>Verify to View Contact</DialogTitle>
+            <DialogTitle>{otpSent ? "Verify your mobile number" : "Contact the property owner"}</DialogTitle>
             <DialogDescription>
-              Enter your phone number or email to view the owner's contact details
+              {otpSent
+                ? `Enter the six-digit code sent to the mobile number on your account${user?.phone ? ` (${user.phone})` : ""}.`
+                : "Confirm your enquiry. If your account mobile is not verified, we will send a one-time code to that number."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {!otpSent ? (
-              <Tabs value={verifyMethod} onValueChange={(v) => { setVerifyMethod(v as "phone" | "email"); setOtpError(null); }} className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="phone" data-testid="tab-phone-verify">
-                    <Phone className="h-4 w-4 mr-2" />
-                    Phone
-                  </TabsTrigger>
-                  <TabsTrigger value="email" data-testid="tab-email-verify">
-                    <Mail className="h-4 w-4 mr-2" />
-                    Email
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="phone" className="mt-4 space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone Number</Label>
-                    <div className="flex gap-2">
-                      <div className="flex items-center px-3 border rounded-md bg-muted text-sm">
-                        +91
-                      </div>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        placeholder="Enter 10-digit number"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                        className="flex-1"
-                        data-testid="input-phone-verify"
-                      />
-                    </div>
-                  </div>
-                  {otpError && (
-                    <p className="text-sm text-red-500">{otpError}</p>
-                  )}
-                  <Button 
-                    className="w-full" 
-                    onClick={handleSendOtp}
-                    disabled={phoneNumber.length < 10 || otpLoading}
-                    data-testid="button-send-otp-phone"
-                  >
-                    {otpLoading ? "Sending..." : "Send OTP"}
-                  </Button>
-                </TabsContent>
-                <TabsContent value="email" className="mt-4 space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email Address</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="Enter your email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      data-testid="input-email-verify"
-                    />
-                  </div>
-                  {otpError && (
-                    <p className="text-sm text-red-500">{otpError}</p>
-                  )}
-                  <Button 
-                    className="w-full" 
-                    onClick={handleSendOtp}
-                    disabled={!email.includes("@") || !email.includes(".") || otpLoading}
-                    data-testid="button-send-otp-email"
-                  >
-                    {otpLoading ? "Sending..." : "Send OTP"}
-                  </Button>
-                </TabsContent>
-              </Tabs>
-            ) : (
+            {!user?.phone ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                Your account does not have a mobile number. Add one in your account profile to continue.
+              </div>
+            ) : otpSent ? (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="otp">Enter OTP</Label>
@@ -856,31 +895,62 @@ export default function PropertyDetailPage() {
                     className="text-center text-lg tracking-widest"
                     data-testid="input-otp"
                   />
-                  <p className="text-sm text-muted-foreground">
-                    OTP sent to {verifyMethod === "phone" ? `+91 ${phoneNumber}` : email}
-                  </p>
                 </div>
-                {otpError && (
-                  <p className="text-sm text-red-500">{otpError}</p>
-                )}
+                {otpError && <p className="break-all text-sm text-red-500" role="alert" data-testid="text-contact-error">{otpError}</p>}
                 <Button 
                   className="w-full" 
                   onClick={handleVerifyOtp}
-                  disabled={otp.length < 6 || otpLoading}
+                  disabled={otp.length !== 6 || contactBusy}
                   data-testid="button-verify-otp"
                 >
-                  {otpLoading ? "Verifying..." : "Verify & View Contact"}
+                  {contactBusy ? "Verifying and creating enquiry..." : "Verify and continue"}
                 </Button>
                 <Button 
                   variant="ghost" 
                   className="w-full"
-                  onClick={() => setOtpSent(false)}
+                  onClick={requestOtp}
+                  disabled={contactBusy}
+                  data-testid="button-resend-otp"
                 >
-                  Change {verifyMethod === "phone" ? "Number" : "Email"}
+                  Resend code
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start gap-3 rounded-md border p-4">
+                  <Checkbox
+                    id="contact-consent"
+                    checked={contactConsent}
+                    onCheckedChange={(checked) => setContactConsent(checked === true)}
+                    data-testid="checkbox-contact-consent"
+                  />
+                  <Label htmlFor="contact-consent" className="cursor-pointer text-sm leading-relaxed">
+                    I agree to share my enquiry and account contact details with the property owner, and to receive related enquiry notifications.
+                  </Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Your account phone number is used for verification. It cannot be changed in this step.
+                </p>
+                {otpError && <p className="break-all text-sm text-red-500" role="alert" data-testid="text-contact-error">{otpError}</p>}
+                <Button
+                  className="w-full"
+                  onClick={handleContinueContact}
+                  disabled={!contactConsent || contactBusy}
+                  data-testid="button-confirm-contact"
+                >
+                  {contactBusy ? "Checking account..." : "Continue"}
                 </Button>
               </>
             )}
           </div>
+          {!user?.phone && (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowContactDialog(false)}>Cancel</Button>
+              <Button onClick={() => navigate(`/profile/complete?redirect=${encodeURIComponent(`/properties/${id}`)}`)} data-testid="button-add-account-phone">
+                Update account profile
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
