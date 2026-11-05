@@ -134,8 +134,6 @@ export default function PropertyDetailPage() {
   const [contactConsent, setContactConsent] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [contactSuccess, setContactSuccess] = useState<string | null>(null);
-  const [whatsappFallbackUrl, setWhatsappFallbackUrl] = useState<string | null>(null);
-  const actionWindowRef = useRef<Window | null>(null);
   const requestGenerationRef = useRef(0);
   const requestPropertyRef = useRef(id);
   const requestUserRef = useRef(user?.id ?? null);
@@ -161,17 +159,12 @@ export default function PropertyDetailPage() {
     setContactConsent(false);
     setOtpError(null);
     setContactSuccess(null);
-    setWhatsappFallbackUrl(null);
     setShowContactDialog(false);
     setShowReportDialog(false);
     setReportReason("");
     setReportDescription("");
-    if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
-    actionWindowRef.current = null;
     return () => {
       requestGenerationRef.current += 1;
-      if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
-      actionWindowRef.current = null;
     };
   }, [id, user?.id]);
 
@@ -256,28 +249,20 @@ export default function PropertyDetailPage() {
     }
     try {
       const response = await apiRequest("POST", `/api/properties/${propertyId}/contact`, { consentConfirmed: true });
-      const contact = await response.json() as { enquiryId: string; created: boolean; ownerPhone: string; whatsappUrl: string; notificationStatus: "queued" | "existing" };
+      const contact = await response.json() as { enquiryId: string; created: boolean; ownerPhone: string; notificationStatus: "queued" | "existing" };
       if (generation !== requestGenerationRef.current || requestPropertyRef.current !== propertyId || requestUserRef.current !== (user?.id ?? null)) return;
       setRevealedPhone(contact.ownerPhone);
       setPhoneVerified(true);
-      setContactSuccess("Property owner's contact details are now available.");
+      setContactSuccess(contact.created
+        ? "Your interest has been registered. Notifications will be processed according to the enabled channel and template settings."
+        : "Your interest is already registered. No duplicate notifications have been sent.");
       setShowContactDialog(false);
       setContactConsent(false);
-      if (action === "whatsapp") {
-        setWhatsappFallbackUrl(contact.whatsappUrl);
-        if (actionWindowRef.current && !actionWindowRef.current.closed) {
-          actionWindowRef.current.location.href = contact.whatsappUrl;
-          actionWindowRef.current = null;
-        }
-      } else {
-        if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
-        actionWindowRef.current = null;
+      if (action === "call") {
         window.location.href = `tel:+${contact.ownerPhone}`;
       }
     } catch (err: any) {
       if (generation !== requestGenerationRef.current) return;
-      if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
-      actionWindowRef.current = null;
       setOtpSent(false);
       setOtpError(err.message || "Unable to create this property enquiry. Please try again.");
     }
@@ -294,7 +279,6 @@ export default function PropertyDetailPage() {
     setContactConsent(false);
     setOtpError(null);
     setContactSuccess(null);
-    setWhatsappFallbackUrl(null);
     setShowContactDialog(true);
   };
 
@@ -308,12 +292,6 @@ export default function PropertyDetailPage() {
     const generation = requestGenerationRef.current;
     setOtpError(null);
     setContactBusy(true);
-    // Reserve the WhatsApp tab in the click gesture so mobile and desktop browsers
-    // do not block it after the asynchronous authorization request.
-    if (action === "whatsapp" && !actionWindowRef.current) {
-      actionWindowRef.current = window.open("about:blank", "_blank");
-      if (actionWindowRef.current) actionWindowRef.current.opener = null;
-    }
     try {
       if (!phoneVerified) {
         const statusResponse = await apiRequest("GET", "/api/property-contact/status");
@@ -330,8 +308,6 @@ export default function PropertyDetailPage() {
       await createPropertyContact(action, generation);
     } catch (err: any) {
       if (generation === requestGenerationRef.current) {
-        if (actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
-        actionWindowRef.current = null;
         setOtpError(err.message || "Unable to verify your account. Please try again.");
       }
     } finally {
@@ -816,11 +792,6 @@ export default function PropertyDetailPage() {
                   {contactSuccess && (
                     <div className="space-y-2 text-center" role="status" data-testid="status-contact-success">
                       <p className="text-xs text-green-700 dark:text-green-400">{contactSuccess}</p>
-                      {whatsappFallbackUrl && (
-                        <a href={whatsappFallbackUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary underline" data-testid="link-open-whatsapp">
-                          Open WhatsApp chat
-                        </a>
-                      )}
                     </div>
                   )}
 
@@ -866,9 +837,7 @@ export default function PropertyDetailPage() {
       </main>
 
       <Dialog open={showContactDialog} onOpenChange={setShowContactDialog}>
-        <DialogContent className="w-[92vw] max-w-md max-h-[90dvh] overflow-y-auto break-words" onCloseAutoFocus={() => {
-          if (!showContactDialog && actionWindowRef.current && !actionWindowRef.current.closed) actionWindowRef.current.close();
-        }}>
+        <DialogContent className="w-[92vw] max-w-md max-h-[90dvh] overflow-y-auto break-words">
           <DialogHeader>
             <DialogTitle>{otpSent ? "Verify your mobile number" : "Contact the property owner"}</DialogTitle>
             <DialogDescription>
