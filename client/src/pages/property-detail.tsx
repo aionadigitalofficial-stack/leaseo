@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
+import { clearPendingPropertyContact, readPendingPropertyContact, savePendingPropertyContact } from "@/lib/pending-property-contact";
 import {
   BedDouble,
   Bath,
@@ -120,7 +121,7 @@ export default function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFavorited, setIsFavorited] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
@@ -241,9 +242,9 @@ export default function PropertyDetailPage() {
     }
   };
 
-  const createPropertyContact = async (action: "whatsapp" | "call", generation = requestGenerationRef.current) => {
+  const createPropertyContact = async (action: "whatsapp" | "call", generation = requestGenerationRef.current, consentConfirmed = contactConsent) => {
     const propertyId = id;
-    if (!contactConsent) {
+    if (!consentConfirmed) {
       setOtpError("Please confirm consent to share your enquiry with the property owner.");
       return;
     }
@@ -269,7 +270,7 @@ export default function PropertyDetailPage() {
   };
 
   const openContactFlow = (action: "whatsapp" | "call") => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated && action === "call") {
       navigate(`/login?redirect=${encodeURIComponent(`/properties/${id}`)}`);
       return;
     }
@@ -282,13 +283,30 @@ export default function PropertyDetailPage() {
     setShowContactDialog(true);
   };
 
-  const handleContinueContact = async () => {
-    if (!contactConsent || contactBusy || !contactAction) return;
+  const handleContinueContact = async (resume?: { action: "whatsapp"; consentConfirmed: true }) => {
+    const action = resume?.action || contactAction;
+    const consentConfirmed = resume?.consentConfirmed || contactConsent;
+    if (!consentConfirmed || contactBusy || !action || authLoading) return;
+    if (!isAuthenticated) {
+      try {
+        if (!id) throw new Error("Property not available.");
+        savePendingPropertyContact(id);
+        navigate(`/login?redirect=${encodeURIComponent(`/properties/${id}`)}`);
+      } catch {
+        setOtpError("Unable to continue to login. Please allow session storage in your browser and try again.");
+      }
+      return;
+    }
     if (!user?.phone) {
+      try {
+        if (action === "whatsapp" && id) savePendingPropertyContact(id, user?.id ?? null);
+      } catch {
+        setOtpError("Unable to save your enquiry before opening your profile. Please allow session storage and try again.");
+        return;
+      }
       navigate(`/profile/complete?redirect=${encodeURIComponent(`/properties/${id}`)}`);
       return;
     }
-    const action = contactAction;
     const generation = requestGenerationRef.current;
     setOtpError(null);
     setContactBusy(true);
@@ -305,7 +323,7 @@ export default function PropertyDetailPage() {
         }
         setPhoneVerified(true);
       }
-      await createPropertyContact(action, generation);
+      await createPropertyContact(action, generation, consentConfirmed);
     } catch (err: any) {
       if (generation === requestGenerationRef.current) {
         setOtpError(err.message || "Unable to verify your account. Please try again.");
@@ -335,6 +353,23 @@ export default function PropertyDetailPage() {
 
   const handleCallClick = () => openContactFlow("call");
   const handleWhatsAppClick = () => openContactFlow("whatsapp");
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !user?.id || !id || !property || isLoading || error) return;
+    const intent = readPendingPropertyContact();
+    if (!intent || intent.propertyId !== id) return;
+    // Consume before starting asynchronous work. Refreshes and repeated effects must
+    // never replay consent or auto-submit again. The server also deduplicates enquiries.
+    clearPendingPropertyContact();
+    if (intent.userId && intent.userId !== user.id) return;
+    setContactAction("whatsapp");
+    setContactConsent(true);
+    setShowContactDialog(true);
+    setOtpError(null);
+    void handleContinueContact({ action: "whatsapp", consentConfirmed: true });
+    // Only resume on settled authentication and the matching property, never form edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, isAuthenticated, user?.id, id, property, isLoading, error]);
 
   if (isLoading) {
     return (
@@ -847,7 +882,7 @@ export default function PropertyDetailPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {!user?.phone ? (
+            {isAuthenticated && !user?.phone ? (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                 Your account does not have a mobile number. Add one in your account profile to continue.
               </div>
@@ -898,13 +933,15 @@ export default function PropertyDetailPage() {
                   </Label>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Your account phone number is used for verification. It cannot be changed in this step.
+                  {isAuthenticated
+                    ? "Your account phone number is used for verification. It cannot be changed in this step."
+                    : "Continue to sign in or register by OTP. After successful login, this enquiry will continue automatically without asking for consent again."}
                 </p>
                 {otpError && <p className="break-all text-sm text-red-500" role="alert" data-testid="text-contact-error">{otpError}</p>}
                 <Button
                   className="w-full"
-                  onClick={handleContinueContact}
-                  disabled={!contactConsent || contactBusy}
+                  onClick={() => void handleContinueContact()}
+                  disabled={!contactConsent || contactBusy || authLoading}
                   data-testid="button-confirm-contact"
                 >
                   {contactBusy ? "Checking account..." : "Continue"}

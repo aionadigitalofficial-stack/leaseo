@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { pendingPropertyContactRedirect } from "@/lib/pending-property-contact";
 import { Phone, Mail, ArrowRight, Shield, Home } from "lucide-react";
 
 export default function LoginPage() {
@@ -127,7 +128,10 @@ export default function LoginPage() {
         description: "Welcome to Leaseo!",
       });
 
-      if (data.user?.isAdmin) {
+      const pendingContact = pendingPropertyContactRedirect(window.location.search);
+      if (pendingContact) {
+        window.location.href = pendingContact;
+      } else if (data.user?.isAdmin) {
         window.location.href = "/admin";
       } else if (!data.user?.profileCompleted) {
         window.location.href = "/profile/complete";
@@ -178,7 +182,10 @@ export default function LoginPage() {
         description: "Welcome back!",
       });
       
-      if (data.user?.isAdmin) {
+      const pendingContact = pendingPropertyContactRedirect(window.location.search);
+      if (pendingContact) {
+        window.location.href = pendingContact;
+      } else if (data.user?.isAdmin) {
         window.location.href = "/admin";
       } else {
         window.location.href = "/dashboard";
