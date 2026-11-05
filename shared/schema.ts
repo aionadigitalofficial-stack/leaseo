@@ -540,6 +540,31 @@ export const notificationConfiguration = pgTable("notification_configuration", {
   encryptedSecret: text("encrypted_secret"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+export const notificationTemplateDrafts = pgTable("notification_template_drafts", {
+  id: text("id").primaryKey(),
+  templateName: text("template_name").notNull(),
+  recipientType: text("recipient_type").notNull(),
+  channel: text("channel").notNull(),
+  subject: text("subject").notNull().default(""),
+  messageBody: text("message_body").notNull(),
+  metaTemplateName: text("meta_template_name").notNull().default(""),
+  metaLanguage: text("meta_language").notNull().default("en_US"),
+  metaCategory: text("meta_category").notNull().default("UTILITY"),
+  parameterKeys: jsonb("parameter_keys").notNull().default([]),
+  smsTemplateId: text("sms_template_id").notNull().default(""),
+  exampleValues: jsonb("example_values").notNull().default({}),
+  metaTemplateId: text("meta_template_id").notNull().default(""),
+  metaAccountId: text("meta_account_id").notNull().default(""),
+  providerStatus: text("provider_status").notNull().default("DRAFT"),
+  providerErrorCode: text("provider_error_code"),
+  providerBody: text("provider_body"),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  archived: boolean("archived").notNull().default(false),
+  version: integer("version").notNull().default(1),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const notificationTemplates = pgTable("notification_templates", {
   id: varchar("id").primaryKey(), templateName: text("template_name").notNull(),
   recipientType: text("recipient_type").notNull(), channel: text("channel").notNull(),

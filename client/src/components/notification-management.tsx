@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import NotificationTemplateLibrary from "@/components/notification-template-library";
 import { AlertCircle, BellRing, Check, ChevronRight, Clock3, Eye, Mail, MessageCircle, RefreshCw, Save, Send, Settings2 } from "lucide-react";
 
 type Recipient = "customer" | "owner" | "admin" | "chat";
@@ -335,6 +336,7 @@ export default function NotificationManagement({ onConfigureProviders }: Props) 
             </TabsTrigger>
           ))}
           <TabsTrigger value="settings" onClick={() => {}} data-testid="tab-notification-settings">Channel settings</TabsTrigger>
+          <TabsTrigger value="library" data-testid="tab-notification-library">Template library</TabsTrigger>
           <TabsTrigger value="logs" data-testid="tab-notification-logs">Delivery log</TabsTrigger>
         </TabsList>
         {recipients.map((recipient) => (
@@ -475,6 +477,9 @@ export default function NotificationManagement({ onConfigureProviders }: Props) 
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+        <TabsContent value="library" className="mt-4">
+          <NotificationTemplateLibrary />
         </TabsContent>
         <TabsContent value="logs" className="mt-4">
           <Card>

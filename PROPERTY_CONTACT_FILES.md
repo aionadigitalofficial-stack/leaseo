@@ -1,6 +1,6 @@
 # Changed/new files package
 
-The ZIP contains **35 files**, at repository-root paths. It is a cumulative
+The current cumulative ZIP contains **44 files**, at repository-root paths. It is a cumulative
 update against the originally uploaded Leaseo repository, including the earlier
 Meta settings implementation for compatibility. It is not a full repository.
 It contains no real credentials, `.env` file, database exports, media,
@@ -32,6 +32,21 @@ It contains no real credentials, `.env` file, database exports, media,
 - `script/migrate-property-contact.cjs`
 - `script/notification-test-fixture.ts` — isolated development/browser fixtures only.
 
+## Additional template-library files
+
+- `client/src/components/notification-template-library.tsx`
+- `migrations/template-drafts.sql`
+- `server/notifications/draft-core.ts`
+- `server/notifications/draft-core.test.ts`
+- `server/notifications/draft-integration.test.ts`
+- `server/notifications/draft-routes.ts`
+- `server/notifications/draft-store.ts`
+- `server/notifications/meta-template-api.ts`
+- `TEMPLATE_LIBRARY_SETUP.md` — creation, approval, activation and verification.
+
+Existing notification management, route registration, schema, migration helper
+and test command are updated to use the new library. No dependencies were added.
+
 ## Base WhatsApp integration files included
 
 - `.env.example`
@@ -57,9 +72,10 @@ It contains no real credentials, `.env` file, database exports, media,
 
 ## Database additions
 
-The new contact migration adds six tables:
+The contact migration adds six tables:
 `property_contact_otps`, `property_contact_access`, `notification_templates`,
 `notification_jobs`, `notification_configuration`, `notification_rate_limits`.
+The template-library migration adds `notification_template_drafts`.
 It reuses existing `users.phone_verified_at` and `enquiries` rather than creating
 a second user/enquiry module. The base migration adds `whatsapp_settings` and
 `whatsapp_delivery_events`. All migrations are additive and safe to rerun.

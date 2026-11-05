@@ -10,7 +10,7 @@ async function main() {
   try {
     await client.connect();
     if (!process.argv.includes("--check")) {
-      for (const file of ["whatsapp.sql", "property-contact.sql"]) {
+      for (const file of ["whatsapp.sql", "property-contact.sql", "template-drafts.sql"]) {
         const sql = fs.readFileSync(path.join(__dirname, "..", "migrations", file), "utf8");
         await client.query(sql);
         console.log(`${file}: migration completed.`);
@@ -18,7 +18,7 @@ async function main() {
     }
     const tables = ["whatsapp_settings", "whatsapp_delivery_events", "property_contact_otps",
       "property_contact_access", "notification_templates", "notification_jobs",
-      "notification_configuration", "notification_rate_limits"];
+      "notification_configuration", "notification_rate_limits", "notification_template_drafts"];
     for (const name of tables) {
       const { rows: [row] } = await client.query("SELECT to_regclass($1) IS NOT NULL AS present", [name]);
       console.log(`${name}: ${row.present ? "ready" : "MISSING"}`);

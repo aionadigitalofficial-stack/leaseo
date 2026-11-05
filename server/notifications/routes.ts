@@ -7,6 +7,7 @@ import { loadConfig, safeConfig, saveConfig } from "./config";
 import { providerStatus } from "./providers";
 import { verification, requestOtp, verifyOtp, getContact, createContact } from "./contact-store";
 import { startNotificationWorker } from "./worker";
+import { registerTemplateDraftRoutes } from "./draft-routes";
 
 const uuidOrId = (value:unknown) => {
   if(typeof value!=="string" || !/^[a-zA-Z0-9_-]{1,100}$/.test(value))throw new ContactError("INVALID_ID");
@@ -45,6 +46,7 @@ function limited(action:string,limit:number){
 }
 
 export function registerNotificationRoutes(app:Express, options:{startWorker?:boolean}={}){
+  registerTemplateDraftRoutes(app,limited);
   app.get("/api/property-contact/status",authMiddleware,handler(async(req,res)=>res.json(await verification(req.user!.id))));
   app.post("/api/property-contact/otp/request",authMiddleware,limited("otp_request",3),handler(async(req,res)=>{
     res.json(await requestOtp(req.user!.id));

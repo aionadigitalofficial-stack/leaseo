@@ -1,5 +1,9 @@
 # Leaseo property WhatsApp contact and enquiry notifications
 
+For creating additional WhatsApp templates, SMS templates and email drafts from
+the admin dashboard, see **TEMPLATE_LIBRARY_SETUP.md**. The migration helper now
+also creates the draft-library table.
+
 This extends the existing Leaseo application on Dokploy. It does not replace
 PostgreSQL, login, payment, listing, media, or OTP providers. No production
 database changes or real notification sends were performed from this workspace.
