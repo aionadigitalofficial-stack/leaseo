@@ -14,7 +14,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -283,7 +282,7 @@ export default function PropertyDetailPage() {
     setShowContactDialog(true);
   };
 
-  const handleContinueContact = async (resume?: { action: "whatsapp"; consentConfirmed: true }) => {
+  const handleContinueContact = async (resume?: { action: "whatsapp" | "call"; consentConfirmed: true }) => {
     const action = resume?.action || contactAction;
     const consentConfirmed = resume?.consentConfirmed || contactConsent;
     if (!consentConfirmed || contactBusy || !action || authLoading) return;
@@ -921,17 +920,9 @@ export default function PropertyDetailPage() {
               </>
             ) : (
               <>
-                <div className="flex items-start gap-3 rounded-md border p-4">
-                  <Checkbox
-                    id="contact-consent"
-                    checked={contactConsent}
-                    onCheckedChange={(checked) => setContactConsent(checked === true)}
-                    data-testid="checkbox-contact-consent"
-                  />
-                  <Label htmlFor="contact-consent" className="cursor-pointer text-sm leading-relaxed">
-                    I agree to share my enquiry and account contact details with the property owner, and to receive related enquiry notifications.
-                  </Label>
-                </div>
+                <p id="contact-consent-notice" className="rounded-md border p-4 text-sm leading-relaxed" data-testid="text-contact-consent">
+                  By selecting “Agree &amp; continue”, you agree to share your enquiry, name and contact details with this property's owner and receive related enquiry updates by WhatsApp, SMS and email.
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {isAuthenticated
                     ? "Your account phone number is used for verification. It cannot be changed in this step."
@@ -940,16 +931,21 @@ export default function PropertyDetailPage() {
                 {otpError && <p className="break-all text-sm text-red-500" role="alert" data-testid="text-contact-error">{otpError}</p>}
                 <Button
                   className="w-full"
-                  onClick={() => void handleContinueContact()}
-                  disabled={!contactConsent || contactBusy || authLoading}
+                  onClick={() => {
+                    if (!contactAction) return;
+                    setContactConsent(true);
+                    void handleContinueContact({ action: contactAction, consentConfirmed: true });
+                  }}
+                  disabled={!contactAction || contactBusy || authLoading}
+                  aria-describedby="contact-consent-notice"
                   data-testid="button-confirm-contact"
                 >
-                  {contactBusy ? "Checking account..." : "Continue"}
+                  {contactBusy ? "Checking account..." : "Agree & continue"}
                 </Button>
               </>
             )}
           </div>
-          {!user?.phone && (
+          {isAuthenticated && !user?.phone && (
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowContactDialog(false)}>Cancel</Button>
               <Button onClick={() => navigate(`/profile/complete?redirect=${encodeURIComponent(`/properties/${id}`)}`)} data-testid="button-add-account-phone">
