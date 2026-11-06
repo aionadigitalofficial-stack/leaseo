@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, bigint, boolean, decimal, timestamp, pgEnum, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, bigint, boolean, decimal, timestamp, pgEnum, jsonb, index, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -611,6 +611,41 @@ export const notificationJobs = pgTable("notification_jobs", {
   uniqueIndex("notification_jobs_enquiry_recipient_channel_idx").on(table.enquiryId,table.recipientType,table.channel,table.testKey),
   index("notification_jobs_pending_idx").on(table.status,table.nextAttemptAt),
   index("notification_jobs_provider_idx").on(table.providerMessageId),
+]);
+
+// WATI is separate from the legacy SMS/OTP provider configuration.
+export const watiNotificationSettings = pgTable("wati_notification_settings", {
+  id: integer("id").primaryKey(),
+  apiHost: text("api_host").notNull().default(""),
+  channel: text("channel").notNull().default(""),
+  encryptedToken: text("encrypted_token"),
+  encryptedWebhookSecret: text("encrypted_webhook_secret"),
+  updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(),
+});
+export const watiNotificationAttempts = pgTable("wati_notification_attempts", {
+  id: uuid("id").primaryKey(),
+  jobId: varchar("job_id").notNull().references(()=>notificationJobs.id, {onDelete:"cascade"}),
+  apiHost: text("api_host").notNull(),
+  channel: text("channel").notNull().default(""),
+  broadcastId: text("broadcast_id"),
+  watiMessageId: text("wati_message_id"),
+  whatsappMessageId: text("whatsapp_message_id"),
+  createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(),
+}, table=>[index("wati_attempt_job_idx").on(table.jobId,table.createdAt)]);
+export const watiNotificationEvents = pgTable("wati_notification_events", {
+  eventKey: text("event_key").primaryKey(),
+  apiHost: text("api_host").notNull().default(""),
+  localId: text("local_id"),
+  watiMessageId: text("wati_message_id"),
+  whatsappMessageId: text("whatsapp_message_id"),
+  channel: text("channel").notNull().default(""),
+  status: text("status").notNull(),
+  errorCode: text("error_code"),
+  receivedAt: timestamp("received_at", {withTimezone:true}).notNull().defaultNow(),
+}, table=>[
+  index("wati_event_local_idx").on(table.localId),
+  index("wati_event_message_idx").on(table.watiMessageId),
+  index("wati_event_whatsapp_idx").on(table.whatsappMessageId),
 ]);
 
 export type SiteSetting = typeof siteSettings.$inferSelect;

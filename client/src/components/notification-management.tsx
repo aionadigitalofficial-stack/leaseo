@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import NotificationTemplateLibrary from "@/components/notification-template-library";
+import WatiWhatsappSettings from "@/components/wati-whatsapp-settings";
 import { AlertCircle, BellRing, Check, ChevronRight, Clock3, Eye, Mail, MessageCircle, RefreshCw, Save, Send, Settings2 } from "lucide-react";
 
 type Recipient = "customer" | "owner" | "admin" | "chat";
@@ -50,6 +51,7 @@ type NotificationLog = {
 };
 type EnquiryOption = { id: string; property_title: string; customer_name: string; created_at: string };
 type Settings = {
+  whatsappProvider: "meta" | "wati";
   whatsappEnabled: boolean;
   smsEnabled: boolean;
   emailEnabled: boolean;
@@ -71,6 +73,7 @@ type Payload = { templates: Template[]; settings: Settings; placeholders: string
 type Props = { onConfigureProviders?: () => void };
 
 const initialSettings: Settings = {
+  whatsappProvider: "meta",
   whatsappEnabled: false, smsEnabled: false, emailEnabled: false,
   adminPhone: "", adminEmail: "", adminWhatsappConsent: false, ownerWhatsappConsent: false,
   siteUrl: "", platformName: "Leaseo", smtpHost: "", smtpPort: 587, smtpSecure: false,
@@ -391,10 +394,10 @@ export default function NotificationManagement({ onConfigureProviders }: Props) 
 
                     {selectedTemplate.channel === "whatsapp" && (
                       <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-                        <div><p className="text-sm font-semibold">Approved WhatsApp Business template</p><p className="text-xs text-muted-foreground">Meta sends the approved template's wording, not this local preview body. Changes to static wording must also be approved in Meta. Match the template name, language and parameter order.</p></div>
+                        <div><p className="text-sm font-semibold">Approved WhatsApp Business template</p><p className="text-xs text-muted-foreground">{settings.whatsappProvider === "wati" ? "WATI sends its approved wording, not this local body. Enter the exact WATI template name. Parameter keys must match both WATI variable names and Leaseo website keys; duplicates are sent once. WATI selects language through the chosen template." : "Meta sends the approved template's wording, not this local preview body. Changes to static wording must also be approved in Meta. Match the template name, language and parameter order."}</p></div>
                         <div className="grid gap-3 md:grid-cols-2">
-                          <div className="space-y-1.5"><Label>Meta template name</Label><Input value={draft.meta_template_name ?? ""} onChange={(event) => patchDraft({ meta_template_name: event.target.value })} data-testid="input-meta-template-name" /></div>
-                          <div className="space-y-1.5"><Label>Language code</Label><Input value={draft.meta_language ?? ""} onChange={(event) => patchDraft({ meta_language: event.target.value })} placeholder="en" data-testid="input-meta-language" /></div>
+                          <div className="space-y-1.5"><Label>{settings.whatsappProvider === "wati" ? "WATI template name" : "Meta template name"}</Label><Input value={draft.meta_template_name ?? ""} onChange={(event) => patchDraft({ meta_template_name: event.target.value })} data-testid="input-meta-template-name" /></div>
+                          <div className="space-y-1.5"><Label>Language code {settings.whatsappProvider === "wati" ? "(Meta only)" : ""}</Label><Input disabled={settings.whatsappProvider === "wati"} value={draft.meta_language ?? ""} onChange={(event) => patchDraft({ meta_language: event.target.value })} placeholder="en" data-testid="input-meta-language" /></div>
                         </div>
                         <div className="space-y-2"><div className="flex items-center justify-between"><Label>Ordered parameter keys</Label><Button type="button" size="sm" variant="outline" onClick={addParameterKey}>Add parameter</Button></div>
                           {(draft.parameter_keys ?? []).map((key, index) => <div className="flex gap-2" key={`${index}-${selectedTemplate.id}`}><Input value={key} onChange={(event) => updateParameterKey(index, event.target.value)} placeholder="customer_name" aria-label={`Parameter ${index + 1}`} /><Button type="button" variant="ghost" onClick={() => removeParameterKey(index)} aria-label={`Remove parameter ${index + 1}`}>Remove</Button></div>)}
@@ -425,10 +428,19 @@ export default function NotificationManagement({ onConfigureProviders }: Props) 
           </TabsContent>
         ))}
         <TabsContent value="settings" className="mt-4">
+          <div className="mb-5"><WatiWhatsappSettings /></div>
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
             <Card>
               <CardHeader><CardTitle>Notification channels</CardTitle><CardDescription>All channels start disabled. Enable only after provider and consent prerequisites are in place.</CardDescription></CardHeader>
               <CardContent className="space-y-5">
+                <div className="space-y-2">
+                  <Label>WhatsApp enquiry provider</Label>
+                  <Select value={settings.whatsappProvider || "meta"} onValueChange={(value) => setSettings(current => ({ ...current, whatsappProvider: value as "meta" | "wati" }))}>
+                    <SelectTrigger aria-label="WhatsApp enquiry provider"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="meta">Meta WhatsApp Cloud API</SelectItem><SelectItem value="wati">WATI</SelectItem></SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Applies after Save channel settings, including to queued jobs not yet sent. Confirm all three templates belong to the selected provider before switching. BhashSMS, email and OTP are unchanged.</p>
+                </div>
                 {([
                   ["WhatsApp", "whatsappEnabled", provider.whatsapp.configured, "Uses the existing WhatsApp provider configuration."],
                   ["SMS", "smsEnabled", provider.sms.configured, "Uses the existing SMS gateway."],

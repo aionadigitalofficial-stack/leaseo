@@ -2,6 +2,7 @@ import { pool } from "../db";
 import { loadConfig } from "./config";
 import { deliver } from "./providers";
 import { safeProviderCode } from "./core";
+import { reconcileWati } from "./wati-store";
 
 let busy=false;
 let lastWarning=0;
@@ -25,6 +26,13 @@ export async function processNotifications(send:typeof deliver=deliver){
         AND j.status IN ('accepted','sent','delivered','failed')
         AND CASE e.status WHEN 'read' THEN 5 WHEN 'delivered' THEN 4 WHEN 'failed' THEN 3 WHEN 'sent' THEN 2 ELSE 1 END
           > CASE j.status WHEN 'read' THEN 5 WHEN 'delivered' THEN 4 WHEN 'failed' THEN 3 WHEN 'sent' THEN 2 ELSE 0 END`);
+    // An absent additive WATI migration must not stop existing Meta/SMS/email jobs.
+    const reconcile = async () => {
+      try { await reconcileWati(); } catch (e: any) {
+        if (e?.code !== "42P01") throw e;
+      }
+    };
+    await reconcile();
     for(let i=0;i<5;i++){
       const {rows:[job]}=await pool.query(`UPDATE notification_jobs SET status='processing',attempts=attempts+1,updated_at=now()
         WHERE id=(SELECT id FROM notification_jobs WHERE status='pending' AND next_attempt_at<=now()
@@ -56,6 +64,7 @@ export async function processNotifications(send:typeof deliver=deliver){
           [job.id,unknown?"unknown":retry?"pending":"failed",code,retryable,Math.pow(2,job.attempts)*30]);
       }
     }
+    await reconcile();
   }catch{
     if(Date.now()-lastWarning>300000){
       console.error("[notifications] Queue unavailable. Check database and property-contact migration.");

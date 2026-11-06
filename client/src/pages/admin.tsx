@@ -105,6 +105,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MetaWhatsAppSettings from "@/components/meta-whatsapp-settings";
+import WatiWhatsappSettings from "@/components/wati-whatsapp-settings";
 import NotificationManagement from "@/components/notification-management";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
 
@@ -3801,7 +3802,7 @@ export default function AdminPage() {
       </div>
 
       <Tabs value={activeProvider} onValueChange={setActiveProvider}>
-        <TabsList>
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="twilio" data-testid="tab-twilio">
             <Phone className="h-4 w-4 mr-2" />
             Twilio
@@ -3876,20 +3877,7 @@ export default function AdminPage() {
         </TabsContent>
 
         <TabsContent value="wati" className="mt-4">
-          <SmsProviderCard 
-            provider="wati" 
-            displayName="WATI" 
-            description="WhatsApp Business API for notifications"
-            providerData={smsProviders?.find(p => p.providerName === "wati")}
-            isLoading={smsProvidersLoading}
-            onSave={(settings) => updateSmsMutation.mutate({ provider: "wati", settings })}
-            isSaving={updateSmsMutation.isPending}
-            fields={[
-              { key: "apiKey", label: "API Key", placeholder: "Your WATI API Key", secret: true },
-              { key: "accountSid", label: "Phone Number ID", placeholder: "WhatsApp Phone Number ID" },
-              { key: "fromNumber", label: "Business Number", placeholder: "+91XXXXXXXXXX" },
-            ]}
-          />
+          <WatiWhatsappSettings />
         </TabsContent>
 
         <TabsContent value="meta-whatsapp" className="mt-4">

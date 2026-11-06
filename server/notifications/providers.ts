@@ -4,6 +4,7 @@ import { sendConfiguredTemplateMessage, loadWhatsAppSettings } from "../whatsapp
 import { configurationStatus, normalizePhone } from "../whatsapp/core";
 import { ContactError, accountPhone, renderMessage } from "./core";
 import { decryptPassword, type Config } from "./config";
+import { loadWati, safeWati, sendWati } from "./wati-store";
 
 type Delivery = { messageId: string | null; status: "accepted" };
 
@@ -30,8 +31,12 @@ async function activeSms() {
 export async function providerStatus(config: Config, encrypted: string | null) {
   let whatsapp = {configured:false,enabled:false};
   try {
-    const s = configurationStatus((await loadWhatsAppSettings()).environment);
-    whatsapp = {configured:s.configured,enabled:s.enabled};
+    if (config.whatsappProvider === "wati") {
+      whatsapp = { configured: safeWati(await loadWati()).configured, enabled: config.whatsappEnabled };
+    } else {
+      const s = configurationStatus((await loadWhatsAppSettings()).environment);
+      whatsapp = {configured:s.configured,enabled:s.enabled};
+    }
   } catch { /* visibly unconfigured; settings screen exposes its detailed error */ }
   const sms = await activeSms();
   const live = sms?.mode === "live";
@@ -105,6 +110,7 @@ export async function deliver(job:any, template:any, values:Record<string,string
   config:Config, encrypted:string|null):Promise<Delivery> {
   const body = renderMessage(template.message_body,values);
   if (job.channel === "whatsapp") {
+    if (config.whatsappProvider === "wati") return sendWati(job,template,values);
     if (!template.meta_template_name) throw new ContactError("META_APPROVED_TEMPLATE_REQUIRED");
     if (!job.consent_confirmed) throw new ContactError("WHATSAPP_CONSENT_REQUIRED");
     const result = await sendConfiguredTemplateMessage({

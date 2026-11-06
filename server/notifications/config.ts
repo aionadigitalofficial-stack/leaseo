@@ -3,6 +3,7 @@ import { pool } from "../db";
 import { ContactError, accountPhone } from "./core";
 
 export const defaults = {
+  whatsappProvider: "meta",
   whatsappEnabled: false, smsEnabled: false, emailEnabled: false,
   adminPhone: "", adminEmail: "", adminWhatsappConsent: false, ownerWhatsappConsent: false,
   siteUrl: "", platformName: "Leaseo", smtpHost: "", smtpPort: 587, smtpSecure: false,
@@ -47,6 +48,7 @@ export function validateConfig(input: any): Partial<Config> & {smtpPassword?: st
     } else if (!(k in defaults) || typeof v !== typeof defaults[k as keyof Config] ||
         (typeof v === "string" && (v.length > 500 || /[\r\n]/.test(v)))) throw new ContactError("INVALID_SETTINGS");
   }
+  if (input.whatsappProvider !== undefined && !["meta","wati"].includes(input.whatsappProvider)) throw new ContactError("INVALID_WHATSAPP_PROVIDER");
   if (input.siteUrl) {
     let url: URL;
     try { url = new URL(input.siteUrl); } catch { throw new ContactError("INVALID_SITE_URL"); }
