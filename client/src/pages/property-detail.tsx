@@ -823,9 +823,27 @@ export default function PropertyDetailPage() {
                   </div>
 
                   {revealedPhone && (
-                    <p className="text-sm text-center font-medium" data-testid="text-owner-contact">
-                      Owner phone: {revealedPhone}
-                    </p>
+                    <div className="space-y-3">
+                      <p className="text-sm text-center font-medium" data-testid="text-owner-contact">
+                        Owner phone: {revealedPhone}
+                      </p>
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="w-full gap-2 bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400"
+                      >
+                        <a
+                          href={`https://web.whatsapp.com/send?phone=${revealedPhone.replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid="button-chat-with-owner"
+                          aria-label="Chat with owner on WhatsApp Web (opens in a new tab)"
+                        >
+                          <SiWhatsapp className="h-4 w-4" />
+                          Chat with owner
+                        </a>
+                      </Button>
+                    </div>
                   )}
                   {contactSuccess && (
                     <div className="space-y-2 text-center" role="status" data-testid="status-contact-success">
