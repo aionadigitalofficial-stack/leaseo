@@ -833,7 +833,7 @@ export default function PropertyDetailPage() {
                         className="w-full gap-2 bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400"
                       >
                         <a
-                          href={`https://web.whatsapp.com/send?phone=${revealedPhone.replace(/\D/g, "")}`}
+                          href={`https://web.whatsapp.com/send?phone=${revealedPhone.replace(/\D/g, "")}&text=${encodeURIComponent(`Hi, I am interested in your property: ${property.title}.`)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           data-testid="button-chat-with-owner"
