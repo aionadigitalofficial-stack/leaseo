@@ -14,6 +14,7 @@ import { registerWhatsAppRoutes } from "./whatsapp/routes";
 import { saveDeliveryEvents, listDeliveryEvents } from "./whatsapp/store";
 import { loadWhatsAppSettings, persistWhatsAppSettings } from "./whatsapp/settings-store";
 import { registerNotificationRoutes } from "./notifications/routes";
+import { registerPhoneLoginRoutes } from "./phone-login";
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
@@ -108,6 +109,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  registerPhoneLoginRoutes(app);
   registerNotificationRoutes(app);
   registerWhatsAppRoutes(app, {
     authenticate: authMiddleware,
@@ -1173,9 +1175,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: "First name and last name are required" });
       }
 
-      const validUserTypes = ["owner", "tenant", "builder_developer"];
+      const validUserTypes = ["owner", "tenant", "builder_developer", "buyer"];
       if (!userType || !validUserTypes.includes(userType)) {
-        return res.status(400).json({ error: "Please select whether you are an Owner, Tenant, or Builder/Developer" });
+        return res.status(400).json({ error: "Please select whether you are an Owner, Tenant, Builder/Developer, or Buyer" });
       }
 
       const currentUser = await storage.getUser(req.user!.id);
@@ -1423,7 +1425,7 @@ export async function registerRoutes(
       });
 
       // Send OTP via email or SMS
-      console.log(`[OTP] Code for ${email || phone}: ${code}`);
+      // Never log the code or recipient; the login popup uses this same endpoint.
 
       let emailSent = false;
       let smsSent = false;
@@ -1455,7 +1457,7 @@ export async function registerRoutes(
       // tab.
       if (!emailSent && !smsSent) {
         if (process.env.NODE_ENV === "production") {
-          console.error(`[OTP] CRITICAL: both email and SMS delivery failed for ${email || phone}. Check SMTP_* env vars and the active SMS provider (Admin > SMS/WhatsApp Providers, or BHASHSMS_* env vars).`);
+          console.error("[OTP] Delivery failed. Check SMTP settings and the active SMS provider.");
         } else {
           response.devCode = code;
         }
@@ -1491,6 +1493,7 @@ export async function registerRoutes(
       const [otpRequest] = await db.select().from(otpRequests).where(
         and(
           email ? eq(otpRequests.email, email) : eq(otpRequests.phone, phone!),
+          isNull(otpRequests.consumedAt),
           gt(otpRequests.expiresAt, new Date())
         )
       );
@@ -1515,9 +1518,13 @@ export async function registerRoutes(
       }
 
       // Mark OTP as consumed
-      await db.update(otpRequests)
+      const [consumedOtp] = await db.update(otpRequests)
         .set({ consumedAt: new Date() })
-        .where(eq(otpRequests.id, otpRequest.id));
+        .where(and(eq(otpRequests.id, otpRequest.id), isNull(otpRequests.consumedAt)))
+        .returning({ id: otpRequests.id });
+      if (!consumedOtp) {
+        return res.status(400).json({ error: "Verification code already used. Please request a new code." });
+      }
 
       // Check if this is for property listing (createAccount flag from frontend)
       if (createAccount) {

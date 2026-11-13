@@ -30,6 +30,12 @@ const USER_TYPE_OPTIONS = [
     description: "I represent a construction or development firm",
     icon: Building2,
   },
+  {
+    id: "buyer",
+    label: "Buyer",
+    description: "I'm looking to buy a property",
+    icon: Home,
+  },
 ];
 
 // Issue #3: a listing can only be posted once the profile is fully complete

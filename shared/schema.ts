@@ -97,11 +97,12 @@ export const listingAuditActionEnum = pgEnum("listing_audit_action", [
   "flagged"
 ]);
 
-// The three user types captured during mandatory profile completion (Issue #3)
+// User categories captured during onboarding; buyer is distinct from tenant.
 export const userTypeEnum = pgEnum("user_type", [
   "owner",
   "tenant",
-  "builder_developer"
+  "builder_developer",
+  "buyer"
 ]);
 
 export const reportStatusEnum = pgEnum("report_status", [

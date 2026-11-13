@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { SEOHead } from "@/components/seo-head";
+import { PhoneLoginForm } from "@/components/phone-login-form";
 import { PropertyCard, PropertyCardSkeleton, type PropertyWithDetails } from "@/components/property-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -125,6 +126,7 @@ export default function PropertyDetailPage() {
   const [isFavorited, setIsFavorited] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [showContactDialog, setShowContactDialog] = useState(false);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [otp, setOtp] = useState("");
@@ -160,6 +162,7 @@ export default function PropertyDetailPage() {
     setOtpError(null);
     setContactSuccess(null);
     setShowContactDialog(false);
+    setShowLoginDialog(false);
     setShowReportDialog(false);
     setReportReason("");
     setReportDescription("");
@@ -290,9 +293,10 @@ export default function PropertyDetailPage() {
       try {
         if (!id) throw new Error("Property not available.");
         savePendingPropertyContact(id);
-        navigate(`/login?redirect=${encodeURIComponent(`/properties/${id}`)}`);
+        setShowContactDialog(false);
+        setShowLoginDialog(true);
       } catch {
-        setOtpError("Unable to continue to login. Please allow session storage in your browser and try again.");
+        setOtpError("Unable to save your enquiry. Please allow session storage in your browser and try again.");
       }
       return;
     }
@@ -953,6 +957,28 @@ export default function PropertyDetailPage() {
               </Button>
             </DialogFooter>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showLoginDialog}
+        onOpenChange={(open) => {
+          setShowLoginDialog(open);
+          if (!open) clearPendingPropertyContact();
+        }}
+      >
+        <DialogContent className="w-[94vw] max-w-lg max-h-[90dvh] overflow-y-auto overscroll-contain">
+          <DialogHeader>
+            <DialogTitle>Sign in to contact the owner</DialogTitle>
+            <DialogDescription>
+              Your enquiry consent is saved. Sign in or create your account to continue it on this property.
+            </DialogDescription>
+          </DialogHeader>
+          <PhoneLoginForm onSuccess={() => {
+            // A full reload is intentional: separate useAuth instances read localStorage only on mount.
+            // Keep the saved, consented property intent so the page's guarded resume effect consumes it once.
+            window.location.reload();
+          }} />
         </DialogContent>
       </Dialog>
 
