@@ -57,65 +57,66 @@ export default function HomePage() {
       <Header />
       
       <main className="flex-1">
-        <section
-          className="relative isolate overflow-hidden bg-[#17374a] py-12 md:py-16 lg:py-20"
-          style={{
-            backgroundImage:
-              "linear-gradient(180deg, rgba(12, 31, 43, 0.53) 0%, rgba(12, 31, 43, 0.38) 42%, rgba(12, 31, 43, 0.78) 100%), url('/images/leaseo-home-hero.jpg')",
-            backgroundPosition: "center 54%",
-            backgroundSize: "cover",
-          }}
-        >
-          <div className="container relative z-10 mx-auto px-4">
-            <div className="mx-auto mb-8 max-w-4xl text-center md:mb-10">
-              <EditableText
-                value={localContent.heroTitle}
-                onChange={updateContent("heroTitle")}
-                as="h1"
-                className="mb-4 text-3xl font-bold leading-tight tracking-tight text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.28)] md:text-4xl lg:text-5xl"
-                contentKey="homepage.heroTitle"
-              />
-              <EditableText
-                value={localContent.heroSubtitle}
-                onChange={updateContent("heroSubtitle")}
-                as="p"
-                className="mx-auto max-w-2xl text-base leading-relaxed text-white/90 [text-shadow:0_1px_10px_rgba(0,0,0,0.35)] md:text-lg"
-                contentKey="homepage.heroSubtitle"
-              />
+        <section className="relative isolate overflow-hidden bg-[#fff8f0] py-12 md:py-20">
+          <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+            <img
+              src="/images/leaseo-home-lifestyle.jpg"
+              alt=""
+              className="h-full w-full object-cover object-[center_42%] opacity-40"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-[#fff8f0]/80 via-[#fff0dc]/55 to-[#fff8f0]/85" />
+          </div>
+
+          <div className="container relative z-10 mx-auto min-w-0 px-4">
+            <div className="mb-8 text-center md:mb-12">
+                <EditableText
+                  value={localContent.heroTitle}
+                  onChange={updateContent("heroTitle")}
+                  as="h1"
+                  className="mb-4 text-3xl font-bold text-[#0b2743] md:text-4xl lg:text-5xl [&_span]:!text-[#a95300]"
+                  contentKey="homepage.heroTitle"
+                />
+                <EditableText
+                  value={localContent.heroSubtitle}
+                  onChange={updateContent("heroSubtitle")}
+                  as="p"
+                  className="mx-auto max-w-2xl text-lg leading-relaxed text-[#334155]"
+                  contentKey="homepage.heroSubtitle"
+                />
             </div>
 
-            <div className="mx-auto max-w-5xl rounded-2xl bg-white/95 p-2 shadow-[0_22px_70px_rgba(10,25,35,0.32)] ring-1 ring-white/60 backdrop-blur-sm md:p-3">
+            <div className="mx-auto w-full min-w-0 max-w-5xl rounded-2xl bg-white p-2 shadow-[0_18px_48px_rgba(37,49,53,0.2)] ring-1 ring-[#17374a]/10 [&>div>div>div:first-child>button]:px-2 sm:p-3 sm:[&>div>div>div:first-child>button]:px-6">
               <NoBrokerSearch />
             </div>
 
-            <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm">
-              <div className="flex items-center gap-2 rounded-full border border-white/25 bg-[#102b3c]/55 px-4 py-2 text-white shadow-sm backdrop-blur-md">
-                <span className="w-2 h-2 bg-green-500 rounded-full" />
+            <div className="mt-6 flex flex-wrap justify-center gap-2.5 text-sm sm:mt-7 sm:gap-3">
+              <div className="flex items-center gap-2 rounded-full border border-white bg-white px-3.5 py-2 text-[#0b2743] shadow-sm sm:px-4">
+                <span className="h-2 w-2 rounded-full bg-primary" />
                 <EditableText
                   value={localContent.stat1}
                   onChange={updateContent("stat1")}
                   as="span"
-                  className="text-white/95"
+                  className="font-medium"
                   contentKey="homepage.stat1"
                 />
               </div>
-              <div className="flex items-center gap-2 rounded-full border border-white/25 bg-[#102b3c]/55 px-4 py-2 text-white shadow-sm backdrop-blur-md">
-                <span className="w-2 h-2 bg-blue-500 rounded-full" />
+              <div className="flex items-center gap-2 rounded-full border border-white bg-white px-3.5 py-2 text-[#0b2743] shadow-sm sm:px-4">
+                <span className="h-2 w-2 rounded-full bg-[#0b2743]" />
                 <EditableText
                   value={localContent.stat2}
                   onChange={updateContent("stat2")}
                   as="span"
-                  className="text-white/95"
+                  className="font-medium"
                   contentKey="homepage.stat2"
                 />
               </div>
-              <div className="flex items-center gap-2 rounded-full border border-white/25 bg-[#102b3c]/55 px-4 py-2 text-white shadow-sm backdrop-blur-md">
-                <span className="w-2 h-2 bg-purple-500 rounded-full" />
+              <div className="flex items-center gap-2 rounded-full border border-white bg-white px-3.5 py-2 text-[#0b2743] shadow-sm sm:px-4">
+                <span className="h-2 w-2 rounded-full bg-primary" />
                 <EditableText
                   value={localContent.stat3}
                   onChange={updateContent("stat3")}
                   as="span"
-                  className="text-white/95"
+                  className="font-medium"
                   contentKey="homepage.stat3"
                 />
               </div>
