@@ -118,6 +118,10 @@ type ExtendedProperty = Omit<Property, "priceOptions"> & {
 };
 
 export default function PropertyDetailPage() {
+  const isMobileWhatsApp = typeof navigator !== "undefined" && (
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+    (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+  );
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -833,11 +837,11 @@ export default function PropertyDetailPage() {
                         className="w-full gap-2 bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400"
                       >
                         <a
-                          href={`https://web.whatsapp.com/send?phone=${revealedPhone.replace(/\D/g, "")}&text=${encodeURIComponent(`Hi, I am interested in your property: ${property.title}.`)}`}
-                          target="_blank"
+                          href={`${isMobileWhatsApp ? "https://wa.me/" : "https://web.whatsapp.com/send?phone="}${revealedPhone.replace(/\D/g, "")}${isMobileWhatsApp ? "?text=" : "&text="}${encodeURIComponent(`Hi, I am interested in your property: ${property.title}.`)}`}
+                          target={isMobileWhatsApp ? "_self" : "_blank"}
                           rel="noopener noreferrer"
                           data-testid="button-chat-with-owner"
-                          aria-label="Chat with owner on WhatsApp Web (opens in a new tab)"
+                          aria-label={isMobileWhatsApp ? "Chat with owner on WhatsApp" : "Chat with owner on WhatsApp Web (opens in a new tab)"}
                         >
                           <SiWhatsapp className="h-4 w-4" />
                           Chat with owner
