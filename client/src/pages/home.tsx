@@ -57,55 +57,65 @@ export default function HomePage() {
       <Header />
       
       <main className="flex-1">
-        <section className="py-12 md:py-20 relative bg-gradient-to-b from-muted/50 to-background">
-          <div className="container mx-auto px-4 relative">
-            <div className="text-center mb-8 md:mb-12">
+        <section
+          className="relative isolate overflow-hidden bg-[#17374a] py-12 md:py-16 lg:py-20"
+          style={{
+            backgroundImage:
+              "linear-gradient(180deg, rgba(12, 31, 43, 0.53) 0%, rgba(12, 31, 43, 0.38) 42%, rgba(12, 31, 43, 0.78) 100%), url('/images/leaseo-home-hero.jpg')",
+            backgroundPosition: "center 54%",
+            backgroundSize: "cover",
+          }}
+        >
+          <div className="container relative z-10 mx-auto px-4">
+            <div className="mx-auto mb-8 max-w-4xl text-center md:mb-10">
               <EditableText
                 value={localContent.heroTitle}
                 onChange={updateContent("heroTitle")}
                 as="h1"
-                className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4"
+                className="mb-4 text-3xl font-bold leading-tight tracking-tight text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.28)] md:text-4xl lg:text-5xl"
                 contentKey="homepage.heroTitle"
               />
               <EditableText
                 value={localContent.heroSubtitle}
                 onChange={updateContent("heroSubtitle")}
                 as="p"
-                className="text-lg max-w-2xl mx-auto text-muted-foreground"
+                className="mx-auto max-w-2xl text-base leading-relaxed text-white/90 [text-shadow:0_1px_10px_rgba(0,0,0,0.35)] md:text-lg"
                 contentKey="homepage.heroSubtitle"
               />
             </div>
 
-            <NoBrokerSearch />
+            <div className="mx-auto max-w-5xl rounded-2xl bg-white/95 p-2 shadow-[0_22px_70px_rgba(10,25,35,0.32)] ring-1 ring-white/60 backdrop-blur-sm md:p-3">
+              <NoBrokerSearch />
+            </div>
 
             <div className="mt-8 flex flex-wrap justify-center gap-4 text-sm">
-              <div className="flex items-center gap-2 px-4 py-2 bg-background rounded-full border">
+              <div className="flex items-center gap-2 rounded-full border border-white/25 bg-[#102b3c]/55 px-4 py-2 text-white shadow-sm backdrop-blur-md">
                 <span className="w-2 h-2 bg-green-500 rounded-full" />
                 <EditableText
                   value={localContent.stat1}
                   onChange={updateContent("stat1")}
                   as="span"
-                  className="text-muted-foreground"
+                  className="text-white/95"
                   contentKey="homepage.stat1"
                 />
               </div>
-              <div className="flex items-center gap-2 px-4 py-2 bg-background rounded-full border">
+              <div className="flex items-center gap-2 rounded-full border border-white/25 bg-[#102b3c]/55 px-4 py-2 text-white shadow-sm backdrop-blur-md">
                 <span className="w-2 h-2 bg-blue-500 rounded-full" />
                 <EditableText
                   value={localContent.stat2}
                   onChange={updateContent("stat2")}
                   as="span"
-                  className="text-muted-foreground"
+                  className="text-white/95"
                   contentKey="homepage.stat2"
                 />
               </div>
-              <div className="flex items-center gap-2 px-4 py-2 bg-background rounded-full border">
+              <div className="flex items-center gap-2 rounded-full border border-white/25 bg-[#102b3c]/55 px-4 py-2 text-white shadow-sm backdrop-blur-md">
                 <span className="w-2 h-2 bg-purple-500 rounded-full" />
                 <EditableText
                   value={localContent.stat3}
                   onChange={updateContent("stat3")}
                   as="span"
-                  className="text-muted-foreground"
+                  className="text-white/95"
                   contentKey="homepage.stat3"
                 />
               </div>
