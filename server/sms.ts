@@ -10,7 +10,7 @@
 import { db } from "./db";
 import { notificationProviders } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { inspectBhashSmsResponse, logBhashSms } from "./bhashsms-diagnostics";
+import { BHASH_SMS_ENDPOINT, inspectBhashSmsResponse, logBhashSms } from "./bhashsms-diagnostics";
 
 async function getActiveSmsProvider() {
   const [provider] = await db
@@ -190,7 +190,7 @@ async function sendViaBhashSms(
     // substituting the {#numeric#} placeholder with the actual code.
     const message = `Your LEASEO OTP is ${code}. Do not share this code with anyone. - LEASEO`;
 
-    const url = new URL("http://bhashsms.com/api/sendmsg.php");
+    const url = new URL(BHASH_SMS_ENDPOINT);
     url.searchParams.append("user", user);
     url.searchParams.append("pass", password);
     url.searchParams.append("sender", sender);
@@ -201,7 +201,7 @@ async function sendViaBhashSms(
     url.searchParams.append("entityid", entityId);
     url.searchParams.append("tempid", templateId);
 
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), { redirect: "error" });
     httpStatus = response.status;
     const result = inspectBhashSmsResponse(await response.text());
     logBhashSms("otp", result.otpAccepted ? "accepted" : response.ok ? "unrecognized" : "http_error",

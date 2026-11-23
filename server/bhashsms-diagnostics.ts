@@ -1,3 +1,5 @@
+export const BHASH_SMS_ENDPOINT = "https://bhashsms.com/api/sendmsg.php";
+
 type Flow = "otp" | "enquiry";
 type ResponseKind = "tracking_reference" | "success_text" | "empty" | "unrecognized";
 

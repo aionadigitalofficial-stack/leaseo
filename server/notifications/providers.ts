@@ -5,7 +5,7 @@ import { configurationStatus, normalizePhone } from "../whatsapp/core";
 import { ContactError, accountPhone, renderMessage } from "./core";
 import { decryptPassword, type Config } from "./config";
 import { loadWati, safeWati, sendWati } from "./wati-store";
-import { inspectBhashSmsResponse, logBhashSms } from "../bhashsms-diagnostics";
+import { BHASH_SMS_ENDPOINT, inspectBhashSmsResponse, logBhashSms } from "../bhashsms-diagnostics";
 
 type Delivery = { messageId: string | null; status: "accepted" };
 
@@ -101,7 +101,7 @@ async function sendSms(to: string, body: string, template: any, values: Record<s
       logBhashSms("enquiry", "invalid_recipient");
       throw new ContactError("SMS_INDIAN_NUMBER_REQUIRED");
     }
-    const url = new URL("https://bhashsms.com/api/sendmsg.php");
+    const url = new URL(BHASH_SMS_ENDPOINT);
     const params = {user:sid,pass:token,sender:from,phone:phone.slice(2),text:body,
       priority:"ndnd",stype:"normal",entityid:process.env.BHASHSMS_ENTITY_ID,tempid:template.sms_template_id};
     Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v!));
@@ -117,7 +117,9 @@ async function sendSms(to: string, body: string, template: any, values: Record<s
     }
     logBhashSms("enquiry", result.enquiryAccepted ? "accepted" : "unrecognized",
       httpStatus, result, url.searchParams.values());
-    if (!result.enquiryAccepted) throw new ContactError("SMS_PROVIDER_REJECTED");
+    // An HTTP-success reply that we cannot parse is not evidence of rejection.
+    // The worker records OUTCOME_UNKNOWN as non-retryable to avoid duplicates.
+    if (!result.enquiryAccepted) throw new ContactError("BHASHSMS_RESPONSE_OUTCOME_UNKNOWN", 502);
     return {messageId: result.messageId, status:"accepted"};
   }
   // WATI is WhatsApp, not a general SMS transport. Do not report fake success.
