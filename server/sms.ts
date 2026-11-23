@@ -10,6 +10,7 @@
 import { db } from "./db";
 import { notificationProviders } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { inspectBhashSmsResponse, logBhashSms } from "./bhashsms-diagnostics";
 
 async function getActiveSmsProvider() {
   const [provider] = await db
@@ -172,14 +173,15 @@ async function sendViaBhashSms(
   const templateId = process.env.BHASHSMS_TEMPLATE_ID || "1107177121574211829";
 
   if (!user || !password) {
-    console.log("[SMS] BhashSMS credentials not configured");
+    logBhashSms("otp", "not_configured");
     return false;
   }
 
+  let httpStatus: number | undefined;
   try {
     const formattedPhone = formatIndianPhone(phone);
     if (!formattedPhone) {
-      console.error("[SMS] Invalid phone number format:", phone);
+      logBhashSms("otp", "invalid_recipient");
       return false;
     }
 
@@ -199,37 +201,14 @@ async function sendViaBhashSms(
     url.searchParams.append("entityid", entityId);
     url.searchParams.append("tempid", templateId);
 
-    console.log(`[SMS] Sending OTP to ${formattedPhone} via BhashSMS...`);
-
     const response = await fetch(url.toString());
-    const result = await response.text();
-
-    console.log(`[SMS] BhashSMS response: ${result}`);
-
-    // BhashSMS returns a tracking/message ID on successful submission, in one
-    // of a few formats depending on account/route config:
-    //   - a plain numeric ID, e.g. "123456789"
-    //   - a message containing the word "success"
-    //   - an "S.xxxxxx" prefixed ID, e.g. "S.899842" - confirmed via direct
-    //     curl testing to be a SUCCESS response (a submission/tracking id),
-    //     not an error, even though it looks error-like. This was previously
-    //     misclassified as a failure, causing every real BhashSMS send to be
-    //     logged (and treated) as failed despite the SMS actually arriving.
-    const trimmed = result.trim();
-    const isSuccess =
-      trimmed.toLowerCase().includes('success') ||
-      /^\d+$/.test(trimmed) ||
-      /^S\.\d+$/i.test(trimmed);
-
-    if (isSuccess) {
-      console.log(`[SMS] OTP sent successfully to ${formattedPhone} (ref: ${trimmed})`);
-      return true;
-    } else {
-      console.error(`[SMS] Failed to send OTP: ${result}`);
-      return false;
-    }
-  } catch (error: any) {
-    console.error("[SMS] Error sending OTP:", error.message || error);
+    httpStatus = response.status;
+    const result = inspectBhashSmsResponse(await response.text());
+    logBhashSms("otp", result.otpAccepted ? "accepted" : response.ok ? "unrecognized" : "http_error",
+      httpStatus, result, url.searchParams.values());
+    return result.otpAccepted;
+  } catch {
+    logBhashSms("otp", httpStatus === undefined ? "request_error" : "body_error", httpStatus);
     return false;
   }
 }

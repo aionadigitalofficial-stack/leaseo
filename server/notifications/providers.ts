@@ -5,12 +5,14 @@ import { configurationStatus, normalizePhone } from "../whatsapp/core";
 import { ContactError, accountPhone, renderMessage } from "./core";
 import { decryptPassword, type Config } from "./config";
 import { loadWati, safeWati, sendWati } from "./wati-store";
+import { inspectBhashSmsResponse, logBhashSms } from "../bhashsms-diagnostics";
 
 type Delivery = { messageId: string | null; status: "accepted" };
 
-async function providerRequest(url: string, init: RequestInit): Promise<Response> {
+async function providerRequest(url: string, init: RequestInit, onStatus?: (status: number) => void): Promise<Response> {
   try {
     const response = await fetch(url, {...init, redirect: "error", signal: AbortSignal.timeout(15000)});
+    onStatus?.(response.status);
     if (!response.ok) {
       if (response.status === 429) throw new ContactError("PROVIDER_RATE_LIMITED", 502, true);
       throw new ContactError(`PROVIDER_HTTP_${response.status}`, 502);
@@ -91,16 +93,32 @@ async function sendSms(to: string, body: string, template: any, values: Record<s
     return {messageId:data.request_id || null,status:"accepted"};
   }
   if (name === "bhashsms") {
-    if (!sid || !token || !from || !process.env.BHASHSMS_ENTITY_ID) throw new ContactError("SMS_DLT_CONFIGURATION_REQUIRED");
-    if (!/^91\d{10}$/.test(phone)) throw new ContactError("SMS_INDIAN_NUMBER_REQUIRED");
+    if (!sid || !token || !from || !process.env.BHASHSMS_ENTITY_ID) {
+      logBhashSms("enquiry", "not_configured");
+      throw new ContactError("SMS_DLT_CONFIGURATION_REQUIRED");
+    }
+    if (!/^91\d{10}$/.test(phone)) {
+      logBhashSms("enquiry", "invalid_recipient");
+      throw new ContactError("SMS_INDIAN_NUMBER_REQUIRED");
+    }
     const url = new URL("https://bhashsms.com/api/sendmsg.php");
     const params = {user:sid,pass:token,sender:from,phone:phone.slice(2),text:body,
       priority:"ndnd",stype:"normal",entityid:process.env.BHASHSMS_ENTITY_ID,tempid:template.sms_template_id};
     Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v!));
-    const r = await providerRequest(url.toString(),{method:"GET"});
-    const result = (await r.text()).trim();
-    if (!/^\d+$/.test(result) && !/^S\.\d+$/i.test(result) && !/^success\b/i.test(result)) throw new ContactError("SMS_PROVIDER_REJECTED");
-    return {messageId:/^(?:S\.)?\d+$/i.test(result)?result:null,status:"accepted"};
+    let httpStatus: number | undefined;
+    let result: ReturnType<typeof inspectBhashSmsResponse>;
+    try {
+      const r = await providerRequest(url.toString(), {method:"GET"}, status => { httpStatus = status; });
+      result = inspectBhashSmsResponse(await r.text());
+    } catch (error) {
+      const outcome = httpStatus === undefined ? "request_error" : httpStatus >= 300 ? "http_error" : "body_error";
+      logBhashSms("enquiry", outcome, httpStatus);
+      throw error;
+    }
+    logBhashSms("enquiry", result.enquiryAccepted ? "accepted" : "unrecognized",
+      httpStatus, result, url.searchParams.values());
+    if (!result.enquiryAccepted) throw new ContactError("SMS_PROVIDER_REJECTED");
+    return {messageId: result.messageId, status:"accepted"};
   }
   // WATI is WhatsApp, not a general SMS transport. Do not report fake success.
   throw new ContactError("SMS_PROVIDER_NOT_SUPPORTED_FOR_ENQUIRIES");
