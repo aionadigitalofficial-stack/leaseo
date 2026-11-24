@@ -15,6 +15,7 @@ import { saveDeliveryEvents, listDeliveryEvents } from "./whatsapp/store";
 import { loadWhatsAppSettings, persistWhatsAppSettings } from "./whatsapp/settings-store";
 import { registerNotificationRoutes } from "./notifications/routes";
 import { registerPhoneLoginRoutes } from "./phone-login";
+import { registerAdminUserDeletion } from "./admin-user-deletion";
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
@@ -2144,7 +2145,9 @@ export async function registerRoutes(
     }
   });
 
-  // Get all login users (owners, buyers, renters - everyone except admin employees)
+  registerAdminUserDeletion(app);
+
+  // Get login users and their roles.
   app.get("/api/admin/login-users", authMiddleware, adminMiddleware, async (req, res) => {
     try {
       const allUsers = await db

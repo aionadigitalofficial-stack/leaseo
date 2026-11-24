@@ -103,11 +103,13 @@ import {
   History,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MetaWhatsAppSettings from "@/components/meta-whatsapp-settings";
 import WatiWhatsappSettings from "@/components/wati-whatsapp-settings";
 import NotificationManagement from "@/components/notification-management";
 import type { Property, Enquiry, FeatureFlag, City, Locality, BlogPost, PageContent, PropertyCategory, PropertyImage } from "@shared/schema";
+import { matchesAdminUser } from "@shared/admin-user-search";
 
 type AdminSection = "dashboard" | "properties" | "enquiries" | "owners" | "users" | "employees" | "cities" | "categories" | "boosts" | "payments" | "gateway" | "sms" | "notifications" | "roles" | "newsletter" | "blog" | "pages" | "seo" | "settings" | "organization" | "footer" | "reports" | "flagged";
 
@@ -528,8 +530,36 @@ export default function AdminPage() {
     queryKey: ["/api/admin/property-owners"],
   });
 
-  const { data: loginUsers = [], isLoading: usersLoading } = useQuery<any[]>({
+  const [loginUserSearch, setLoginUserSearch] = useState("");
+  const [userToDelete, setUserToDelete] = useState<{ id: string; label: string } | null>(null);
+  const { data: loginUsers = [], isLoading: usersLoading, isError: usersError } = useQuery<any[]>({
     queryKey: ["/api/admin/login-users"],
+  });
+  const deleteLoginUser = useMutation({
+    mutationFn: async (id: string) => {
+      try {
+        await apiRequest("DELETE", `/api/admin/login-users/${encodeURIComponent(id)}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        const payload = /^4\d{2}: (.*)$/.exec(message)?.[1];
+        let detail = "Could not delete the user. Refresh the list before trying again.";
+        if (payload) {
+          try {
+            const parsed = JSON.parse(payload);
+            if (typeof parsed.error === "string") detail = parsed.error;
+          } catch { /* Use the safe default if the response was not JSON. */ }
+        }
+        throw new Error(detail);
+      }
+    },
+    onSuccess: (_, id) => {
+      setUserToDelete(null);
+      for (const path of ["/api/admin/login-users", "/api/admin/users-with-roles"]) {
+        queryClient.setQueryData<any[]>([path], rows => rows?.filter(row => row.id !== id));
+        void queryClient.invalidateQueries({ queryKey: [path] });
+      }
+      toast({ title: "User deleted" });
+    },
   });
 
   const { data: seoSettings } = useQuery<any>({
@@ -2584,7 +2614,9 @@ export default function AdminPage() {
     </div>
   );
 
-  const renderUsers = () => (
+  const renderUsers = () => {
+    const visibleUsers = loginUsers.filter(loginUser => matchesAdminUser(loginUser, loginUserSearch));
+    return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
@@ -2595,14 +2627,22 @@ export default function AdminPage() {
 
       <Card>
         <CardContent className="pt-6">
+          <div className="mb-4 max-w-sm space-y-2">
+            <Label htmlFor="login-user-search">Search users</Label>
+            <Input id="login-user-search" type="search" placeholder="Name, email or phone number"
+              value={loginUserSearch} onChange={event => setLoginUserSearch(event.target.value)}
+              data-testid="input-login-user-search" />
+          </div>
           {usersLoading ? (
             <div className="space-y-4">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
             </div>
-          ) : loginUsers.length === 0 ? (
+          ) : usersError ? (
+            <p role="alert" className="py-12 text-center text-destructive">Could not load users. Refresh the page to try again.</p>
+          ) : visibleUsers.length === 0 ? (
             <div className="text-center py-12">
               <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No registered users yet</p>
+              <p className="text-muted-foreground">{loginUsers.length ? "No users match your search." : "No registered users yet"}</p>
             </div>
           ) : (
             <Table>
@@ -2619,7 +2659,7 @@ export default function AdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loginUsers.map((user) => (
+                {visibleUsers.map((user) => (
                   <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
                     <TableCell className="font-medium">{user.firstName || "-"} {user.lastName || ""}</TableCell>
                     <TableCell>{user.email || "-"}</TableCell>
@@ -2686,6 +2726,18 @@ export default function AdminPage() {
                         >
                           <Shield className="h-4 w-4" />
                         </Button>
+                        {!user.roles?.includes("admin") && (
+                          <Button size="icon" variant="ghost" title="Delete user" aria-label="Delete user"
+                            onClick={() => {
+                              deleteLoginUser.reset();
+                              const name = [user.firstName, user.lastName].filter(Boolean).join(" ");
+                              const account = user.email || user.phone || user.id;
+                              setUserToDelete({ id: user.id, label: name ? `${name} (${account})` : account });
+                            }}
+                            data-testid={`button-delete-user-${user.id}`}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -2695,8 +2747,31 @@ export default function AdminPage() {
           )}
         </CardContent>
       </Card>
+      <AlertDialog open={userToDelete !== null} onOpenChange={open => {
+        if (!open && !deleteLoginUser.isPending) setUserToDelete(null);
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this user?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Permanently delete {userToDelete?.label}. This cannot be undone. Accounts with linked records
+              (such as listings, enquiries, or payments) cannot be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteLoginUser.error && <p role="alert" className="text-sm text-destructive">{deleteLoginUser.error.message}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoginUser.isPending}>Cancel</AlertDialogCancel>
+            <Button type="button" variant="destructive" disabled={!userToDelete || deleteLoginUser.isPending}
+              onClick={() => userToDelete && deleteLoginUser.mutate(userToDelete.id)}
+              data-testid="button-confirm-delete-user">
+              {deleteLoginUser.isPending ? "Deleting…" : "Delete user"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
-  );
+    );
+  };
 
   const renderCities = () => (
     <div className="space-y-6">
@@ -3930,6 +4005,7 @@ export default function AdminPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users-with-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/login-users"] });
       toast({ title: "Status updated", description: "User status has been changed" });
     },
     onError: (error: any) => {
