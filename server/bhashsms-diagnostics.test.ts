@@ -16,6 +16,36 @@ test("response inspection preserves the separate OTP and enquiry acceptance rule
   }
 });
 
+test("a reply consisting only of tracking references confirms enquiry submission, not OTP", () => {
+  for (const reply of [
+    "S.1234 S.5678",
+    " S.1234, S.5678; S.9012\n",
+    "S.1234|S.5678",
+    "S.1234\r\nS.5678",
+    "S.1234<BR />S.5678<br>",
+  ]) {
+    assert.deepEqual(inspectBhashSmsResponse(reply), {
+      messageId: null, responseKind: "tracking_reference_list",
+      otpAccepted: false, enquiryAccepted: true,
+    });
+  }
+});
+
+test("tracking references within mixed replies do not confirm enquiry submission", () => {
+  for (const reply of [
+    "S.1234, S.5678, Error: invalid template",
+    "S.1234<br>Rejected S.5678",
+    "Warning: S.1234 S.5678",
+    "<html>S.1234 S.5678</html>",
+    '["S.1234","S.5678"]',
+    "1234, 5678",
+  ]) {
+    const result = inspectBhashSmsResponse(reply);
+    assert.equal(result.enquiryAccepted, false, reply);
+    assert.equal(result.responseKind, "unrecognized", reply);
+  }
+});
+
 test("unknown reply diagnostics distinguish envelope and tracking-reference position", () => {
   for (const [body, mime, expected] of [
     ["S.1234\nqueued", "text/plain", ["text", "text", "leading", true]],

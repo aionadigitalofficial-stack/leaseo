@@ -1,18 +1,30 @@
 export const BHASH_SMS_ENDPOINT = "https://bhashsms.com/api/sendmsg.php";
 
 type Flow = "otp" | "enquiry";
-type ResponseKind = "tracking_reference" | "success_text" | "empty" | "unrecognized";
+type ResponseKind = "tracking_reference" | "tracking_reference_list" | "success_text" | "empty" | "unrecognized";
+
+function isTrackingReferenceList(text: string): boolean {
+  if (text.length > 8192) return false;
+  // Some enquiry replies contain several references. Require the entire
+  // response to be a list, not merely references inside a warning or error.
+  const refs = text.replace(/<br[ \t]*\/?>/gi, "\n").trim().split(/[\s,;|]+/);
+  return refs.length > 1 && refs.every(ref => /^S\.\d{1,24}$/i.test(ref));
+}
 
 export function inspectBhashSmsResponse(raw: string) {
   const result = raw.trim();
   const messageId = /^(?:S\.)?\d+$/i.test(result) ? result : null;
   const otpSuccess = result.toLowerCase().includes("success");
   const enquirySuccess = /^success\b/i.test(result);
+  const trackingList = !messageId && isTrackingReferenceList(result);
   const responseKind: ResponseKind = messageId ? "tracking_reference"
+    : trackingList ? "tracking_reference_list"
     : otpSuccess || enquirySuccess ? "success_text"
     : result ? "unrecognized" : "empty";
+  // Keep the single-reference field empty for a list; no individual ID can
+  // represent the whole submission, and none of these imply handset delivery.
   return { messageId, responseKind, otpAccepted: Boolean(messageId) || otpSuccess,
-    enquiryAccepted: Boolean(messageId) || enquirySuccess };
+    enquiryAccepted: Boolean(messageId) || trackingList || enquirySuccess };
 }
 
 // Only output fixed labels and booleans. Provider replies can echo the whole
