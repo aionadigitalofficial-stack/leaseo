@@ -5,7 +5,7 @@ import { configurationStatus, normalizePhone } from "../whatsapp/core";
 import { ContactError, accountPhone, renderMessage } from "./core";
 import { decryptPassword, type Config } from "./config";
 import { loadWati, safeWati, sendWati } from "./wati-store";
-import { BHASH_SMS_ENDPOINT, inspectBhashSmsResponse, logBhashSms } from "../bhashsms-diagnostics";
+import { BHASH_SMS_ENDPOINT, inspectBhashSmsResponse, logBhashSms, logCustomerSmsReply } from "../bhashsms-diagnostics";
 
 type Delivery = { messageId: string | null; status: "accepted" };
 
@@ -60,7 +60,8 @@ export async function providerStatus(config: Config, encrypted: string | null) {
   };
 }
 
-async function sendSms(to: string, body: string, template: any, values: Record<string,string>): Promise<Delivery> {
+async function sendSms(to: string, body: string, template: any, values: Record<string,string>,
+  customerSource?: "admin_test" | "live_enquiry"): Promise<Delivery> {
   const p = await activeSms();
   const live = p?.mode === "live";
   const sid = p ? (live ? p.account_sid : p.sandbox_account_sid) : process.env.BHASHSMS_USER;
@@ -109,7 +110,11 @@ async function sendSms(to: string, body: string, template: any, values: Record<s
     let result: ReturnType<typeof inspectBhashSmsResponse>;
     try {
       const r = await providerRequest(url.toString(), {method:"GET"}, status => { httpStatus = status; });
-      result = inspectBhashSmsResponse(await r.text());
+      const raw = await r.text();
+      result = inspectBhashSmsResponse(raw);
+      if (customerSource && !result.enquiryAccepted) {
+        logCustomerSmsReply(raw, r.headers.get("content-type"), customerSource);
+      }
     } catch (error) {
       const outcome = httpStatus === undefined ? "request_error" : httpStatus >= 300 ? "http_error" : "body_error";
       logBhashSms("enquiry", outcome, httpStatus);
@@ -141,7 +146,8 @@ export async function deliver(job:any, template:any, values:Record<string,string
     });
     return result;
   }
-  if (job.channel === "sms") return sendSms(job.recipient,body,template,values);
+  if (job.channel === "sms") return sendSms(job.recipient,body,template,values,
+    job.recipient_type === "customer" ? (job.test_key ? "admin_test" : "live_enquiry") : undefined);
   if (job.channel !== "email") throw new ContactError("INVALID_CHANNEL");
   const host = config.smtpHost || process.env.SMTP_HOST;
   const user = config.smtpUser || process.env.SMTP_USER;

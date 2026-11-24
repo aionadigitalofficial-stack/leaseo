@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inspectBhashSmsResponse, logBhashSms } from "./bhashsms-diagnostics";
+import { describeBhashSmsReply, inspectBhashSmsResponse, logBhashSms, logCustomerSmsReply } from "./bhashsms-diagnostics";
 
 test("response inspection preserves the separate OTP and enquiry acceptance rules", () => {
   for (const [body, otp, enquiry, kind] of [
@@ -14,6 +14,40 @@ test("response inspection preserves the separate OTP and enquiry acceptance rule
     const result = inspectBhashSmsResponse(body);
     assert.deepEqual([result.otpAccepted, result.enquiryAccepted, result.responseKind], [otp, enquiry, kind]);
   }
+});
+
+test("unknown reply diagnostics distinguish envelope and tracking-reference position", () => {
+  for (const [body, mime, expected] of [
+    ["S.1234\nqueued", "text/plain", ["text", "text", "leading", true]],
+    ["Queued: S.1234", null, ["unspecified", "text", "trailing", false]],
+    ['{"request_id":"S.1234"}', "application/json; charset=utf-8", ["json", "json_object", "embedded", false]],
+    ['["S.1234","S.5678"]', null, ["unspecified", "json_array", "multiple", false]],
+    ['"S.1234"', "application/problem+json", ["json", "json_string", "embedded", false]],
+    ["{bad", "application/json", ["json", "invalid_json", "none", false]],
+    ["<html>Unavailable</html>", "text/html", ["html", "html", "none", false]],
+    ["\r\n", null, ["unspecified", "empty", "none", false]],
+  ] as const) {
+    const reply = describeBhashSmsReply(body, mime);
+    assert.deepEqual([reply.media, reply.format, reply.trackingShape, reply.multiline], expected);
+  }
+  assert.deepEqual(describeBhashSmsReply("x".repeat(8193), null), {
+    media: "unspecified", format: "oversized",
+  });
+});
+
+test("Customer SMS diagnostics do not echo any reply content or header data", (t) => {
+  const info = t.mock.method(console, "info", (_label: string, _payload: string) => {});
+  logCustomerSmsReply(JSON.stringify({
+    hiddenKey: "Error: https://example.invalid/send?pass=secretValue&phone=919000000001&text=privateMessage",
+    ref: "S.123456",
+  }), "text/private-header", "live_enquiry");
+  assert.deepEqual(info.mock.calls[0].arguments, [
+    "[BhashSMS Customer SMS reply]",
+    JSON.stringify({
+      source: "live_enquiry", media: "other", format: "json_object", trackingShape: "embedded",
+      multiline: false, hasSuccessWord: false, hasErrorWord: true,
+    }),
+  ]);
 });
 
 test("diagnostics only log status, categories, and a non-echoed tracking reference", (t) => {
