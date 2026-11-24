@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
+import { normalizeLoginMobile } from "@shared/phone-login";
 
 type UserType = "owner" | "tenant" | "builder_developer" | "buyer";
 
@@ -72,7 +73,8 @@ export function PhoneLoginForm({ onSuccess }: PhoneLoginFormProps) {
   };
 
   const sendCode = async () => {
-    if (!/^[6-9]\d{9}$/.test(phone)) {
+    const mobile = normalizeLoginMobile(phone);
+    if (!mobile) {
       setError("Enter a valid 10-digit Indian mobile number.");
       return;
     }
@@ -84,18 +86,19 @@ export function PhoneLoginForm({ onSuccess }: PhoneLoginFormProps) {
       const response = await fetch("/api/auth/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, purpose: "login" }),
+        body: JSON.stringify({ phone: mobile, purpose: "login" }),
       });
       const data = await response.json().catch(() => ({}));
       if (!mounted.current) return;
       if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Couldn't send the verification code. Try again.");
-      if (data.smsSent === false) {
-        throw new Error(typeof data.error === "string" ? data.error : "The verification message couldn't be delivered. Please try again later.");
+      if (data.smsSent !== true) {
+        throw new Error(typeof data.error === "string" ? data.error : "Couldn't confirm that the verification SMS was sent. Please try again later.");
       }
+      setPhone(mobile);
       setOtpSent(true);
       setCode("");
       setCountdown(30);
-      setNotice(`A verification code was sent to +91 ${phone}.`);
+      setNotice(`A verification code was sent to +91 ${mobile}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't send the verification code. Try again.");
     } finally {
@@ -203,7 +206,7 @@ export function PhoneLoginForm({ onSuccess }: PhoneLoginFormProps) {
         <div className="flex gap-2">
           <span className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm font-medium text-foreground" aria-label="India country code">+91</span>
           <Input id="phone-login-mobile" type="tel" inputMode="numeric" autoComplete="tel-national"
-            value={phone} onChange={(event) => setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))}
+            value={phone} onChange={(event) => setPhone(event.target.value)}
             placeholder="10-digit mobile number" required disabled={otpSent || loading}
             aria-describedby="phone-login-mobile-hint" data-testid="input-phone" />
         </div>

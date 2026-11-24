@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+const indianMobilePattern = /^[6-9]\d{9}$/;
+
+// Convert only complete, unambiguous numbers. Never truncate input: a
+// country-prefixed number could otherwise turn into a different valid mobile.
+export function normalizeLoginMobile(input: string): string | null {
+  const compact = input.trim().replace(/[\s()-]/g, "");
+  const national = /^(?:\+91|91|0)([6-9]\d{9})$/.exec(compact)?.[1] ?? compact;
+  return indianMobilePattern.test(national) ? national : null;
+}
+
 // This is enquiry onboarding, not permission to publish a listing.
 export const phoneLoginProfileSchema = z.object({
     name: z.string().trim().min(1, "Enter your name").max(120),
@@ -9,7 +19,7 @@ export const phoneLoginProfileSchema = z.object({
 });
 
 export const phoneLoginSchema = z.object({
-  phone: z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number"),
+  phone: z.string().regex(indianMobilePattern, "Enter a valid 10-digit Indian mobile number"),
   code: z.string().regex(/^\d{6}$/, "Enter the 6-digit OTP"),
   // Account existence is checked only after the phone OTP has been proven.
   profile: phoneLoginProfileSchema.optional(),
