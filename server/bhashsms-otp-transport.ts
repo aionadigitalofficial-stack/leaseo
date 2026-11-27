@@ -2,7 +2,7 @@ import https from "node:https";
 
 // A single request, never retried: a timeout may happen after provider acceptance.
 // Keep certificate validation enabled and never redirect credential-bearing URLs.
-export function requestBhashOtp(url: URL, onStatus: (status: number) => void): Promise<string> {
+export function requestBhashSms(url: URL, onStatus: (status: number) => void): Promise<string> {
   if (url.protocol !== "https:" || url.hostname !== "bhashsms.com" ||
     url.port || url.username || url.password || url.pathname !== "/api/sendmsg.php") {
     return Promise.reject(new Error("Invalid OTP endpoint"));
@@ -48,7 +48,7 @@ export function requestBhashOtp(url: URL, onStatus: (status: number) => void): P
       response.on("error", error => finish(error));
       response.on("aborted", () => finish(Object.assign(new Error("Response aborted"), { code: "ECONNRESET" })));
     });
-    // This covers DNS, TCP, TLS and reading the response, not just idle sockets.
+    // This bounds connection and response time, not just idle sockets.
     timer = setTimeout(() => {
       const error = Object.assign(new Error("OTP request timed out"), { code: "ETIMEDOUT" });
       finish(error);

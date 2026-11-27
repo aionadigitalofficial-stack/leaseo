@@ -12,7 +12,7 @@ import { notificationProviders } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { BHASH_SMS_ENDPOINT, inspectBhashSmsResponse, logBhashSms } from "./bhashsms-diagnostics";
 import { logOtpNetworkFailure } from "./otp-network-diagnostics";
-import { requestBhashOtp } from "./bhashsms-otp-transport";
+import { requestBhashSms } from "./bhashsms-otp-transport";
 
 async function getActiveSmsProvider() {
   const [provider] = await db
@@ -203,7 +203,7 @@ async function sendViaBhashSms(
     url.searchParams.append("entityid", entityId);
     url.searchParams.append("tempid", templateId);
 
-    const body = await requestBhashOtp(url, status => { httpStatus = status; });
+    const body = await requestBhashSms(url, status => { httpStatus = status; });
     const result = inspectBhashSmsResponse(body);
     const httpOk = httpStatus !== undefined && httpStatus >= 200 && httpStatus < 300;
     const accepted = httpOk && result.otpAccepted;

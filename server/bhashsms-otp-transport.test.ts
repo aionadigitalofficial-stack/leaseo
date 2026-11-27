@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import https from "node:https";
 import test, { type TestContext } from "node:test";
-import { requestBhashOtp } from "./bhashsms-otp-transport";
+import { requestBhashSms } from "./bhashsms-otp-transport";
 
 const endpoint = () => new URL("https://bhashsms.com/api/sendmsg.php?user=test&pass=fake&phone=9000000001");
 
@@ -41,7 +41,7 @@ test("uses one IPv4 HTTPS request with unchanged query and certificate checks", 
   const fake = mockRequest(t, "success");
   const statuses: number[] = [];
   const url = endpoint();
-  assert.equal(await requestBhashOtp(url, status => statuses.push(status)), "S.123456");
+  assert.equal(await requestBhashSms(url, status => statuses.push(status)), "S.123456");
   assert.equal(fake.receivedUrl, url.toString());
   assert.equal(fake.calls, 1);
   assert.deepEqual(fake.options, { method: "GET", family: 4, agent: false, rejectUnauthorized: true });
@@ -51,7 +51,7 @@ test("uses one IPv4 HTTPS request with unchanged query and certificate checks", 
 test("reports HTTP errors to the caller without retrying", async t => {
   const fake = mockRequest(t, "http_error");
   let status = 0;
-  await requestBhashOtp(endpoint(), value => { status = value; });
+  await requestBhashSms(endpoint(), value => { status = value; });
   assert.equal(status, 503);
   assert.equal(fake.calls, 1);
 });
@@ -59,7 +59,7 @@ test("reports HTTP errors to the caller without retrying", async t => {
 for (const mode of ["redirect", "network", "oversized", "aborted"] as const) {
   test(`fails safely on ${mode} without another request`, async t => {
     const fake = mockRequest(t, mode);
-    await assert.rejects(requestBhashOtp(endpoint(), () => {}));
+    await assert.rejects(requestBhashSms(endpoint(), () => {}));
     assert.equal(fake.calls, 1);
   });
 }
@@ -67,7 +67,7 @@ for (const mode of ["redirect", "network", "oversized", "aborted"] as const) {
 test("bounds the entire request to 30 seconds and never retries on timeout", async t => {
   const fake = mockRequest(t, "pending");
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const result = assert.rejects(requestBhashOtp(endpoint(), () => {}), { code: "ETIMEDOUT" });
+  const result = assert.rejects(requestBhashSms(endpoint(), () => {}), { code: "ETIMEDOUT" });
   t.mock.timers.tick(30000);
   await result;
   assert.equal(fake.calls, 1);
@@ -76,7 +76,7 @@ test("bounds the entire request to 30 seconds and never retries on timeout", asy
 test("rejects HTTP or unexpected endpoints before sending credentials", async t => {
   const fake = mockRequest(t, "success");
   for (const url of ["http://bhashsms.com/api/sendmsg.php", "https://example.invalid/api/sendmsg.php"]) {
-    await assert.rejects(requestBhashOtp(new URL(url), () => {}));
+    await assert.rejects(requestBhashSms(new URL(url), () => {}));
   }
   assert.equal(fake.calls, 0);
 });

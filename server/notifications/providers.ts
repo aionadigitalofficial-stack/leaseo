@@ -5,7 +5,8 @@ import { configurationStatus, normalizePhone } from "../whatsapp/core";
 import { ContactError, accountPhone, renderMessage } from "./core";
 import { decryptPassword, type Config } from "./config";
 import { loadWati, safeWati, sendWati } from "./wati-store";
-import { BHASH_SMS_ENDPOINT, inspectBhashSmsResponse, logBhashSms, logCustomerSmsReply } from "../bhashsms-diagnostics";
+import { BHASH_SMS_ENDPOINT, logBhashSms } from "../bhashsms-diagnostics";
+import { sendBhashEnquiry } from "./bhashsms-transport";
 
 type Delivery = { messageId: string | null; status: "accepted" };
 
@@ -106,26 +107,7 @@ async function sendSms(to: string, body: string, template: any, values: Record<s
     const params = {user:sid,pass:token,sender:from,phone:phone.slice(2),text:body,
       priority:"ndnd",stype:"normal",entityid:process.env.BHASHSMS_ENTITY_ID,tempid:template.sms_template_id};
     Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v!));
-    let httpStatus: number | undefined;
-    let result: ReturnType<typeof inspectBhashSmsResponse>;
-    try {
-      const r = await providerRequest(url.toString(), {method:"GET"}, status => { httpStatus = status; });
-      const raw = await r.text();
-      result = inspectBhashSmsResponse(raw);
-      if (customerSource && !result.enquiryAccepted) {
-        logCustomerSmsReply(raw, r.headers.get("content-type"), customerSource);
-      }
-    } catch (error) {
-      const outcome = httpStatus === undefined ? "request_error" : httpStatus >= 300 ? "http_error" : "body_error";
-      logBhashSms("enquiry", outcome, httpStatus);
-      throw error;
-    }
-    logBhashSms("enquiry", result.enquiryAccepted ? "accepted" : "unrecognized",
-      httpStatus, result, url.searchParams.values());
-    // An HTTP-success reply that we cannot parse is not evidence of rejection.
-    // The worker records OUTCOME_UNKNOWN as non-retryable to avoid duplicates.
-    if (!result.enquiryAccepted) throw new ContactError("BHASHSMS_RESPONSE_OUTCOME_UNKNOWN", 502);
-    return {messageId: result.messageId, status:"accepted"};
+    return sendBhashEnquiry(url, customerSource);
   }
   // WATI is WhatsApp, not a general SMS transport. Do not report fake success.
   throw new ContactError("SMS_PROVIDER_NOT_SUPPORTED_FOR_ENQUIRIES");
