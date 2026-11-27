@@ -11,6 +11,7 @@ import { db } from "./db";
 import { notificationProviders } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { BHASH_SMS_ENDPOINT, inspectBhashSmsResponse, logBhashSms } from "./bhashsms-diagnostics";
+import { logOtpNetworkFailure } from "./otp-network-diagnostics";
 
 async function getActiveSmsProvider() {
   const [provider] = await db
@@ -207,8 +208,9 @@ async function sendViaBhashSms(
     logBhashSms("otp", result.otpAccepted ? "accepted" : response.ok ? "unrecognized" : "http_error",
       httpStatus, result, url.searchParams.values());
     return result.otpAccepted;
-  } catch {
+  } catch (error) {
     logBhashSms("otp", httpStatus === undefined ? "request_error" : "body_error", httpStatus);
+    logOtpNetworkFailure(error, httpStatus === undefined ? "request" : "response_body");
     return false;
   }
 }
