@@ -617,12 +617,17 @@ export default function PostPropertyPage() {
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
+      if (verifyMethod === "phone" && data.smsStatus === "failed") {
+        throw new Error("The SMS provider did not accept the verification code. Please try again.");
+      }
 
       if (data.devCode) setDevCode(data.devCode);
       setOtpSent(true);
       toast({
-        title: "Verification Code Sent",
-        description: `Code sent to ${verifyMethod === "email" ? email : `+91 ${phoneNumber}`}`,
+        title: data.smsStatus === "unknown" ? "SMS status not confirmed" : "Verification Code Sent",
+        description: data.smsStatus === "unknown"
+          ? "Check your messages before requesting another code."
+          : `Code sent to ${verifyMethod === "email" ? email : `+91 ${phoneNumber}`}`,
       });
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to send code", variant: "destructive" });

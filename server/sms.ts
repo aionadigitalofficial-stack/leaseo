@@ -13,6 +13,7 @@ import { eq, and } from "drizzle-orm";
 import { BHASH_SMS_ENDPOINT, inspectBhashSmsResponse, logBhashSms } from "./bhashsms-diagnostics";
 import { logOtpNetworkFailure } from "./otp-network-diagnostics";
 import { requestBhashSms } from "./bhashsms-otp-transport";
+import { classifyBhashSmsOutcome, type SmsDeliveryStatus } from "./sms-delivery-status";
 
 async function getActiveSmsProvider() {
   const [provider] = await db
@@ -163,7 +164,7 @@ async function sendViaBhashSms(
   phone: string,
   code: string,
   creds?: { user: string; password: string; sender: string }
-): Promise<boolean> {
+): Promise<SmsDeliveryStatus> {
   const user = creds?.user || process.env.BHASHSMS_USER;
   const password = creds?.password || process.env.BHASHSMS_PASSWORD;
   const sender = creds?.sender || process.env.BHASHSMS_SENDER || "LEASEO";
@@ -176,7 +177,7 @@ async function sendViaBhashSms(
 
   if (!user || !password) {
     logBhashSms("otp", "not_configured");
-    return false;
+    return "failed";
   }
 
   let httpStatus: number | undefined;
@@ -184,7 +185,7 @@ async function sendViaBhashSms(
     const formattedPhone = formatIndianPhone(phone);
     if (!formattedPhone) {
       logBhashSms("otp", "invalid_recipient");
-      return false;
+      return "failed";
     }
 
     // MUST match the DLT-approved template text exactly (character for
@@ -209,15 +210,15 @@ async function sendViaBhashSms(
     const accepted = httpOk && result.otpAccepted;
     logBhashSms("otp", accepted ? "accepted" : httpOk ? "unrecognized" : "http_error",
       httpStatus, result, url.searchParams.values());
-    return accepted;
+    return classifyBhashSmsOutcome(httpStatus, result.otpAccepted);
   } catch (error) {
     logBhashSms("otp", httpStatus === undefined ? "request_error" : "body_error", httpStatus);
     logOtpNetworkFailure(error, httpStatus === undefined ? "request" : "response_body");
-    return false;
+    return classifyBhashSmsOutcome(httpStatus, false, httpStatus === undefined);
   }
 }
 
-export async function sendOTPSMS(phone: string, code: string): Promise<boolean> {
+export async function sendOTPSMSWithOutcome(phone: string, code: string): Promise<SmsDeliveryStatus> {
   const message = `Your Leaseo verification code is: ${code}. Valid for 10 minutes. Do not share this code with anyone.`;
 
   const activeProvider = await getActiveSmsProvider();
@@ -225,11 +226,11 @@ export async function sendOTPSMS(phone: string, code: string): Promise<boolean> 
   if (activeProvider) {
     switch (activeProvider.providerName) {
       case "twilio":
-        return sendViaTwilio(activeProvider, phone, message);
+        return (await sendViaTwilio(activeProvider, phone, message)) ? "accepted" : "failed";
       case "msg91":
-        return sendViaMsg91(activeProvider, phone, code);
+        return (await sendViaMsg91(activeProvider, phone, code)) ? "accepted" : "failed";
       case "wati":
-        return sendViaWati(activeProvider, phone, message);
+        return (await sendViaWati(activeProvider, phone, message)) ? "accepted" : "failed";
       case "bhashsms": {
         const isLive = activeProvider.mode === "live";
         return sendViaBhashSms(phone, code, {
@@ -247,4 +248,9 @@ export async function sendOTPSMS(phone: string, code: string): Promise<boolean> 
   // Nothing configured in the admin panel - fall back to legacy env vars
   // so existing deployments keep working exactly as before.
   return sendViaBhashSms(phone, code);
+}
+
+// Keep the existing boolean API for callers that need a definite acceptance.
+export async function sendOTPSMS(phone: string, code: string): Promise<boolean> {
+  return (await sendOTPSMSWithOutcome(phone, code)) === "accepted";
 }

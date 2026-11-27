@@ -129,7 +129,9 @@ export async function deliver(job:any, template:any, values:Record<string,string
     return result;
   }
   if (job.channel === "sms") return sendSms(job.recipient,body,template,values,
-    job.recipient_type === "customer" ? (job.test_key ? "admin_test" : "live_enquiry") : undefined);
+    job.recipient_type === "customer"
+      ? (job.test_key && !job.test_key.startsWith("repeat:") ? "admin_test" : "live_enquiry")
+      : undefined);
   if (job.channel !== "email") throw new ContactError("INVALID_CHANNEL");
   const host = config.smtpHost || process.env.SMTP_HOST;
   const user = config.smtpUser || process.env.SMTP_USER;

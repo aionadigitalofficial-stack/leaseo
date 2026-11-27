@@ -104,11 +104,25 @@ test("property contact and notification PostgreSQL integration", {skip:!testUrl}
     const result=await store.requestOtp("contact-test-a",async()=>{throw new Error("must not send again");});
     assert.equal(result.alreadyVerified,true);
   });
-  await t.test("concurrent repeated clicks create neither duplicate enquiries nor jobs",async()=>{
+  await t.test("each repeated contact queues fresh jobs without duplicating the enquiry",async()=>{
+    const previous=(await pool.query("SELECT id FROM notification_jobs WHERE enquiry_id=$1 LIMIT 1",[first.enquiryId])).rows[0];
+    await pool.query("UPDATE notification_jobs SET status='delivered',provider_message_id='original-message' WHERE id=$1",[previous.id]);
     const results=await Promise.all(Array.from({length:5},()=>store.createContact("contact-test-a","contact-test-p1",true)));
     assert.ok(results.every(r=>!r.created && r.enquiryId===first.enquiryId));
-    const {rows:[r]}=await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1",[first.enquiryId]);
-    assert.equal(r.count,9);
+    const {rows:[count]}=await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1",[first.enquiryId]);
+    assert.equal(count.count,24);
+    const {rows:[original]}=await pool.query("SELECT status,provider_message_id FROM notification_jobs WHERE id=$1",[previous.id]);
+    assert.equal(original.status,"delivered");
+    assert.equal(original.provider_message_id,"original-message");
+    const {rows:[repeats]}=await pool.query("SELECT count(DISTINCT test_key)::int AS count FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[first.enquiryId]);
+    assert.equal(repeats.count,5);
+    const {rows:[repeatChannels]}=await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%' AND channel<>'whatsapp'",[first.enquiryId]);
+    assert.equal(repeatChannels.count,0);
+    const beforeCall=(await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1",[first.enquiryId])).rows[0].count;
+    const callRepeat=await store.createContact("contact-test-a","contact-test-p1",true,"call");
+    assert.equal(callRepeat.notificationStatus,"existing");
+    assert.equal((await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1",[first.enquiryId])).rows[0].count,beforeCall);
+    await pool.query("DELETE FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[first.enquiryId]);
   });
   await t.test("different customer's verification is independent",async()=>{
     await assert.rejects(()=>store.createContact("contact-test-b","contact-test-p1",true),{code:"MOBILE_VERIFICATION_REQUIRED"});
@@ -119,12 +133,15 @@ test("property contact and notification PostgreSQL integration", {skip:!testUrl}
     const second=await store.createContact("contact-test-b","contact-test-p1",true);
     assert.notEqual(second.enquiryId,first.enquiryId);
   });
-  await t.test("simultaneous first clicks create exactly one new enquiry and nine jobs",async()=>{
+  await t.test("simultaneous first clicks create one enquiry and queue repeat notification batches",async()=>{
     const results=await Promise.all(Array.from({length:5},()=>store.createContact("contact-test-b","contact-test-p3",true)));
     assert.equal(results.filter(r=>r.created).length,1);
     assert.equal(new Set(results.map(r=>r.enquiryId)).size,1);
     const {rows:[r]}=await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1",[results[0].enquiryId]);
-    assert.equal(r.count,9);
+    assert.equal(r.count,21);
+    const {rows:[repeats]}=await pool.query("SELECT count(DISTINCT test_key)::int AS count FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[results[0].enquiryId]);
+    assert.equal(repeats.count,4);
+    await pool.query("DELETE FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[results[0].enquiryId]);
   });
   await t.test("consent, missing property and self enquiries are rejected",async()=>{
     await assert.rejects(()=>store.createContact("contact-test-a","contact-test-p1",false),{code:"CONTACT_AND_NOTIFICATION_CONSENT_REQUIRED"});

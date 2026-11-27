@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { pool } from "../db";
 import { hashPassword, verifyPassword } from "../auth";
-import { sendOTPSMS } from "../sms";
+import { sendOTPSMSWithOutcome, type SmsDeliveryStatus } from "../sms";
 import { loadConfig } from "./config";
 import { accountPhone, ContactError, renderMessage, whatsappLink } from "./core";
 
@@ -13,7 +13,9 @@ export async function verification(userId:string, query:any=pool) {
     verifiedAt:user.phone_verified_at,verificationExpiry:null};
 }
 
-export async function requestOtp(userId:string, send:typeof sendOTPSMS=sendOTPSMS) {
+type OtpSender = (phone:string,code:string)=>Promise<boolean|SmsDeliveryStatus>;
+
+export async function requestOtp(userId:string, send:OtpSender=sendOTPSMSWithOutcome) {
   const client=await pool.connect();
   try {
     await client.query("BEGIN");
@@ -39,13 +41,13 @@ export async function requestOtp(userId:string, send:typeof sendOTPSMS=sendOTPSM
       [userId,phone,hash,sameWindow?previous.send_count+1:1,sameWindow?previous.window_start:new Date()]);
     // Keep the account lock until delivery returns: concurrent resends cannot bypass limits.
     const sent = await send(`+${phone}`,code);
-    if (!sent) {
+    if (sent === false || sent === "failed") {
       await client.query("UPDATE property_contact_otps SET consumed_at=now() WHERE user_id=$1",[userId]);
       await client.query("COMMIT"); // Failed sends still count toward the throttle.
       throw new ContactError("OTP_DELIVERY_FAILED_CHECK_SMS_PROVIDER",503);
     }
     await client.query("COMMIT");
-    return {success:true,expiresIn:600};
+    return {success:true,expiresIn:600,deliveryStatus:sent === "unknown" ? "unknown" : "accepted"};
   } catch(e) {await client.query("ROLLBACK");throw e;}
   finally{client.release();}
 }
@@ -114,7 +116,7 @@ export async function getContact(userId:string,propertyId:string){
   return {hasAccess:true,enquiryId:access.enquiry_id,...await chatResult(pool,values.owner_phone,values)};
 }
 
-export async function createContact(userId:string,propertyId:string,consent:boolean){
+export async function createContact(userId:string,propertyId:string,consent:boolean,action:"whatsapp"|"call"="whatsapp"){
   if(consent!==true)throw new ContactError("CONTACT_AND_NOTIFICATION_CONSENT_REQUIRED");
   const client=await pool.connect();
   try{
@@ -124,8 +126,12 @@ export async function createContact(userId:string,propertyId:string,consent:bool
     const chat=await chatResult(client,values.owner_phone,values);
     const {rows:[existing]}=await client.query("SELECT * FROM property_contact_access WHERE customer_id=$1 AND property_id=$2",[userId,propertyId]);
     if(existing){
+      if(action==="whatsapp")await queueContactNotifications(client,{
+          enquiryId:existing.enquiry_id,customerId:existing.customer_id,propertyId:existing.property_id,
+          ownerId:existing.owner_id,values:existing.context,settings,testKey:`repeat:${randomUUID()}`,channel:"whatsapp",
+        });
       await client.query("COMMIT");
-      return {enquiryId:existing.enquiry_id,created:false,notificationStatus:"existing",...chat};
+      return {enquiryId:existing.enquiry_id,created:false,notificationStatus:action==="whatsapp"?"queued":"existing",...chat};
     }
     const enquiryId=randomUUID();
     const {rows:[enquiryTemplate]}=await client.query("SELECT message_body FROM notification_templates WHERE id='customer_owner_chat'");
@@ -135,24 +141,35 @@ export async function createContact(userId:string,propertyId:string,consent:bool
     await client.query(`INSERT INTO property_contact_access(id,enquiry_id,customer_id,property_id,owner_id,verified_phone,consent_confirmed,context)
       VALUES($1,$2,$3,$4,$5,$6,true,$7::jsonb)`,
       [randomUUID(),enquiryId,userId,p.id,p.owner_id,values.customer_phone,JSON.stringify(values)]);
-    const {rows:templates}=await client.query("SELECT * FROM notification_templates WHERE channel<>'chat' AND event_type='property_contact'");
-    for(const t of templates){
-      const recipient=t.recipient_type==="customer" ? (t.channel==="email"?customer.email:values.customer_phone) :
-        t.recipient_type==="owner" ? (t.channel==="email"?values.owner_email:values.owner_phone) :
-        (t.channel==="email"?settings.adminEmail:settings.adminPhone);
-      const channelEnabled=settings[`${t.channel}Enabled` as keyof typeof settings];
-      const approvedConsent=t.recipient_type==="customer" ? true :
-        t.recipient_type==="owner" ? settings.ownerWhatsappConsent : settings.adminWhatsappConsent;
-      const error=!channelEnabled?"CHANNEL_DISABLED":!t.is_enabled?"TEMPLATE_DISABLED":!recipient?"RECIPIENT_MISSING":
-        t.channel==="whatsapp" && !approvedConsent?"WHATSAPP_CONSENT_REQUIRED":null;
-      await client.query(`INSERT INTO notification_jobs(id,enquiry_id,customer_id,property_id,recipient_type,recipient_id,
-        recipient,channel,template_id,consent_confirmed,status,error_code)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING`,
-        [randomUUID(),enquiryId,userId,p.id,t.recipient_type,t.recipient_type==="customer"?userId:t.recipient_type==="owner"?p.owner_id:null,
-          recipient||"",t.channel,t.id,approvedConsent,error?"skipped":"pending",error]);
-    }
+    await queueContactNotifications(client,{
+      enquiryId,customerId:userId,propertyId:p.id,ownerId:p.owner_id,values,settings,testKey:"",channel:null,
+    });
     await client.query("COMMIT");
     return {enquiryId,created:true,notificationStatus:"queued",...chat};
   }catch(e){await client.query("ROLLBACK");throw e;}
   finally{client.release();}
+}
+
+async function queueContactNotifications(query:any,contact:{
+  enquiryId:string;customerId:string;propertyId:string;ownerId:string|null;
+  values:Record<string,string>;settings:any;testKey:string;channel:"whatsapp"|null;
+}){
+  const {rows:templates}=await query.query(`SELECT * FROM notification_templates
+    WHERE channel<>'chat' AND event_type='property_contact' AND ($1::text IS NULL OR channel=$1)`,[contact.channel]);
+  for(const template of templates){
+    const recipient=template.recipient_type==="customer" ? (template.channel==="email"?contact.values.customer_email:contact.values.customer_phone) :
+      template.recipient_type==="owner" ? (template.channel==="email"?contact.values.owner_email:contact.values.owner_phone) :
+      (template.channel==="email"?contact.settings.adminEmail:contact.settings.adminPhone);
+    const channelEnabled=contact.settings[`${template.channel}Enabled` as keyof typeof contact.settings];
+    const approvedConsent=template.recipient_type==="customer" ? true :
+      template.recipient_type==="owner" ? contact.settings.ownerWhatsappConsent : contact.settings.adminWhatsappConsent;
+    const error=!channelEnabled?"CHANNEL_DISABLED":!template.is_enabled?"TEMPLATE_DISABLED":!recipient?"RECIPIENT_MISSING":
+      template.channel==="whatsapp" && !approvedConsent?"WHATSAPP_CONSENT_REQUIRED":null;
+    await query.query(`INSERT INTO notification_jobs(id,enquiry_id,customer_id,property_id,recipient_type,recipient_id,
+      recipient,channel,template_id,test_key,consent_confirmed,status,error_code)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING`,
+      [randomUUID(),contact.enquiryId,contact.customerId,contact.propertyId,template.recipient_type,
+        template.recipient_type==="customer"?contact.customerId:template.recipient_type==="owner"?contact.ownerId:null,
+        recipient||"",template.channel,template.id,contact.testKey,approvedConsent,error?"skipped":"pending",error]);
+  }
 }

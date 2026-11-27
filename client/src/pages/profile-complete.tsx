@@ -181,8 +181,14 @@ export default function ProfileCompletePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send code");
+      if (data.smsStatus === "failed") throw new Error("The SMS provider did not accept the verification code. Please try again.");
       setPhoneOtpSent(true);
-      toast({ title: "Code sent", description: `We sent a verification code to ${phone}` });
+      toast({
+        title: data.smsStatus === "unknown" ? "SMS status not confirmed" : "Code sent",
+        description: data.smsStatus === "unknown"
+          ? "Check your messages before requesting another code."
+          : `We sent a verification code to ${phone}`,
+      });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {

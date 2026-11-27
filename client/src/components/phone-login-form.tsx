@@ -91,6 +91,17 @@ export function PhoneLoginForm({ onSuccess }: PhoneLoginFormProps) {
       const data = await response.json().catch(() => ({}));
       if (!mounted.current) return;
       if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Couldn't send the verification code. Try again.");
+      if (data.smsStatus === "unknown") {
+        setPhone(mobile);
+        setOtpSent(true);
+        setCode("");
+        setCountdown(30);
+        setNotice("BhashSMS did not confirm this send. Check your messages before requesting another code.");
+        return;
+      }
+      if (data.smsStatus === "failed") {
+        throw new Error("The SMS provider did not accept the verification code. Please try again.");
+      }
       if (data.smsSent !== true) {
         throw new Error(typeof data.error === "string" ? data.error : "Couldn't confirm that the verification SMS was sent. Please try again later.");
       }

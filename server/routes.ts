@@ -1430,6 +1430,7 @@ export async function registerRoutes(
 
       let emailSent = false;
       let smsSent = false;
+      let smsStatus: "accepted" | "unknown" | "failed" | null = null;
       
       if (email) {
         const { sendOTPEmail } = await import("./email");
@@ -1437,8 +1438,9 @@ export async function registerRoutes(
       }
 
       if (phone) {
-        const { sendOTPSMS } = await import("./sms");
-        smsSent = await sendOTPSMS(phone, code);
+        const { sendOTPSMSWithOutcome } = await import("./sms");
+        smsStatus = await sendOTPSMSWithOutcome(phone, code);
+        smsSent = smsStatus === "accepted";
       }
       
       // Only include devCode if both email and SMS failed to send (for testing purposes)
@@ -1447,6 +1449,7 @@ export async function registerRoutes(
         message: `Verification code sent to ${email || phone}`,
         emailSent,
         smsSent,
+        smsStatus,
       };
       
       // Only show dev code if sending failed AND we're not in production.
@@ -1456,9 +1459,11 @@ export async function registerRoutes(
       // infrastructure level, not something this fallback should paper
       // over by handing the real code to whoever's watching the network
       // tab.
-      if (!emailSent && !smsSent) {
+      if (smsStatus === "unknown") {
+        console.warn("[OTP] SMS provider outcome unknown; do not assume delivery failed.");
+      } else if (!emailSent && !smsSent) {
         if (process.env.NODE_ENV === "production") {
-          console.error("[OTP] Delivery failed. Check SMTP settings and the active SMS provider.");
+          console.error("[OTP] Delivery failed. Check email and active SMS provider configuration.");
         } else {
           response.devCode = code;
         }

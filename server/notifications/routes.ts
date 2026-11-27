@@ -60,7 +60,8 @@ export function registerNotificationRoutes(app:Express, options:{startWorker?:bo
     res.json(await getContact(req.user!.id,uuidOrId(req.params.id)));
   }));
   app.post("/api/properties/:id/contact",authMiddleware,limited("contact",20),handler(async(req,res)=>{
-    const result=await createContact(req.user!.id,uuidOrId(req.params.id),req.body.consentConfirmed);
+    if(req.body.action!==undefined && !["whatsapp","call"].includes(req.body.action))throw new ContactError("INVALID_CONTACT_ACTION");
+    const result=await createContact(req.user!.id,uuidOrId(req.params.id),req.body.consentConfirmed,req.body.action);
     res.status(result.created?201:200).json(result);
   }));
   app.get("/api/admin/notifications",authMiddleware,adminMiddleware,handler(async(_req,res)=>{

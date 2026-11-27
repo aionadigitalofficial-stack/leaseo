@@ -137,6 +137,7 @@ export default function PropertyDetailPage() {
   const [revealedPhone, setRevealedPhone] = useState<string | null>(null);
   const [contactAction, setContactAction] = useState<"whatsapp" | "call" | null>(null);
   const [contactBusy, setContactBusy] = useState(false);
+  const [otpDeliveryNotice, setOtpDeliveryNotice] = useState<string | null>(null);
   const [contactConsent, setContactConsent] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [contactSuccess, setContactSuccess] = useState<string | null>(null);
@@ -236,11 +237,16 @@ export default function PropertyDetailPage() {
     }
     const generation = requestGenerationRef.current;
     setOtpError(null);
+    setOtpDeliveryNotice(null);
     setContactBusy(true);
     try {
-      await apiRequest("POST", "/api/property-contact/otp/request", {});
+      const response = await apiRequest("POST", "/api/property-contact/otp/request", {});
+      const data = await response.json().catch(() => ({}));
       if (generation !== requestGenerationRef.current || requestPropertyRef.current !== id || requestUserRef.current !== user.id) return;
       setOtpSent(true);
+      if (data.deliveryStatus === "unknown") {
+        setOtpDeliveryNotice("The provider has not confirmed delivery. Check your messages before requesting another code.");
+      }
     } catch (err: any) {
       if (generation === requestGenerationRef.current) setOtpError(err.message || "Could not send the verification code. Please try again.");
     } finally {
@@ -255,14 +261,16 @@ export default function PropertyDetailPage() {
       return;
     }
     try {
-      const response = await apiRequest("POST", `/api/properties/${propertyId}/contact`, { consentConfirmed: true });
+      const response = await apiRequest("POST", `/api/properties/${propertyId}/contact`, { consentConfirmed: true, action });
       const contact = await response.json() as { enquiryId: string; created: boolean; ownerPhone: string; notificationStatus: "queued" | "existing" };
       if (generation !== requestGenerationRef.current || requestPropertyRef.current !== propertyId || requestUserRef.current !== (user?.id ?? null)) return;
       setRevealedPhone(contact.ownerPhone);
       setPhoneVerified(true);
       setContactSuccess(contact.created
         ? "Your interest has been registered. Notifications will be processed according to the enabled channel and template settings."
-        : "Your interest is already registered. No duplicate notifications have been sent.");
+        : contact.notificationStatus === "queued"
+          ? "Your interest was already registered. A fresh WhatsApp notification batch has been queued."
+          : "Your interest is already registered.");
       setShowContactDialog(false);
       setContactConsent(false);
       if (action === "call") {
@@ -915,6 +923,7 @@ export default function PropertyDetailPage() {
               <>
                 <div className="space-y-2">
                   <Label htmlFor="otp">Enter OTP</Label>
+                  {otpDeliveryNotice && <p className="text-sm text-amber-700 dark:text-amber-300" role="status">{otpDeliveryNotice}</p>}
                   <Input
                     id="otp"
                     type="text"
