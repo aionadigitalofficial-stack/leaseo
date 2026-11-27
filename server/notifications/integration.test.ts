@@ -110,18 +110,24 @@ test("property contact and notification PostgreSQL integration", {skip:!testUrl}
     const results=await Promise.all(Array.from({length:5},()=>store.createContact("contact-test-a","contact-test-p1",true)));
     assert.ok(results.every(r=>!r.created && r.enquiryId===first.enquiryId));
     const {rows:[count]}=await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1",[first.enquiryId]);
-    assert.equal(count.count,24);
+    assert.equal(count.count,54);
     const {rows:[original]}=await pool.query("SELECT status,provider_message_id FROM notification_jobs WHERE id=$1",[previous.id]);
     assert.equal(original.status,"delivered");
     assert.equal(original.provider_message_id,"original-message");
     const {rows:[repeats]}=await pool.query("SELECT count(DISTINCT test_key)::int AS count FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[first.enquiryId]);
     assert.equal(repeats.count,5);
     const {rows:[repeatChannels]}=await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%' AND channel<>'whatsapp'",[first.enquiryId]);
-    assert.equal(repeatChannels.count,0);
+    assert.equal(repeatChannels.count,30);
     const beforeCall=(await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1",[first.enquiryId])).rows[0].count;
     const callRepeat=await store.createContact("contact-test-a","contact-test-p1",true,"call");
     assert.equal(callRepeat.notificationStatus,"existing");
     assert.equal((await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1",[first.enquiryId])).rows[0].count,beforeCall);
+    await pool.query("DELETE FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[first.enquiryId]);
+    const response=await api("/api/properties/contact-test-p1/contact","contact-test-a","POST",{consentConfirmed:true,action:"whatsapp"});
+    assert.equal(response.status,200);
+    assert.equal(response.data.enquiryId,first.enquiryId);
+    assert.equal(response.data.notificationStatus,"queued");
+    assert.equal((await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[first.enquiryId])).rows[0].count,9);
     await pool.query("DELETE FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[first.enquiryId]);
   });
   await t.test("different customer's verification is independent",async()=>{
@@ -138,7 +144,7 @@ test("property contact and notification PostgreSQL integration", {skip:!testUrl}
     assert.equal(results.filter(r=>r.created).length,1);
     assert.equal(new Set(results.map(r=>r.enquiryId)).size,1);
     const {rows:[r]}=await pool.query("SELECT count(*)::int AS count FROM notification_jobs WHERE enquiry_id=$1",[results[0].enquiryId]);
-    assert.equal(r.count,21);
+    assert.equal(r.count,45);
     const {rows:[repeats]}=await pool.query("SELECT count(DISTINCT test_key)::int AS count FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[results[0].enquiryId]);
     assert.equal(repeats.count,4);
     await pool.query("DELETE FROM notification_jobs WHERE enquiry_id=$1 AND test_key LIKE 'repeat:%'",[results[0].enquiryId]);

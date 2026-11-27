@@ -137,7 +137,6 @@ export default function PropertyDetailPage() {
   const [revealedPhone, setRevealedPhone] = useState<string | null>(null);
   const [contactAction, setContactAction] = useState<"whatsapp" | "call" | null>(null);
   const [contactBusy, setContactBusy] = useState(false);
-  const [otpDeliveryNotice, setOtpDeliveryNotice] = useState<string | null>(null);
   const [contactConsent, setContactConsent] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [contactSuccess, setContactSuccess] = useState<string | null>(null);
@@ -237,16 +236,11 @@ export default function PropertyDetailPage() {
     }
     const generation = requestGenerationRef.current;
     setOtpError(null);
-    setOtpDeliveryNotice(null);
     setContactBusy(true);
     try {
-      const response = await apiRequest("POST", "/api/property-contact/otp/request", {});
-      const data = await response.json().catch(() => ({}));
+      await apiRequest("POST", "/api/property-contact/otp/request", {});
       if (generation !== requestGenerationRef.current || requestPropertyRef.current !== id || requestUserRef.current !== user.id) return;
       setOtpSent(true);
-      if (data.deliveryStatus === "unknown") {
-        setOtpDeliveryNotice("The provider has not confirmed delivery. Check your messages before requesting another code.");
-      }
     } catch (err: any) {
       if (generation === requestGenerationRef.current) setOtpError(err.message || "Could not send the verification code. Please try again.");
     } finally {
@@ -269,7 +263,7 @@ export default function PropertyDetailPage() {
       setContactSuccess(contact.created
         ? "Your interest has been registered. Notifications will be processed according to the enabled channel and template settings."
         : contact.notificationStatus === "queued"
-          ? "Your interest was already registered. A fresh WhatsApp notification batch has been queued."
+          ? "Your interest was already registered. Fresh notifications for all enabled channels have been queued."
           : "Your interest is already registered.");
       setShowContactDialog(false);
       setContactConsent(false);
@@ -923,7 +917,6 @@ export default function PropertyDetailPage() {
               <>
                 <div className="space-y-2">
                   <Label htmlFor="otp">Enter OTP</Label>
-                  {otpDeliveryNotice && <p className="text-sm text-amber-700 dark:text-amber-300" role="status">{otpDeliveryNotice}</p>}
                   <Input
                     id="otp"
                     type="text"

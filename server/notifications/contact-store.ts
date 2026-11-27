@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { pool } from "../db";
 import { hashPassword, verifyPassword } from "../auth";
-import { sendOTPSMSWithOutcome, type SmsDeliveryStatus } from "../sms";
+import { sendOTPSMS } from "../sms";
 import { loadConfig } from "./config";
 import { accountPhone, ContactError, renderMessage, whatsappLink } from "./core";
 
@@ -13,9 +13,7 @@ export async function verification(userId:string, query:any=pool) {
     verifiedAt:user.phone_verified_at,verificationExpiry:null};
 }
 
-type OtpSender = (phone:string,code:string)=>Promise<boolean|SmsDeliveryStatus>;
-
-export async function requestOtp(userId:string, send:OtpSender=sendOTPSMSWithOutcome) {
+export async function requestOtp(userId:string, send:typeof sendOTPSMS=sendOTPSMS) {
   const client=await pool.connect();
   try {
     await client.query("BEGIN");
@@ -41,13 +39,13 @@ export async function requestOtp(userId:string, send:OtpSender=sendOTPSMSWithOut
       [userId,phone,hash,sameWindow?previous.send_count+1:1,sameWindow?previous.window_start:new Date()]);
     // Keep the account lock until delivery returns: concurrent resends cannot bypass limits.
     const sent = await send(`+${phone}`,code);
-    if (sent === false || sent === "failed") {
+    if (!sent) {
       await client.query("UPDATE property_contact_otps SET consumed_at=now() WHERE user_id=$1",[userId]);
       await client.query("COMMIT"); // Failed sends still count toward the throttle.
       throw new ContactError("OTP_DELIVERY_FAILED_CHECK_SMS_PROVIDER",503);
     }
     await client.query("COMMIT");
-    return {success:true,expiresIn:600,deliveryStatus:sent === "unknown" ? "unknown" : "accepted"};
+    return {success:true,expiresIn:600};
   } catch(e) {await client.query("ROLLBACK");throw e;}
   finally{client.release();}
 }
@@ -128,7 +126,7 @@ export async function createContact(userId:string,propertyId:string,consent:bool
     if(existing){
       if(action==="whatsapp")await queueContactNotifications(client,{
           enquiryId:existing.enquiry_id,customerId:existing.customer_id,propertyId:existing.property_id,
-          ownerId:existing.owner_id,values:existing.context,settings,testKey:`repeat:${randomUUID()}`,channel:"whatsapp",
+          ownerId:existing.owner_id,values:existing.context,settings,testKey:`repeat:${randomUUID()}`,channel:null,
         });
       await client.query("COMMIT");
       return {enquiryId:existing.enquiry_id,created:false,notificationStatus:action==="whatsapp"?"queued":"existing",...chat};
